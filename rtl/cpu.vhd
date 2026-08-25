@@ -4705,9 +4705,9 @@ begin
                         or modelcode = 93
                         or modelcode = 94
                         then
-                           if have_fpa = 0 then                    -- Speculative - see ashc case
-                              eis_flag1 <= '1';
-                           end if;
+                           -- unconditional J-11 microcode errata (missing PLA term for shift count 37 octal),
+                           -- per DEC's documented "PDP-11 differences" list; not dependent on FPA presence.
+                           eis_flag1 <= '1';
                         end if;
                      end if;
                      if alu_input(5) = '1' then
@@ -4757,9 +4757,10 @@ begin
                         or modelcode = 93
                         or modelcode = 94
                         then
-                           if have_fpa = 0 then                    -- As evidenced from the test code in RSTS V10.1L
-                              eis_flag1 <= '1';
-                           end if;
+                           -- unconditional J-11 microcode errata (missing PLA term for shift count 37 octal),
+                           -- per DEC's documented "PDP-11 differences" list; not dependent on FPA presence.
+                           -- As evidenced from the test code in RSTS V10.1L.
+                           eis_flag1 <= '1';
                         end if;
                      end if;
                      if alu_input(5) = '1' then
