@@ -359,6 +359,10 @@ hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(3),.PS2DIV(3125)) hps_io
 
 ///////////////////////   CLOCKS   ///////////////////////////////
 
+// driven by mister_top's cpuclk_out port below -- was left undriven here
+// for the entire XU native-networking effort so far, which silently froze
+// xu_ddr_mailbox/xu_enc424j600_shim's registers at their reset values on
+// real hardware (see mister_top.vhd's cpuclk_out port comment)
 wire cpuclk;
 wire clk_100mhz,clk_50mhz,clk_ram,pll_locked;
 pll pll
@@ -596,7 +600,8 @@ mister_top mister_top
    .dram_cs_n (SDRAM_nCS),
 	
 	.greenled (greenled),
-	
+	.cpuclk_out (cpuclk),
+
 	.ps2k_c(ps2k_c),
 	.ps2k_d(ps2k_d),
 	

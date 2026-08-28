@@ -100,7 +100,22 @@ entity mister_top is
       dram_cs_n      : out std_logic;
 
       -- board peripherals
-      greenled       : out std_logic
+      greenled       : out std_logic;
+
+      -- REAL BUG fixed here (found via TimeQuest, 2026-08-27): xu_ddr_mailbox
+      -- and xu_enc424j600_shim (pdp2011.sv) were wired to a top-level Verilog
+      -- wire named cpuclk that was never actually driven -- cpuclk has
+      -- always been purely internal to this entity, never exposed as a
+      -- port, so that wire synthesized as a constant GND. Both instances'
+      -- registers were permanently stuck at their reset values on real
+      -- hardware regardless of any SPI activity (confirmed: Quartus's
+      -- fitter report listed every shim register "Stuck at GND due to
+      -- stuck port clock") -- this, not any of the SPI decode logic bugs
+      -- found and fixed earlier, is why EUDAST always read back 00 00 on
+      -- real hardware even after those fixes were verified correct in
+      -- simulation. Exposing the real internal cpuclk here and wiring it
+      -- through in pdp2011.sv is the actual fix.
+      cpuclk_out     : out std_logic
   );
 end mister_top;
 
@@ -755,6 +770,9 @@ begin
 	
 	
    greenled  <= not rxrx1 or not txtx1 or not rxrx0 or not txtx0;
+
+   -- see cpuclk_out's port declaration above for why this exists
+   cpuclk_out <= cpuclk;
 	
 	dram_match <= '1' when addr(21 downto 18) /= "1111" else '0';
    dram_ldqm <= dram_addr(11);

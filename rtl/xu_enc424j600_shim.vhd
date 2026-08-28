@@ -139,16 +139,28 @@ architecture implementation of xu_enc424j600_shim is
 
    signal cur_opcode : std_logic_vector(7 downto 0) := (others => '0');
    signal cur_addr : std_logic_vector(7 downto 0) := (others => '0');
-   signal word_count : integer range 0 to 2 := 0;  -- word index within txn (0..2, for MAC's 3 words)
+   -- byte index within the current RCRU response: 0/1 for ordinary 2-byte
+   -- registers, 0..5 for MAADR3's 6-byte MAC read. REAL BUG fixed here
+   -- (found via real firmware's MAC print, 2026-08-28): this used to be
+   -- range 0 to 2 and select MAADR3 bytes at 16-bit strides (bytes 0,2,4
+   -- only), silently repeating the 3rd byte for the remaining 3 requested
+   -- bytes instead of serving all 6 real, distinct bytes.
+   signal word_count : integer range 0 to 5 := 0;
    signal cur_word : std_logic_vector(15 downto 0) := (others => '0');
-   signal cs_prev : std_logic := '1';
 
    ----------------------------------------------------------------------
    -- local register file (plain store-and-echo, no special behavior)
    ----------------------------------------------------------------------
    signal reg_erxfcon : std_logic_vector(15 downto 0) := (others => '0');
    signal reg_macon1  : std_logic_vector(15 downto 0) := (others => '0');
-   signal reg_eidled  : std_logic_vector(15 downto 0) := (others => '0');
+   -- real datasheet POR reset value (Register 8-2): LACFG<3:0>=0010,
+   -- LBCFG<3:0>=0110, DEVID<2:0>=001 (ENC624J600 family), REVID<4:0>
+   -- undocumented/varies by silicon lot, left 0 -- NOT all-zero, which
+   -- firmware's periodic health check (roms/xubrt45.mac's "cannot read
+   -- eidled" test, tst deidled/bne) treats as "communication lost"
+   -- (real bug found on real hardware, 2026-08-28, after the cpuclk fix
+   -- got far enough to reach this check for the first time).
+   signal reg_eidled  : std_logic_vector(15 downto 0) := x"2620";
    signal reg_egpwrpt : std_logic_vector(15 downto 0) := (others => '0');
    signal reg_erxrdpt : std_logic_vector(15 downto 0) := (others => '0');
    signal reg_eudast  : std_logic_vector(15 downto 0) := (others => '0');
@@ -202,7 +214,6 @@ begin
          spi_state <= s_opcode;
          bit_count <= 0;
          word_count <= 0;
-         cs_prev <= '1';
          xu_miso_i <= '0';
          shift_in <= (others => '0');
          shift_out <= (others => '0');
@@ -212,7 +223,7 @@ begin
 
          reg_erxfcon <= (others => '0');
          reg_macon1 <= (others => '0');
-         reg_eidled <= (others => '0');
+         reg_eidled <= x"2620";  -- real datasheet POR value, see signal comment above
          reg_egpwrpt <= (others => '0');
          reg_erxrdpt <= (others => '0');
          reg_eudast <= (others => '0');
@@ -231,8 +242,6 @@ begin
 
       elsif cpuclk'event and cpuclk = '1' then
 
-         cs_prev <= xu_cs;
-
          ----------------------------------------------------------------
          -- SPI shift engine
          ----------------------------------------------------------------
@@ -240,11 +249,22 @@ begin
             spi_state <= s_opcode;
             bit_count <= 0;
             word_count <= 0;
-         elsif cs_prev = '1' and xu_cs = '0' then
-            spi_state <= s_opcode;
-            bit_count <= 0;
-            word_count <= 0;
          else
+            -- REAL BUG fixed here (found via tb_shim_real_master.vhd,
+            -- 2026-08-27): a previous separate branch here (cs_prev='1'
+            -- and xu_cs='0') spent the first cycle of every transaction
+            -- purely on state reset without sampling xu_mosi. But
+            -- xubl.vhd (the real master) asserts cs and the first real
+            -- data bit on the SAME edge -- there is no settling cycle.
+            -- That branch caused the shim to permanently sample one bit
+            -- late for the rest of every transaction (confirmed: it
+            -- captured the true opcode byte rotated left by one bit,
+            -- e.g. 0x22 -> 0x44). No separate reset is actually needed
+            -- here: spi_state/bit_count/word_count are already correctly
+            -- primed to s_opcode/0/0 by the xu_cs='1' branch above,
+            -- continuously, throughout the preceding idle-high period --
+            -- so falling straight into real sampling on the very first
+            -- low cycle is already correct.
 
             in_byte := shift_in(6 downto 0) & xu_mosi;
             shift_in <= in_byte;
@@ -278,6 +298,42 @@ begin
                      word_count <= 0;
                      if cur_opcode = OP_RCRU then
                         spi_state <= s_data_out;
+                        -- REAL BUG fixed here (found via
+                        -- tb_shim_real_master.vhd, 2026-08-27): the same
+                        -- zero-turnaround-latency issue as the CS/first-
+                        -- bit fix above, but on the read side -- the real
+                        -- master starts sampling MISO the cycle right
+                        -- after this one, so the first response bit must
+                        -- already be valid entering that cycle. Computing
+                        -- it only once inside s_data_out's own bit_count=0
+                        -- branch (the old code) drives it one cycle too
+                        -- late -- confirmed: readback came back rotated
+                        -- (0x1229 instead of 0x2552). Fix: compute and
+                        -- drive the first response bit now, using in_byte
+                        -- (the address just latched -- cur_addr itself
+                        -- isn't visible until next cycle), and start
+                        -- s_data_out at bit_count=1 so its own bit_count=0
+                        -- branch doesn't recompute the same byte a second
+                        -- time. Byte-to-byte transitions within
+                        -- s_data_out need no equivalent fix -- normal
+                        -- register timing already lines them up correctly
+                        -- (verified by trace, not just assumed).
+                        bit_count <= 1;
+                        case in_byte is
+                           when ADDR_EUDAST => out_byte := reg_eudast(7 downto 0);
+                           when ADDR_ESTAT => out_byte := x"00";  -- estat_val(7:0), bit12 lives in the high byte
+                           when ADDR_ECON1 => out_byte := "000000" & econ1_txrts & econ1_rxen;
+                           when ADDR_ECON2 => out_byte := x"00";
+                           when ADDR_MAADR3 => out_byte := PLACEHOLDER_MAC(7 downto 0);
+                           when ADDR_ERXFCON => out_byte := reg_erxfcon(7 downto 0);
+                           when ADDR_MACON1 => out_byte := reg_macon1(7 downto 0);
+                           when ADDR_EIDLED => out_byte := reg_eidled(7 downto 0);
+                           when ADDR_EGPWRPT => out_byte := reg_egpwrpt(7 downto 0);
+                           when ADDR_ERXRDPT => out_byte := reg_erxrdpt(7 downto 0);
+                           when others => out_byte := x"00";
+                        end case;
+                        xu_miso_i <= out_byte(7);
+                        shift_out <= out_byte(6 downto 0) & '0';
                      else
                         spi_state <= s_data_in;
                      end if;
@@ -395,8 +451,11 @@ begin
                         when ADDR_MAADR3 =>
                            case word_count is
                               when 0 => out_byte := PLACEHOLDER_MAC(7 downto 0);
-                              when 1 => out_byte := PLACEHOLDER_MAC(23 downto 16);
-                              when others => out_byte := PLACEHOLDER_MAC(39 downto 32);
+                              when 1 => out_byte := PLACEHOLDER_MAC(15 downto 8);
+                              when 2 => out_byte := PLACEHOLDER_MAC(23 downto 16);
+                              when 3 => out_byte := PLACEHOLDER_MAC(31 downto 24);
+                              when 4 => out_byte := PLACEHOLDER_MAC(39 downto 32);
+                              when others => out_byte := PLACEHOLDER_MAC(47 downto 40);
                            end case;
                         when ADDR_ERXFCON => if word_count = 0 then out_byte := reg_erxfcon(7 downto 0); else out_byte := reg_erxfcon(15 downto 8); end if;
                         when ADDR_MACON1  => if word_count = 0 then out_byte := reg_macon1(7 downto 0); else out_byte := reg_macon1(15 downto 8); end if;
@@ -420,9 +479,11 @@ begin
                      -- other register's RCRU response repeated its LSB
                      -- byte twice instead of sending LSB then MSB, which
                      -- is exactly why chkeudast's readback never matched
-                     -- and initenc always failed). MAADR3 additionally
-                     -- advances 1->2 for its 3rd word (6-byte MAC).
-                     if word_count < 1 or (cur_addr = ADDR_MAADR3 and word_count < 2) then
+                     -- and initenc always failed). MAADR3 advances through
+                     -- all 6 real bytes instead of capping at 3 (see
+                     -- word_count's own declaration comment).
+                     if (cur_addr = ADDR_MAADR3 and word_count < 5)
+                        or (cur_addr /= ADDR_MAADR3 and word_count < 1) then
                         word_count <= word_count + 1;
                      end if;
                   else
