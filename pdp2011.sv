@@ -173,8 +173,81 @@ module emu
 ///////// Default values for ports not used in this core /////////
 
 assign ADC_BUS  = 'Z;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;  
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
+
+// Bisect build available by commenting out this `define -- see
+// git history/memory for the bisect procedure (confirmed: with this
+// defined and xu_test_stub's unbounded TXRTS_DONE poll loop, the core
+// didn't even reach disk boot; fixed by bounding that retry to 10,
+// matching chkeudast's own real discipline -- see rtl/xu_test_stub.vhd).
+`define XU_DDR_MAILBOX_PHASE1
+
+`ifdef XU_DDR_MAILBOX_PHASE1
+// XU native networking, Phase 2: xu_ddr_mailbox.vhd (real, final DDR3
+// mailbox, unchanged since Phase 1) driven by xu_enc424j600_shim.vhd (the
+// real SPI decoder, replacing Phase 1's xu_test_stub.vhd). See
+// /Users/faye/.claude/plans/keen-sauteeing-dolphin.md. ram1/DDRAM_* has
+// no other master on this core -- no arbiter needed.
+
+wire xu_ddr_req_valid;
+wire [15:0] xu_ddr_req_addr;
+wire [63:0] xu_ddr_req_wdata;
+wire [7:0] xu_ddr_req_be;
+wire xu_ddr_req_rw;
+wire xu_ddr_req_ack;
+wire xu_ddr_resp_valid;
+wire [63:0] xu_ddr_resp_rdata;
+
+xu_ddr_mailbox xu_ddr_mailbox_inst
+(
+	.reset(reset),
+
+	.cpuclk(cpuclk),
+	.req_valid(xu_ddr_req_valid),
+	.req_addr(xu_ddr_req_addr),
+	.req_wdata(xu_ddr_req_wdata),
+	.req_be(xu_ddr_req_be),
+	.req_rw(xu_ddr_req_rw),
+	.req_ack(xu_ddr_req_ack),
+	.resp_valid(xu_ddr_resp_valid),
+	.resp_rdata(xu_ddr_resp_rdata),
+
+	.clk50mhz(clk_50mhz),
+	.DDRAM_CLK(DDRAM_CLK),
+	.DDRAM_BUSY(DDRAM_BUSY),
+	.DDRAM_BURSTCNT(DDRAM_BURSTCNT),
+	.DDRAM_ADDR(DDRAM_ADDR),
+	.DDRAM_DOUT(DDRAM_DOUT),
+	.DDRAM_DOUT_READY(DDRAM_DOUT_READY),
+	.DDRAM_RD(DDRAM_RD),
+	.DDRAM_DIN(DDRAM_DIN),
+	.DDRAM_BE(DDRAM_BE),
+	.DDRAM_WE(DDRAM_WE)
+);
+
+xu_enc424j600_shim xu_enc424j600_shim_inst
+(
+	.reset(reset),
+	.cpuclk(cpuclk),
+
+	.xu_cs(xu_cs),
+	.xu_mosi(xu_mosi),
+	.xu_sclk(xu_sclk),
+	.xu_miso(xu_miso),
+
+	.req_valid(xu_ddr_req_valid),
+	.req_addr(xu_ddr_req_addr),
+	.req_wdata(xu_ddr_req_wdata),
+	.req_be(xu_ddr_req_be),
+	.req_rw(xu_ddr_req_rw),
+	.req_ack(xu_ddr_req_ack),
+	.resp_valid(xu_ddr_resp_valid),
+	.resp_rdata(xu_ddr_resp_rdata)
+);
+`else
+assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
+assign xu_miso = 1'b0;
+`endif
 
 assign VGA_SL = 0;
 assign VGA_F1 = 0;
@@ -454,10 +527,9 @@ wire xu_mosi;
 wire xu_sclk;
 wire xu_miso;
 
-assign USER_OUT[0] = xu_mosi;
-assign xu_miso = USER_IN[1];
-assign USER_OUT[6] = xu_sclk;
-assign USER_OUT[3] = xu_cs;
+// Phase 2: SPI pins routed to xu_enc424j600_shim (below) instead of the
+// physical USER_OUT/USER_IN connector -- see
+// /Users/faye/.claude/plans/keen-sauteeing-dolphin.md.
 ////////////////////////////// The Machine //////////////////////////////////
 
 int modelcode;

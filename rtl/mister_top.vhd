@@ -457,6 +457,14 @@ signal rxrx3 : std_logic;
 signal vtrx  : std_logic;
 signal vttx  : std_logic;
 signal vtcts : std_logic;
+
+-- XU's own debug UART (115200/8/n/1, from xu.vhd's internal kl0), routed
+-- onto the physical UART_TXD pin only when serial_console='0' (OSD
+-- "Console: Virtual VT100"), replacing txtx1's otherwise-idle-to-the-
+-- guest slot there -- see [[pdp2011-native-networking-idea]] and
+-- /Users/faye/.claude/plans/keen-sauteeing-dolphin.md. "Console: Serial"
+-- mode and the on-screen VT100 terminal are both unaffected.
+signal xu_debug_tx_i : std_logic;
 signal vtrts : std_logic;
 
 signal addr : std_logic_vector(21 downto 0);
@@ -596,7 +604,7 @@ begin
       xu_mosi => xu_mosi,
       xu_sclk => xu_sclk,
       xu_miso => xu_miso,
-      xu_debug_tx => open,
+      xu_debug_tx => xu_debug_tx_i,
 
       cons_load => cons_load,
       cons_exa => cons_exa,
@@ -731,7 +739,7 @@ begin
    );
 
 
-   tx1   <= txtx0 when serial_console = '1' else txtx1;
+   tx1   <= txtx0 when serial_console = '1' else xu_debug_tx_i;
 	vtrx  <= txtx0 when serial_console = '0' else txtx1;
 
 	
