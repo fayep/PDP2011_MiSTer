@@ -148,6 +148,11 @@ t45:
 ;
 10$:
          clr    dogtick                ; need to do this every 10 seconds, or watchdog will cause reboot
+         inc    hbcnt                  ; DBG heartbeat -- low-rate proof the main loop is still cycling,
+         tst    hbcnt                  ; not silently stuck (console alone can't tell idle from hung).
+         bne    11$                    ; prints only once every 65536 passes -- cheap, won't flood.
+         xascil <DBG heartbeat>
+11$:
          tst    running                ; in running state?
          beq    20$                    ; no - jump
          jsr    pc,pktin               ; process input packets
@@ -182,12 +187,16 @@ t45:
          beq    23$
 22$:
          xascil <restoring laa>        ; restore the mac address to what was set
-         movb   wlaa+2,dlaa+4
-         movb   wlaa+3,dlaa+5
-         movb   wlaa+4,dlaa+2
-         movb   wlaa+5,dlaa+3
-         movb   wlaa+6,dlaa+0
-         movb   wlaa+7,dlaa+1
+         ; ENC424J600 stores the MAC fully byte-reversed across MAADR1H
+         ; (canonical byte 1/OUI0) .. MAADR3L (canonical byte 6) --
+         ; datasheet DS39935C Table 3-7. wlaa/dlaa conversion must be a
+         ; full 6-byte reversal to match, not a partial swap.
+         movb   wlaa+7,dlaa+0
+         movb   wlaa+6,dlaa+1
+         movb   wlaa+5,dlaa+2
+         movb   wlaa+4,dlaa+3
+         movb   wlaa+3,dlaa+4
+         movb   wlaa+2,dlaa+5
          jsr    pc,setlaa
 23$:
          tst    modebits
@@ -1084,10 +1093,15 @@ pktin:
 ;
 ; check if there is a free buffer on the receive ring. If there isn't, skip - and hope that the encx24j600 has enough space to buffer
 ;
+         xasciz <DBG pktin enter rcurr=>
+         xwhx   rcurrh,1
+         xwhx   rcurrl,1
+         xascnl
          tst    rcurrl                 ; ring pointer valid?
          bne    10$                    ; yes
          tst    rcurrh                 ; ring pointer valid?
          bne    10$                    ; yes
+         xasciz <DBG pktin bail: rcurr invalid>
          jmp    90$                    ; no - can't even check buffer space yet
 ;
 ; read estat
@@ -1095,6 +1109,9 @@ pktin:
 10$:
          xubl   restat,20,destat,20
          movb   destat,pktcnt
+         xasciz <DBG pktin pktcnt=>
+         xbhx   pktcnt,1
+         xascnl
          tstb   pktcnt
          bne    15$
          jmp    90$
@@ -1118,13 +1135,16 @@ pktin:
 ; read next 6 bytes
 ;
          xubl   rpkth,20,dpkth,60
-;         xasciz <pkt header : >
-;         xbhx   dpkth,6
-;         xascnl
+         xasciz <DBG pktin hdr: >
+         xbhx   dpkth,6
+         xascnl
 ;
 ; take length from header - from first two bytes
 ;
          mov    dpkth,flen
+         xasciz <DBG pktin flen: >
+         xbhx   flen,2
+         xascnl
 ;
 ; process frame data
 ;
@@ -1401,12 +1421,16 @@ initenc:
          xasciz <:>
          xbhx   dbia+1,1
          xascnl
-         movb   dbia+4,dlaa+0
-         movb   dbia+5,dlaa+1
-         movb   dbia+2,dlaa+2
-         movb   dbia+3,dlaa+3
-         movb   dbia+0,dlaa+4
-         movb   dbia+1,dlaa+5
+         ; full 6-byte reversal, matching ENC424J600's real MAADR1..3
+         ; register layout (DS39935C Table 3-7: MAADR1H = canonical
+         ; byte 1/OUI0 ... MAADR3L = canonical byte 6). Previously a
+         ; partial swap here, which was wrong.
+         movb   dbia+5,dlaa+0
+         movb   dbia+4,dlaa+1
+         movb   dbia+3,dlaa+2
+         movb   dbia+2,dlaa+3
+         movb   dbia+1,dlaa+4
+         movb   dbia+0,dlaa+5
 ;
 ; set npp, erxst to initial value
 ;
@@ -1536,12 +1560,13 @@ cmcen:   .byte bfcu,erxfcon,2,0
 ; setlaa : set the mac address into the encx24j600 - note that this acts on the unicast receive filter only
 ;
 setlaa:
-         movb   dlaa+4,wlaa+2
-         movb   dlaa+5,wlaa+3
-         movb   dlaa+2,wlaa+4
-         movb   dlaa+3,wlaa+5
-         movb   dlaa+0,wlaa+6
-         movb   dlaa+1,wlaa+7
+         ; full 6-byte reversal -- see the read-path comment above.
+         movb   dlaa+5,wlaa+2
+         movb   dlaa+4,wlaa+3
+         movb   dlaa+3,wlaa+4
+         movb   dlaa+2,wlaa+5
+         movb   dlaa+1,wlaa+6
+         movb   dlaa+0,wlaa+7
 ;
          xubl   wlaa,100
          rts    pc
@@ -2040,6 +2065,7 @@ dog:
 hextab:  .ascii /0123456789abcdef/
 
          .even
+hbcnt:   .word 0                       ; DBG heartbeat counter, temporary
 running: .word 0                       ; if nonzero, then recv/xmit is active
 npp:     .word 0                       ; the next packet pointer in the encx24j600
 flen:    .word 0                       ; frame length in the encx24j600 received frame header

@@ -131,8 +131,11 @@ architecture implementation of xu_enc424j600_shim is
 
    -- hardcoded placeholder MAC (real DEC OUI 08-00-2B, never the
    -- zero/garbage pattern) -- see MAC-handling note above.
-   -- byte order in this vector matches the SPI wire order sent by
-   -- ADDR_MAADR3 below: index0=08,1=00,2=2B,3=AA,4=AA,5=AA
+   -- Bit layout is canonical MAC byte order, same convention as
+   -- reg_mac_addr/xu.cpp's macword: bits(7:0)=canonical byte0(OUI0)=08,
+   -- (15:8)=byte1=00, (23:16)=byte2=2B, (31:24)=byte3=AA, (39:32)=byte4=AA,
+   -- (47:40)=byte5=AA. ADDR_MAADR3's byte-serving logic below reverses
+   -- this into the real chip's actual wire order (DS39935C Table 3-7).
    constant PLACEHOLDER_MAC : std_logic_vector(47 downto 0) := x"AAAAAA2B0008";
 
    ----------------------------------------------------------------------
@@ -579,7 +582,12 @@ begin
                            when ADDR_MAADR3 =>
                               if mac_addr_fetched = '1' then cur_mac := reg_mac_addr;
                               else cur_mac := PLACEHOLDER_MAC; end if;
-                              out_byte := cur_mac(7 downto 0);
+                              -- ENC424J600 stores the MAC fully byte-
+                              -- reversed across MAADR1H(canonical byte1)
+                              -- .. MAADR3L(canonical byte6) -- DS39935C
+                              -- Table 3-7. Wire byte 0 = canonical byte 6
+                              -- = cur_mac[5] (0-indexed).
+                              out_byte := cur_mac(47 downto 40);
                            when ADDR_ERXFCON => out_byte := reg_erxfcon(7 downto 0);
                            when ADDR_MACON1 => out_byte := reg_macon1(7 downto 0);
                            when ADDR_EIDLED => out_byte := reg_eidled(7 downto 0);
@@ -709,13 +717,15 @@ begin
                         when ADDR_MAADR3 =>
                            if mac_addr_fetched = '1' then cur_mac := reg_mac_addr;
                            else cur_mac := PLACEHOLDER_MAC; end if;
+                           -- full reversal -- see the fast-path comment
+                           -- above (DS39935C Table 3-7).
                            case word_count is
-                              when 0 => out_byte := cur_mac(7 downto 0);
-                              when 1 => out_byte := cur_mac(15 downto 8);
-                              when 2 => out_byte := cur_mac(23 downto 16);
-                              when 3 => out_byte := cur_mac(31 downto 24);
-                              when 4 => out_byte := cur_mac(39 downto 32);
-                              when others => out_byte := cur_mac(47 downto 40);
+                              when 0 => out_byte := cur_mac(47 downto 40);
+                              when 1 => out_byte := cur_mac(39 downto 32);
+                              when 2 => out_byte := cur_mac(31 downto 24);
+                              when 3 => out_byte := cur_mac(23 downto 16);
+                              when 4 => out_byte := cur_mac(15 downto 8);
+                              when others => out_byte := cur_mac(7 downto 0);
                            end case;
                         when ADDR_ERXFCON => if word_count = 0 then out_byte := reg_erxfcon(7 downto 0); else out_byte := reg_erxfcon(15 downto 8); end if;
                         when ADDR_MACON1  => if word_count = 0 then out_byte := reg_macon1(7 downto 0); else out_byte := reg_macon1(15 downto 8); end if;
@@ -874,22 +884,35 @@ begin
                      when others             => null;
                   end case;
                   mbox_state <= m_issue;
-                  -- TEMPORARILY RESTORED (2026-08-29) to bisect a real
-                  -- regression reported on the build that added the
-                  -- removal below: main system no longer reaches its own
-                  -- "boot from rp:" prompt (confirmed: only one "Hello,
-                  -- world" cycle now, not the usual two -- the outer
-                  -- UNIBUS INIT pulse that normally causes the second one
-                  -- never happens, meaning the main CPU hangs before that
-                  -- point). Re-added while the actual cause is isolated --
-                  -- see the explanation below for why this line was
-                  -- removed in the first place; that reasoning still
-                  -- stands, this is a bisection step, not a retraction.
-                  bg_counter <= 0;
                   -- REAL BUG fixed here (found 2026-08-29, real hardware --
                   -- xmitxx's ECON1 spin loop never terminating, TXRTS
                   -- stuck set forever, first real exercise of the TX-
-                  -- complete handshake under real traffic). This branch
+                  -- complete handshake under real traffic). A first
+                  -- attempt at this fix removed this reset unconditionally
+                  -- for ALL foreground activity, which caused a separate,
+                  -- unexplained real regression (deployed and confirmed on
+                  -- hardware: the main system stopped reaching its own
+                  -- boot prompt entirely -- bisected by reverting that
+                  -- change, root mechanism still not understood). This
+                  -- version is deliberately narrower: only skip the reset
+                  -- for mr_stream_prefetch specifically -- the ONLY
+                  -- foreground activity a plain, no-B0SEL-prefix RCRU
+                  -- transaction (recon1's real template, and every other
+                  -- local-register RCRU/WCRU/BFSU read/write) ever
+                  -- triggers is this same speculative, opcode-unaware
+                  -- prefetch (see its own declaration comment) -- it
+                  -- fires on the first bit of literally every SPI
+                  -- transaction, RRXDATA or not, and is the sole reason a
+                  -- tight loop of otherwise-local ECON1 reads was
+                  -- resetting this timer every ~20 cycles. Every OTHER
+                  -- foreground request type (explicit register writes,
+                  -- real stream writes) still resets bg_counter exactly as
+                  -- before, unchanged from the original, working design --
+                  -- minimizing the surface of this change relative to the
+                  -- reverted first attempt.
+                  if fg_pending /= mr_stream_prefetch then
+                     bg_counter <= 0;
+                  end if;
                   -- used to reset bg_counter to 0 on EVERY foreground
                   -- request, including the speculative RRXDATA-priming
                   -- fetch that fires on the first bit of every SPI
