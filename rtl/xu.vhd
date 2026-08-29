@@ -491,6 +491,25 @@ signal cr_dati : std_logic_vector(15 downto 0);
 signal xubl_addr_match : std_logic;
 signal xubl_dati : std_logic_vector(15 downto 0);
 signal xubl_npr : std_logic;
+signal xubl_localbus_npg : std_logic;
+
+-- REAL BUG fixed here (found 2026-08-29, in simulation, before ever
+-- reaching hardware -- tb_xubl_race.vhd): the first two attempts at
+-- fixing the xubl/xubm shared local-bus race each masked one side's own
+-- npg with "and not <the other's raw npr>". That works for blocking a
+-- request that hasn't started yet, but xubl_npr/xubm_npr are asserted
+-- purely from each device's own "run" flag -- completely independent of
+-- whether it has actually been granted the bus -- so the OTHER side's
+-- npr rising mid-transfer immediately revokes an already-in-progress
+-- grant. Combined, the two masks deadlock: xubm mid-transfer sees
+-- xubl_npr rise and loses its own grant, while xubl (masked by
+-- xubm_npr, still '1' since xubm's transfer never got to complete) never
+-- gets one either -- neither npr can ever drop. Fix: a real latched
+-- "who currently owns the local bus" arbiter (below) that, once
+-- acquired, is held until the OWNER's own npr drops, regardless of the
+-- other side's npr rising in the meantime.
+type local_bus_owner_type is (owner_none, owner_xubl, owner_xubm);
+signal local_bus_owner : local_bus_owner_type := owner_none;
 
 signal localunibus_busmaster_xubl_addr : std_logic_vector(17 downto 0);
 signal localunibus_busmaster_xubl_dato : std_logic_vector(15 downto 0);
@@ -500,6 +519,7 @@ signal localunibus_busmaster_xubl_control_dato : std_logic;
 signal xubm_addr_match : std_logic;
 signal xubm_dati : std_logic_vector(15 downto 0);
 signal xubm_npr : std_logic;
+signal xubm_localbus_npg : std_logic;
 
 signal xubm_addr : std_logic_vector(17 downto 0);
 signal xubm_dato : std_logic_vector(15 downto 0);
@@ -756,7 +776,12 @@ begin
       base_addr => o"777000",
 
       npr => xubl_npr,
-      npg => cpu_npg,
+      -- See local_bus_owner_type's declaration comment above for the
+      -- full history (two earlier, individually-reasonable-looking
+      -- masks that combined into a real deadlock, found in simulation).
+      -- xubl0 only actually receives a grant once the arbiter below has
+      -- latched it as the current owner.
+      npg => xubl_localbus_npg,
 
       bus_addr_match => xubl_addr_match,
       bus_addr => localunibus_addr,
@@ -805,7 +830,17 @@ begin
       bus_master_nxm => bus_master_nxm,
 
       localbus_npr => xubm_npr,
-      localbus_npg => cpu_npg,
+      -- See local_bus_owner_type's declaration comment (near xubl_npr's
+      -- own declaration) for the full history: the original bug here was
+      -- xubm0 believing it had real bus access whenever cpu_npg='1',
+      -- with no idea the data-routing mux below was actually routing
+      -- xubl0's signals instead (getfr's RRXDATA-then-busmaster-DMA
+      -- pattern, first real exercise under actual traffic -- watchdog
+      -- "dog barks" right after pcsr0 START). A first fix (masking with
+      -- "and not xubl_npr") worked alone but deadlocked once paired with
+      -- the symmetric xubl0-side fix below; both are now replaced by the
+      -- latched arbiter.
+      localbus_npg => xubm_localbus_npg,
 
       localbus_master_addr => localunibus_busmaster_xubm_addr,
       localbus_master_dati => localunibus_busmaster_dati,
@@ -867,20 +902,33 @@ begin
       else '1' when mmu_oddabort = '1'
       else '0';
 
-   localunibus_busmaster_addr <= localunibus_busmaster_xubl_addr when cpu_npg = '1' and xubl_npr = '1'
-      else localunibus_busmaster_xubm_addr when cpu_npg = '1' and xubm_npr = '1'
+   -- REAL BUG fixed here (found 2026-08-29, in simulation, tb_xubl_race.vhd):
+   -- this mux used to route on the same raw "cpu_npg='1' and <device>_npr='1'"
+   -- priority check the original (buggy) grant logic used. Once the grant
+   -- itself was fixed to route through the latched local_bus_owner
+   -- arbiter (see local_bus_owner_type's declaration comment), this mux
+   -- was the one piece left still using the old, un-latched check -- so
+   -- xubm0's data-movement state machine (gated on its OWN outer npg, not
+   -- localbus_npg at all -- "main bus npg implies localbus npg" per
+   -- xubm.vhd's own comment) would keep advancing through its states
+   -- once granted, but this mux would silently swap over to xubl the
+   -- moment xubl_npr rose, discarding xubm's remaining writes exactly as
+   -- before. Route on local_bus_owner, matching the grant, so the mux
+   -- and the grant always agree on who currently owns the bus.
+   localunibus_busmaster_addr <= localunibus_busmaster_xubl_addr when local_bus_owner = owner_xubl
+      else localunibus_busmaster_xubm_addr when local_bus_owner = owner_xubm
       else "000000000000000000";
-   localunibus_busmaster_dato <= localunibus_busmaster_xubl_dato when cpu_npg = '1' and xubl_npr = '1'
-      else localunibus_busmaster_xubm_dato when cpu_npg = '1' and xubm_npr = '1'
+   localunibus_busmaster_dato <= localunibus_busmaster_xubl_dato when local_bus_owner = owner_xubl
+      else localunibus_busmaster_xubm_dato when local_bus_owner = owner_xubm
       else "0000000000000000";
-   localunibus_busmaster_control_dati <= localunibus_busmaster_xubl_control_dati when cpu_npg = '1' and xubl_npr = '1'
-      else localunibus_busmaster_xubm_control_dati when cpu_npg = '1' and xubm_npr = '1'
+   localunibus_busmaster_control_dati <= localunibus_busmaster_xubl_control_dati when local_bus_owner = owner_xubl
+      else localunibus_busmaster_xubm_control_dati when local_bus_owner = owner_xubm
       else '0';
-   localunibus_busmaster_control_dato <= localunibus_busmaster_xubl_control_dato when cpu_npg = '1' and xubl_npr = '1'
-      else localunibus_busmaster_xubm_control_dato when cpu_npg = '1' and xubm_npr = '1'
+   localunibus_busmaster_control_dato <= localunibus_busmaster_xubl_control_dato when local_bus_owner = owner_xubl
+      else localunibus_busmaster_xubm_control_dato when local_bus_owner = owner_xubm
       else '0';
-   localunibus_busmaster_control_datob <= '0' when cpu_npg = '1' and xubl_npr = '1'
-      else '0' when cpu_npg = '1' and xubm_npr = '1'
+   localunibus_busmaster_control_datob <= '0' when local_bus_owner = owner_xubl
+      else '0' when local_bus_owner = owner_xubm
       else '0';
    localunibus_busmaster_control_npg <= '1' when cpu_npg = '1' and xubl_npr = '1'
       else '1' when cpu_npg = '1' and xubm_npr = '1'
@@ -906,6 +954,40 @@ begin
 -- device logic
 
    pcsr0_intr <= '1' when pcsr0_seri = '1' or pcsr0_pcei = '1' or pcsr0_rxi = '1' or pcsr0_txi = '1' or pcsr0_dni = '1' or pcsr0_rcbi = '1' or pcsr0_usci = '1' else '0';
+
+-- xubl0/xubm0 shared local-bus arbiter -- see local_bus_owner_type's
+-- declaration comment for why this replaced two independent combinational
+-- masks. Latches ownership on a fresh request (xubl always wins a tie,
+-- matching the data-routing mux's own existing priority further below)
+-- and holds it until the OWNER's own npr drops -- the other side's npr
+-- rising in the meantime has no effect on an already-granted owner.
+
+   process(nclk, reset)
+   begin
+      if reset = '1' then
+         local_bus_owner <= owner_none;
+      elsif nclk = '1' and nclk'event then
+         case local_bus_owner is
+            when owner_none =>
+               if xubl_npr = '1' then
+                  local_bus_owner <= owner_xubl;
+               elsif xubm_npr = '1' then
+                  local_bus_owner <= owner_xubm;
+               end if;
+            when owner_xubl =>
+               if xubl_npr = '0' then
+                  local_bus_owner <= owner_none;
+               end if;
+            when owner_xubm =>
+               if xubm_npr = '0' then
+                  local_bus_owner <= owner_none;
+               end if;
+         end case;
+      end if;
+   end process;
+
+   xubl_localbus_npg <= cpu_npg when local_bus_owner = owner_xubl else '0';
+   xubm_localbus_npg <= cpu_npg when local_bus_owner = owner_xubm else '0';
 
    process(nclk, reset)
    begin

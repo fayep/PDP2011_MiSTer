@@ -66,7 +66,7 @@ architecture implementation of xu_ddr_mailbox is
    signal req_valid_meta : std_logic := '0';
    signal req_valid_sync : std_logic := '0';
 
-   type state_type is (s_idle, s_write_cmd, s_read_cmd, s_read_data);
+   type state_type is (s_idle, s_write_cmd, s_read_cmd);
    signal state : state_type := s_idle;
 
    signal req_ack_i : std_logic := '0';
@@ -139,12 +139,26 @@ begin
                end if;
 
             when s_read_cmd =>
+               -- REAL BUG fixed here (found via tb_shim_stream.vhd,
+               -- 2026-08-28 -- the first test ever to exercise a real
+               -- mailbox READ; every earlier passing test only exercised
+               -- writes, which don't depend on DDRAM_DOUT_READY at all).
+               -- The old two-state design (deassert DDRAM_RD once
+               -- DDRAM_BUSY='0', THEN move to a separate state to check
+               -- DDRAM_DOUT_READY) missed the ready pulse whenever it
+               -- arrived the same cycle DDRAM_BUSY first read '0' --
+               -- confirmed: DDRAM_DOUT_READY pulsed high while state was
+               -- still s_read_cmd, then dropped again by the time state
+               -- reached s_read_data, and the read hung forever. Fixed by
+               -- checking DDRAM_DOUT_READY every cycle from here, not
+               -- gated behind a separate later state -- correct
+               -- regardless of exactly which cycle it arrives on relative
+               -- to DDRAM_BUSY (this core has no documented guarantee of
+               -- their exact relative timing on the real f2sdram hard IP
+               -- either, so don't assume one).
                if DDRAM_BUSY = '0' then
                   DDRAM_RD <= '0';
-                  state <= s_read_data;
                end if;
-
-            when s_read_data =>
                if DDRAM_DOUT_READY = '1' then
                   resp_rdata_i <= DDRAM_DOUT(63 downto 0);
                   req_ack_i <= '1';

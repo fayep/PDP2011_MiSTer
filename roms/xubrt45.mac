@@ -196,7 +196,7 @@ t45:
          jsr    pc,setmodebits
 24$:
          xascil <chip reset>
-         br     10$
+         jmp    10$
 ;
 ; check for command from host
 ;
@@ -243,10 +243,14 @@ psv110:
          clrb   @#174510               ; reset flag bit - only a byte write to the low byte does this :-)
          bic    #177760,r1             ; mask off p0cmd bit field from pcsr0
          mov    r1,p0cmd               ; store it
+         xasciz <DBG p0cmd=>
+         xwhx   p0cmd,2
+         xascnl
          asl    r1
          add    #ptab,r1               ; add code to base of jump table
          mov    (r1),r1
          jsr    pc,(r1)                ; call the service routine
+         xascil <DBG dispatch-ret>
 psv900:
          rts pc                        ; done
 ;
@@ -344,10 +348,9 @@ c0101:                                 ; boot
 ; cmd 8 - polling demand
 ;
 c1000:                                 ; pdmd
-;         xasciz <pcsr0 PDMD : >
-;         xwhx   174510,10
-;         xascil
+         xascil <DBG c1000 enter>
          jsr    pc,xmitpl              ; poll xmit ring
+         xascil <DBG xmitpl returned>
          tst    xmitdw
          beq    10$
          bis    #10000,@#174510        ; txi --- FIXME, might not even be needed to set txi
@@ -768,6 +771,7 @@ xpl010:
          bne    xpl020
          jmp    xpl990
 xpl020:
+         xascil <DBG xpl020>
          mov    r0,-(sp)
 ;
 ;         xasciz <xmit poll  : >
@@ -780,14 +784,17 @@ xpl020:
          clr    xplrun
 ;
 xpl200:
+         xascil <DBG xpl200 pre-getxcnh>
          jsr    pc,getxcnh                        ; get xcurr and next header
+         xascil <DBG xpl200 post-getxcnh>
 
          bit    #100000,xdre+4                   ; own bit set?
          bne    xpl210
 ;         xascil <not own, end>
-         br     xpl900                           ; not set - end run
+         jmp    xpl900                           ; not set - end run
 
 xpl210:
+         xascil <DBG xpl210 own>
 ;         xasciz <xmitpl ent : >
 ;         xwhx   xcurrh,2
 ;         xwhx   xcurrl,2
@@ -806,9 +813,10 @@ xpl220:
          br     xpl340                           ; own, but not stp in the first message - skip/rel
 
 xpl300:
-;         xasciz <start >
+         xascil <DBG xpl300 xmitst call>
          mov    #1,xplrun
          jsr    pc,xmitst
+         xascil <DBG xmitst ret>
 ;
 ; 320 - if we get here, we have either the start bit in this buffer, or it is a chained buffer and we already saw start
 ;
@@ -819,13 +827,18 @@ xpl320:
 ;         xasciz <end >
 
 xpl330:
-;         xascil
+         xascil <DBG xpl330 xmitld call>
          jsr    pc,xmitld
+         xascil <DBG xmitld ret>
          bit    #400,xdre+4                      ; enp bit set?
          beq    xpl340                           ; no
+         xascil <DBG xmitxx call>
          jsr    pc,xmitxx
+         xascil <DBG xmitxx ret>
 xpl340:
+         xascil <DBG xpl340 xmitrb call>
          jsr    pc,xmitrb
+         xascil <DBG xmitrb ret>
 xpl350:
 ;         xasciz <xmitpl rel : >
 ;         xwhx   xcurrh,2
@@ -875,22 +888,29 @@ wetxst:  .byte wcru,etxst,0,0
 ; xmitxx: do ending things re transmission, including causing the chip to transmit
 ;
 xmitxx:
+         xascil <DBG xmitxx enter>
          tst    xmitmch
          beq    10$
          bis    #20000,xdre+4
 10$:
          mov    xmitlen,wetxlen+2
+         xascil <DBG xmitxx wetxlen trig>
          xubl   wetxlen,40
+         xascil <DBG xmitxx wetxlen ret>
 ;
+         xascil <DBG xmitxx tecon1 trig>
          xubl   tecon1,40
+         xascil <DBG xmitxx tecon1 ret>
 20$:
+         xascil <DBG xmitxx recon1 trig>
          xubl   recon1,20,decon1,20              ; set econ1 bit 1, this causes the chip to transmit.
-;         xasciz <econ1      : >
-;         xbhx   decon1,2
-;         xascnl
+         xasciz <DBG econ1=>
+         xwhx   decon1,2
+         xascnl
 
          bitb   #2,decon1                        ; check if econ1 bit 1 is cleared; this means the chip is done transmitting.
          bne    20$
+         xascil <DBG xmitxx exit>
          rts    pc
          .even
 wetxlen: .byte wcru,etxlen,0,0
@@ -951,6 +971,7 @@ xmitld:
          mov    #buf+2,@#177104
          movb   #0,@#177107
          movb   r4,@#177106
+         xascil <DBG xmitld busmaster trig>
 
          tst    xmitlen                          ; check if this is the first part of the frame? then we need to set the mac address into the buffer
          bne    26$
@@ -999,11 +1020,13 @@ xmitld:
          asl    r4
          asl    r4
          mov    r4,31$          ; set the number of bits in the parm list
+         xascil <DBG xmitld xubl trig>
          jsr    pc,xubl
          .word  buf
 31$:     .word  0
          .word  0
          .word  0
+         xascil <DBG xmitld xubl trig-ret>
 
 40$:
 ;         mov    r0,41$
@@ -1081,7 +1104,9 @@ pktin:
 15$:
          jsr    pc,getrdre             ; might be current, but refresh just to be sure
          bit    #100000,rdre+4         ; own?
-         beq    90$                    ; not own - skip pktin
+         bne    16$                    ; own - continue
+         jmp    90$                    ; not own - skip pktin
+16$:
 ;
 ; process read pointer in chip
 ;

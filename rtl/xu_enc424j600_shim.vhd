@@ -91,6 +91,14 @@ architecture implementation of xu_enc424j600_shim is
    constant OP_BFSU    : std_logic_vector(7 downto 0) := x"24";
    constant OP_BFCU    : std_logic_vector(7 downto 0) := x"26";
    constant OP_B0SEL   : std_logic_vector(7 downto 0) := x"C0";
+   -- REAL BUG fixed here (found by checking roms/xubrt45.mac's actual
+   -- symbol table before implementing, 2026-08-28): these two were x"1C"/
+   -- x"1A" per the plan's own (unverified) text. The firmware's real
+   -- values are wgpdata=052 octal, rrxdata=054 octal -- 0x2A/0x2C, not
+   -- 0x1A/0x1C. Caught before ever building against the wrong opcodes.
+   constant OP_WGPDATA   : std_logic_vector(7 downto 0) := x"2A";
+   constant OP_RRXDATA   : std_logic_vector(7 downto 0) := x"2C";
+   constant OP_SETPKTDEC : std_logic_vector(7 downto 0) := x"CC";
 
    -- register addresses (same source, same conversion)
    constant ADDR_ETXST    : std_logic_vector(7 downto 0) := x"00";
@@ -116,7 +124,10 @@ architecture implementation of xu_enc424j600_shim is
    constant DDR_ETXST       : std_logic_vector(15 downto 0) := x"6018";
    constant DDR_ETXLEN      : std_logic_vector(15 downto 0) := x"6020";
    constant DDR_ERXST       : std_logic_vector(15 downto 0) := x"6028";
+   constant DDR_ERXHEAD     : std_logic_vector(15 downto 0) := x"6030";
    constant DDR_ERXTAIL     : std_logic_vector(15 downto 0) := x"6038";
+   constant DDR_MAC_ADDR    : std_logic_vector(15 downto 0) := x"6040";
+   constant DDR_MAC_VALID   : std_logic_vector(15 downto 0) := x"6048";
 
    -- hardcoded placeholder MAC (real DEC OUI 08-00-2B, never the
    -- zero/garbage pattern) -- see MAC-handling note above.
@@ -128,7 +139,8 @@ architecture implementation of xu_enc424j600_shim is
    -- SPI byte/word shift engine
    ----------------------------------------------------------------------
    type spi_state_type is (
-      s_opcode, s_addr, s_data_in, s_data_out, s_ignore
+      s_opcode, s_addr, s_data_in, s_data_out, s_stream_in, s_stream_out,
+      s_ignore
    );
    signal spi_state : spi_state_type := s_opcode;
 
@@ -170,13 +182,43 @@ architecture implementation of xu_enc424j600_shim is
    signal econ1_txrts : std_logic := '0';
 
    ----------------------------------------------------------------------
+   -- RX packet-count tracking (ESTAT<7:0>, real firmware's primary RX
+   -- gate -- roms/xubrt45.mac reads this FIRST, before anything else, to
+   -- decide whether a frame is even waiting; see conversation, 2026-08-28).
+   -- DDR_ERXHEAD is the daemon's own monotonic count of frames enqueued
+   -- (not a byte pointer, despite the name mirroring the real chip's own
+   -- ERXHEAD register -- see the plan's offset table). PKTCNT is derived
+   -- locally, never stored as its own DDR3 field, avoiding the same
+   -- two-writer hazard the offset table's other fields were designed
+   -- around: reg_erxhead_ddr (background-polled mirror of the daemon's
+   -- count) minus reg_pkt_delivered (incremented once per real firmware
+   -- SETPKTDEC, i.e. once per frame firmware has finished processing).
+   ----------------------------------------------------------------------
+   signal reg_erxhead_ddr  : std_logic_vector(15 downto 0) := (others => '0');
+   signal reg_pkt_delivered : std_logic_vector(15 downto 0) := (others => '0');
+
+   ----------------------------------------------------------------------
+   -- daemon-published MAC (Phase 3): presents PLACEHOLDER_MAC until the
+   -- real daemon publishes one via MAC_VALID/MAC_ADDR, matching the real
+   -- boot-ordering hazard fix already designed (XU's embedded CPU can
+   -- read the MAC before the daemon has started -- the placeholder is
+   -- always syntactically valid, never the zero/garbage pattern, so
+   -- either ordering is safe). mac_addr_fetched latches once true --
+   -- MAC_ADDR is write-once at daemon startup, no need to keep re-polling.
+   ----------------------------------------------------------------------
+   signal reg_mac_addr    : std_logic_vector(47 downto 0) := (others => '0');
+   signal mac_valid_local : std_logic := '0';
+   signal mac_addr_fetched : std_logic := '0';
+
+   ----------------------------------------------------------------------
    -- mailbox request queue (foreground SPI ops + background TXRTS_DONE
    -- poll share the one mailbox port; one process, one driver, per the
    -- header note above)
    ----------------------------------------------------------------------
    type mbox_req_type is (mr_none, mr_rxen, mr_txrts_req_set, mr_txrts_req_clear,
                            mr_etxst, mr_etxlen, mr_erxst, mr_erxtail,
-                           mr_txrts_done_poll);
+                           mr_txrts_done_poll, mr_stream_write, mr_stream_prefetch,
+                           mr_erxhead_poll, mr_mac_valid_poll, mr_mac_addr_poll);
    signal fg_pending : mbox_req_type := mr_none;
    signal fg_wdata : std_logic_vector(63 downto 0) := (others => '0');
 
@@ -187,7 +229,69 @@ architecture implementation of xu_enc424j600_shim is
    signal req_valid_i : std_logic := '0';
    signal req_addr_i : std_logic_vector(15 downto 0) := (others => '0');
    signal req_wdata_i : std_logic_vector(63 downto 0) := (others => '0');
+   signal req_be_i : std_logic_vector(7 downto 0) := x"FF";
    signal req_rw_i : std_logic := '0';
+
+   ----------------------------------------------------------------------
+   -- RRXDATA/WGPDATA streaming buffer I/O (real ENC424J600 SPI protocol,
+   -- Microchip DS39935C S4.0/S9.0): opcode-only, no address byte, byte
+   -- count implied by CS duration. WGPDATA writes at reg_egpwrpt,
+   -- auto-incrementing; RRXDATA reads at reg_erxrdpt, auto-incrementing.
+   -- Both pointers are already-existing shim-local registers (settable
+   -- via WCRU werxrdpt/wegpwr, matching real firmware -- see the file
+   -- header's register list).
+   ----------------------------------------------------------------------
+   signal stream_write_addr : std_logic_vector(15 downto 0) := (others => '0');
+   signal stream_write_data : std_logic_vector(7 downto 0) := (others => '0');
+
+   -- RRXDATA: real bug fixed here (found 2026-08-29, real hardware --
+   -- watchdog reset ["dog barks"] immediately after the driver issued
+   -- pcsr0 START, first real exposure of this path to unscripted traffic
+   -- timing). The old design issued one DDR3 mailbox round trip PER BYTE
+   -- and only ever checked stream_byte_valid on the very first byte of a
+   -- transaction -- every subsequent byte served/advanced unconditionally,
+   -- with no check the round trip had actually landed. Since this is an
+   -- SPI *slave* clocked by the real master's fixed-rate SCK (xubl.vhd),
+   -- there is no way to insert a wait state: every byte has a hard 8-
+   -- cpuclk-cycle deadline. A real DDR3 access via the HPS bridge can
+   -- easily exceed that under contention (this was flagged, unverified,
+   -- in the plan's own Phase 2 open items). Fix: the mailbox already
+   -- returns a full 64-bit (8-byte) word per read -- cache the whole
+   -- aligned word and serve all 8 bytes from it with zero further round
+   -- trips, and double-buffer: as soon as the shim starts consuming a
+   -- cached word (its first byte), kick off a background fetch of the
+   -- NEXT aligned word into a second slot, so the round trip gets the
+   -- full ~64-cycle word-time as its deadline instead of 8. rx_cur_* is
+   -- what's actively being served; rx_nxt_* is the in-flight lookahead,
+   -- swapped into rx_cur once exhausted (lane 7 served) if it landed in
+   -- time. A miss (nxt not ready when needed) falls back to serving 0 and
+   -- re-fetching -- the same fail-safe behavior the old code already had
+   -- for its single, harder 8-cycle deadline, just now a rare edge case
+   -- instead of the common one.
+   signal rx_cur_data    : std_logic_vector(63 downto 0) := (others => '0');
+   signal rx_cur_tag     : std_logic_vector(12 downto 0) := (others => '0');
+   signal rx_cur_valid   : std_logic := '0';
+   signal rx_nxt_data    : std_logic_vector(63 downto 0) := (others => '0');
+   signal rx_nxt_tag     : std_logic_vector(12 downto 0) := (others => '0');
+   signal rx_nxt_valid   : std_logic := '0';
+   signal rx_nxt_pending : std_logic := '0';
+   signal rx_fetch_addr   : std_logic_vector(15 downto 0) := (others => '0');
+   signal rx_fetch_is_nxt : std_logic := '0';
+   -- REAL BUG fixed here (found in simulation, tb_shim_rrx_latency.vhd,
+   -- 2026-08-29, before ever reaching hardware): the generic priming
+   -- fetch below was meant to fire once per CS-low transaction, but
+   -- bit_count=0 actually recurs once per OPCODE BYTE within s_opcode --
+   -- B0SEL and the real opcode that follows it (RRXDATA/WGPDATA/
+   -- SETPKTDEC) are two separate bytes, each with their own bit_count=0.
+   -- The redundant second fetch it caused was harmless in the old
+   -- single-byte design (same address, no side effect beyond a wasted
+   -- fetch) but is actively harmful now: with only one request in flight
+   -- at a time, it can occupy the mailbox slot at exactly the moment the
+   -- real word1 lookahead (rx_nxt) needs to be issued, starving the very
+   -- prefetch this fix depends on. Latched: fires once per CS-low
+   -- transaction, cleared by the xu_cs='1' branch above (same place
+   -- spi_state/bit_count/word_count already reset).
+   signal rx_primed : std_logic := '0';
 
    -- background poll throttle -- NOT every cycle (that was the bug).
    -- Free-running counter; poll only when it wraps and nothing
@@ -201,13 +305,14 @@ begin
    req_valid <= req_valid_i;
    req_addr <= req_addr_i;
    req_wdata <= req_wdata_i;
-   req_be <= x"FF";
+   req_be <= req_be_i;
    req_rw <= req_rw_i;
 
    process(cpuclk, reset)
       variable estat_val : std_logic_vector(15 downto 0);
       variable in_byte : std_logic_vector(7 downto 0);
       variable out_byte : std_logic_vector(7 downto 0);
+      variable cur_mac : std_logic_vector(47 downto 0);
    begin
       if reset = '1' then
 
@@ -229,6 +334,11 @@ begin
          reg_eudast <= (others => '0');
          econ1_rxen <= '0';
          econ1_txrts <= '0';
+         reg_erxhead_ddr <= (others => '0');
+         reg_pkt_delivered <= (others => '0');
+         reg_mac_addr <= (others => '0');
+         mac_valid_local <= '0';
+         mac_addr_fetched <= '0';
 
          fg_pending <= mr_none;
          fg_wdata <= (others => '0');
@@ -237,8 +347,21 @@ begin
          req_valid_i <= '0';
          req_addr_i <= (others => '0');
          req_wdata_i <= (others => '0');
+         req_be_i <= x"FF";
          req_rw_i <= '0';
          bg_counter <= 0;
+         stream_write_addr <= (others => '0');
+         stream_write_data <= (others => '0');
+         rx_cur_data <= (others => '0');
+         rx_cur_tag <= (others => '0');
+         rx_cur_valid <= '0';
+         rx_nxt_data <= (others => '0');
+         rx_nxt_tag <= (others => '0');
+         rx_nxt_valid <= '0';
+         rx_nxt_pending <= '0';
+         rx_fetch_addr <= (others => '0');
+         rx_fetch_is_nxt <= '0';
+         rx_primed <= '0';
 
       elsif cpuclk'event and cpuclk = '1' then
 
@@ -249,6 +372,7 @@ begin
             spi_state <= s_opcode;
             bit_count <= 0;
             word_count <= 0;
+            rx_primed <= '0';
          else
             -- REAL BUG fixed here (found via tb_shim_real_master.vhd,
             -- 2026-08-27): a previous separate branch here (cs_prev='1'
@@ -277,17 +401,140 @@ begin
                      cur_opcode <= in_byte;
                      bit_count <= 0;
                      if in_byte = OP_B0SEL then
-                        spi_state <= s_ignore;  -- 1-byte instruction, no-op
+                        -- REAL BUG fixed here (found by reading real
+                        -- firmware usage before implementing streaming
+                        -- I/O, 2026-08-28): B0SEL is never sent standalone
+                        -- in practice -- every real RRXDATA/WGPDATA/
+                        -- SETPKTDEC call sends B0SEL as a one-byte prefix
+                        -- immediately followed by the real opcode, all
+                        -- within the same CS-low transaction (confirmed:
+                        -- roms/xubrt45.mac's rpkth/rnpp/rdata/decpc
+                        -- templates are all ".byte b0sel,<realop>", sent
+                        -- as one contiguous xubl transmit). Treating it as
+                        -- "consume rest of transaction" (the old code)
+                        -- would silently eat the real opcode that always
+                        -- follows it. Stay in s_opcode instead -- bit_count
+                        -- is already 0 from the assignment above, ready
+                        -- for the next opcode byte.
+                        spi_state <= s_opcode;
                      elsif in_byte = OP_RCRU or in_byte = OP_WCRU
                         or in_byte = OP_BFSU or in_byte = OP_BFCU then
                         spi_state <= s_addr;
+                     elsif in_byte = OP_WGPDATA then
+                        spi_state <= s_stream_in;
+                     elsif in_byte = OP_RRXDATA then
+                        -- same zero-turnaround-latency requirement as the
+                        -- RCRU fix above -- pre-drive the first response
+                        -- bit now, served from the word cache (see
+                        -- rx_cur_data's declaration comment), since
+                        -- RRXDATA has no address byte to hide the DDR3
+                        -- round-trip in.
+                        spi_state <= s_stream_out;
+                        bit_count <= 1;
+                        if rx_cur_valid = '1' and rx_cur_tag = reg_erxrdpt(15 downto 3) then
+                           case reg_erxrdpt(2 downto 0) is
+                              when "000" => out_byte := rx_cur_data(7 downto 0);
+                              when "001" => out_byte := rx_cur_data(15 downto 8);
+                              when "010" => out_byte := rx_cur_data(23 downto 16);
+                              when "011" => out_byte := rx_cur_data(31 downto 24);
+                              when "100" => out_byte := rx_cur_data(39 downto 32);
+                              when "101" => out_byte := rx_cur_data(47 downto 40);
+                              when "110" => out_byte := rx_cur_data(55 downto 48);
+                              when others => out_byte := rx_cur_data(63 downto 56);
+                           end case;
+                           xu_miso_i <= out_byte(7);
+                           shift_out <= out_byte(6 downto 0) & '0';
+                        else
+                           -- cache miss (priming fetch for a brand new
+                           -- word didn't land in time -- shouldn't happen
+                           -- given the opcode byte's full 8-cycle lead
+                           -- time, but fail safe rather than serve X)
+                           xu_miso_i <= '0';
+                           shift_out <= (others => '0');
+                        end if;
+
+                        -- shared advance/lookahead/exhaustion logic (see
+                        -- rx_cur_data's declaration comment) -- duplicated
+                        -- here and in s_stream_out's own bit_count=0
+                        -- branch for the same zero-latency reason the RCRU
+                        -- fix above duplicates its own logic.
+                        reg_erxrdpt <= reg_erxrdpt + 1;
+                        if reg_erxrdpt(2 downto 0) = "000" and rx_nxt_pending = '0'
+                           and not (rx_nxt_valid = '1' and rx_nxt_tag = reg_erxrdpt(15 downto 3) + 1)
+                           and fg_pending = mr_none then
+                           fg_pending <= mr_stream_prefetch;
+                           rx_fetch_addr <= (reg_erxrdpt(15 downto 3) + 1) & "000";
+                           rx_fetch_is_nxt <= '1';
+                           rx_nxt_pending <= '1';
+                        end if;
+                        if reg_erxrdpt(2 downto 0) = "111" then
+                           if rx_nxt_valid = '1' and rx_nxt_tag = reg_erxrdpt(15 downto 3) + 1 then
+                              rx_cur_data <= rx_nxt_data;
+                              rx_cur_tag <= rx_nxt_tag;
+                              rx_cur_valid <= '1';
+                              rx_nxt_valid <= '0';
+                           else
+                              rx_cur_valid <= '0';
+                           end if;
+                        end if;
+                     elsif in_byte = OP_SETPKTDEC then
+                        -- real effect: one more frame considered
+                        -- delivered/processed by firmware -- pktcnt_local
+                        -- (ESTAT<7:0>) is derived as reg_erxhead_ddr minus
+                        -- reg_pkt_delivered, so incrementing the delivered
+                        -- count here decrements the locally-presented
+                        -- PKTCNT by 1, matching the real chip's PKTDEC
+                        -- action (Register 9-1 ECON1 bit 8).
+                        reg_pkt_delivered <= reg_pkt_delivered + 1;
+                        spi_state <= s_ignore;
                      else
-                        -- unimplemented (wgpdata/rrxdata/setpktdec/etc) --
-                        -- out of Phase 2's initial scope; consume and
-                        -- ignore rather than hang.
+                        -- unimplemented (setpktdec's real effect, etc) --
+                        -- consume and ignore rather than hang.
                         spi_state <= s_ignore;
                      end if;
                   else
+                     -- speculative RRXDATA prefetch: fires exactly once
+                     -- per transaction, on the very first real bit (the
+                     -- only cycle where spi_state=s_opcode and
+                     -- bit_count=0 -- reliable single-shot condition,
+                     -- since s_opcode never revisits bit_count=0 within
+                     -- the same 8-cycle byte). Speculative because the
+                     -- opcode isn't known yet; harmlessly unused if it
+                     -- turns out not to be RRXDATA (see rx_cur_data's
+                     -- declaration comment for the full tradeoff). Only
+                     -- fires when the mailbox isn't already busy with a
+                     -- real foreground register write, to never clobber
+                     -- one.
+                     if bit_count = 0 and fg_pending = mr_none and rx_primed = '0' then
+                        -- Always fetch fresh, unconditionally (never skip
+                        -- because rx_cur already appears to cover this
+                        -- word) -- real bug caught in simulation
+                        -- (tb_shim_stream.vhd, 2026-08-29): a prior
+                        -- WGPDATA (or, on real hardware, the ARM daemon
+                        -- writing a new packet into a reused ring slot)
+                        -- can change the underlying DDR3 word after it
+                        -- was cached, with nothing to invalidate a stale
+                        -- copy otherwise. rx_primed (not fg_pending alone)
+                        -- gates this to fire exactly once per CS-low
+                        -- transaction -- see its declaration comment for
+                        -- why bit_count=0 alone isn't a reliable
+                        -- once-per-transaction signal (a second real bug,
+                        -- also caught in simulation before hardware).
+                        fg_pending <= mr_stream_prefetch;
+                        rx_fetch_addr <= reg_erxrdpt(15 downto 3) & "000";
+                        rx_fetch_is_nxt <= '0';
+                        rx_primed <= '1';
+                        -- nxt could equally hold a stale word from an
+                        -- unrelated earlier transaction with a
+                        -- coincidentally-matching tag -- drop it too, and
+                        -- any in-flight lookahead fetch targeting it (its
+                        -- result will land with rx_fetch_is_nxt='0' once
+                        -- this fetch overwrites that flag, so it can only
+                        -- ever land in rx_cur now, never silently validate
+                        -- a stale rx_nxt afterward).
+                        rx_nxt_valid <= '0';
+                        rx_nxt_pending <= '0';
+                     end if;
                      bit_count <= bit_count + 1;
                   end if;
 
@@ -321,10 +568,18 @@ begin
                         bit_count <= 1;
                         case in_byte is
                            when ADDR_EUDAST => out_byte := reg_eudast(7 downto 0);
-                           when ADDR_ESTAT => out_byte := x"00";  -- estat_val(7:0), bit12 lives in the high byte
+                           when ADDR_ESTAT =>
+                              -- real firmware's primary RX gate (see
+                              -- reg_pkt_delivered's declaration comment) --
+                              -- this is the LSB (PKTCNT<7:0>); bit12
+                              -- (clkrdy) lives in the MSB, served below.
+                              out_byte := reg_erxhead_ddr(7 downto 0) - reg_pkt_delivered(7 downto 0);
                            when ADDR_ECON1 => out_byte := "000000" & econ1_txrts & econ1_rxen;
                            when ADDR_ECON2 => out_byte := x"00";
-                           when ADDR_MAADR3 => out_byte := PLACEHOLDER_MAC(7 downto 0);
+                           when ADDR_MAADR3 =>
+                              if mac_addr_fetched = '1' then cur_mac := reg_mac_addr;
+                              else cur_mac := PLACEHOLDER_MAC; end if;
+                              out_byte := cur_mac(7 downto 0);
                            when ADDR_ERXFCON => out_byte := reg_erxfcon(7 downto 0);
                            when ADDR_MACON1 => out_byte := reg_macon1(7 downto 0);
                            when ADDR_EIDLED => out_byte := reg_eidled(7 downto 0);
@@ -440,7 +695,10 @@ begin
                            if word_count = 0 then out_byte := reg_eudast(7 downto 0);
                            else out_byte := reg_eudast(15 downto 8); end if;
                         when ADDR_ESTAT =>
-                           estat_val := x"1000";  -- bit 12 (clkrdy) always set
+                           -- bit 12 (clkrdy) always set; PKTCNT<7:0> is
+                           -- derived, real firmware's primary RX gate --
+                           -- see reg_pkt_delivered's declaration comment.
+                           estat_val := x"10" & (reg_erxhead_ddr(7 downto 0) - reg_pkt_delivered(7 downto 0));
                            if word_count = 0 then out_byte := estat_val(7 downto 0);
                            else out_byte := estat_val(15 downto 8); end if;
                         when ADDR_ECON1 =>
@@ -449,13 +707,15 @@ begin
                         when ADDR_ECON2 =>
                            out_byte := x"00";
                         when ADDR_MAADR3 =>
+                           if mac_addr_fetched = '1' then cur_mac := reg_mac_addr;
+                           else cur_mac := PLACEHOLDER_MAC; end if;
                            case word_count is
-                              when 0 => out_byte := PLACEHOLDER_MAC(7 downto 0);
-                              when 1 => out_byte := PLACEHOLDER_MAC(15 downto 8);
-                              when 2 => out_byte := PLACEHOLDER_MAC(23 downto 16);
-                              when 3 => out_byte := PLACEHOLDER_MAC(31 downto 24);
-                              when 4 => out_byte := PLACEHOLDER_MAC(39 downto 32);
-                              when others => out_byte := PLACEHOLDER_MAC(47 downto 40);
+                              when 0 => out_byte := cur_mac(7 downto 0);
+                              when 1 => out_byte := cur_mac(15 downto 8);
+                              when 2 => out_byte := cur_mac(23 downto 16);
+                              when 3 => out_byte := cur_mac(31 downto 24);
+                              when 4 => out_byte := cur_mac(39 downto 32);
+                              when others => out_byte := cur_mac(47 downto 40);
                            end case;
                         when ADDR_ERXFCON => if word_count = 0 then out_byte := reg_erxfcon(7 downto 0); else out_byte := reg_erxfcon(15 downto 8); end if;
                         when ADDR_MACON1  => if word_count = 0 then out_byte := reg_macon1(7 downto 0); else out_byte := reg_macon1(15 downto 8); end if;
@@ -490,6 +750,76 @@ begin
                      bit_count <= bit_count + 1;
                   end if;
 
+               when s_stream_in =>
+                  -- WGPDATA: write each completed byte to DDR3 at
+                  -- reg_egpwrpt, auto-incrementing. No response expected
+                  -- (xu_miso_i left don't-care, matching s_ignore).
+                  if bit_count = 7 then
+                     bit_count <= 0;
+                     fg_pending <= mr_stream_write;
+                     stream_write_addr <= reg_egpwrpt;
+                     stream_write_data <= in_byte;
+                     reg_egpwrpt <= reg_egpwrpt + 1;
+                  else
+                     bit_count <= bit_count + 1;
+                  end if;
+
+               when s_stream_out =>
+                  -- RRXDATA: serve the current byte from the word cache
+                  -- (see rx_cur_data's declaration comment), then run the
+                  -- shared advance/lookahead/exhaustion logic -- same
+                  -- duplicated block as the OP_RRXDATA byte0 case above,
+                  -- for the same zero-latency reason.
+                  if bit_count = 0 then
+                     if rx_cur_valid = '1' and rx_cur_tag = reg_erxrdpt(15 downto 3) then
+                        case reg_erxrdpt(2 downto 0) is
+                           when "000" => out_byte := rx_cur_data(7 downto 0);
+                           when "001" => out_byte := rx_cur_data(15 downto 8);
+                           when "010" => out_byte := rx_cur_data(23 downto 16);
+                           when "011" => out_byte := rx_cur_data(31 downto 24);
+                           when "100" => out_byte := rx_cur_data(39 downto 32);
+                           when "101" => out_byte := rx_cur_data(47 downto 40);
+                           when "110" => out_byte := rx_cur_data(55 downto 48);
+                           when others => out_byte := rx_cur_data(63 downto 56);
+                        end case;
+                        xu_miso_i <= out_byte(7);
+                        shift_out <= out_byte(6 downto 0) & '0';
+                     else
+                        -- cache miss (nxt lookahead didn't land in time --
+                        -- rare edge case now, see declaration comment)
+                        xu_miso_i <= '0';
+                        shift_out <= (others => '0');
+                     end if;
+
+                     reg_erxrdpt <= reg_erxrdpt + 1;
+                     if reg_erxrdpt(2 downto 0) = "000" and rx_nxt_pending = '0'
+                        and not (rx_nxt_valid = '1' and rx_nxt_tag = reg_erxrdpt(15 downto 3) + 1)
+                        and fg_pending = mr_none then
+                        fg_pending <= mr_stream_prefetch;
+                        rx_fetch_addr <= (reg_erxrdpt(15 downto 3) + 1) & "000";
+                        rx_fetch_is_nxt <= '1';
+                        rx_nxt_pending <= '1';
+                     end if;
+                     if reg_erxrdpt(2 downto 0) = "111" then
+                        if rx_nxt_valid = '1' and rx_nxt_tag = reg_erxrdpt(15 downto 3) + 1 then
+                           rx_cur_data <= rx_nxt_data;
+                           rx_cur_tag <= rx_nxt_tag;
+                           rx_cur_valid <= '1';
+                           rx_nxt_valid <= '0';
+                        else
+                           rx_cur_valid <= '0';
+                        end if;
+                     end if;
+                  else
+                     xu_miso_i <= shift_out(7);
+                     shift_out <= shift_out(6 downto 0) & '0';
+                  end if;
+                  if bit_count = 7 then
+                     bit_count <= 0;
+                  else
+                     bit_count <= bit_count + 1;
+                  end if;
+
                when s_ignore =>
                   xu_miso_i <= '0';
 
@@ -509,6 +839,7 @@ begin
                   fg_pending <= mr_none;
                   req_valid_i <= '1';
                   req_rw_i <= '1';
+                  req_be_i <= x"FF";
                   case fg_pending is
                      when mr_rxen            => req_addr_i <= DDR_RXEN;      req_wdata_i <= x"0000000000000001";
                      when mr_txrts_req_set   => req_addr_i <= DDR_TXRTS_REQ; req_wdata_i <= x"0000000000000001";
@@ -517,10 +848,66 @@ begin
                      when mr_etxlen          => req_addr_i <= DDR_ETXLEN;    req_wdata_i <= fg_wdata;
                      when mr_erxst           => req_addr_i <= DDR_ERXST;     req_wdata_i <= fg_wdata;
                      when mr_erxtail         => req_addr_i <= DDR_ERXTAIL;   req_wdata_i <= fg_wdata;
+                     when mr_stream_write =>
+                        -- single-byte write at an arbitrary DDR3 byte
+                        -- offset -- req_addr's low 3 bits select the lane
+                        -- via req_be (not the word address, per
+                        -- xu_ddr_mailbox.vhd's own convention); replicate
+                        -- the byte across all 8 lanes so whichever one
+                        -- req_be selects is always correct.
+                        req_addr_i <= stream_write_addr;
+                        case stream_write_addr(2 downto 0) is
+                           when "000" => req_be_i <= "00000001";
+                           when "001" => req_be_i <= "00000010";
+                           when "010" => req_be_i <= "00000100";
+                           when "011" => req_be_i <= "00001000";
+                           when "100" => req_be_i <= "00010000";
+                           when "101" => req_be_i <= "00100000";
+                           when "110" => req_be_i <= "01000000";
+                           when others => req_be_i <= "10000000";
+                        end case;
+                        req_wdata_i <= stream_write_data & stream_write_data & stream_write_data & stream_write_data
+                                     & stream_write_data & stream_write_data & stream_write_data & stream_write_data;
+                     when mr_stream_prefetch =>
+                        req_addr_i <= rx_fetch_addr;
+                        req_rw_i <= '0';
                      when others             => null;
                   end case;
                   mbox_state <= m_issue;
+                  -- TEMPORARILY RESTORED (2026-08-29) to bisect a real
+                  -- regression reported on the build that added the
+                  -- removal below: main system no longer reaches its own
+                  -- "boot from rp:" prompt (confirmed: only one "Hello,
+                  -- world" cycle now, not the usual two -- the outer
+                  -- UNIBUS INIT pulse that normally causes the second one
+                  -- never happens, meaning the main CPU hangs before that
+                  -- point). Re-added while the actual cause is isolated --
+                  -- see the explanation below for why this line was
+                  -- removed in the first place; that reasoning still
+                  -- stands, this is a bisection step, not a retraction.
                   bg_counter <= 0;
+                  -- REAL BUG fixed here (found 2026-08-29, real hardware --
+                  -- xmitxx's ECON1 spin loop never terminating, TXRTS
+                  -- stuck set forever, first real exercise of the TX-
+                  -- complete handshake under real traffic). This branch
+                  -- used to reset bg_counter to 0 on EVERY foreground
+                  -- request, including the speculative RRXDATA-priming
+                  -- fetch that fires on the first bit of every SPI
+                  -- transaction regardless of actual opcode (see its own
+                  -- declaration comment) -- so a plain RCRU read (recon1,
+                  -- no B0SEL prefix, same as chkeudast/reidled) ALSO
+                  -- triggers it and resets the timer. Firmware's ECON1
+                  -- poll loop issues a fresh RCRU transaction every ~20
+                  -- cycles with no delay, so bg_counter was being reset
+                  -- far faster than it could ever reach BG_POLL_PERIOD --
+                  -- permanently starving the TXRTS_DONE background poll,
+                  -- so the daemon's real TXRTS_DONE write (confirmed
+                  -- separately to actually happen) was simply never
+                  -- observed. Fix: don't reset bg_counter here at all --
+                  -- just let it hold (VHDL: unassigned in a branch retains
+                  -- its value) during foreground activity and resume
+                  -- counting from where it left off once idle, instead of
+                  -- restarting from 0 every single transaction.
                elsif econ1_txrts = '1' then
                   if bg_counter = BG_POLL_PERIOD then
                      bg_counter <= 0;
@@ -528,6 +915,59 @@ begin
                      req_valid_i <= '1';
                      req_rw_i <= '0';
                      req_addr_i <= DDR_TXRTS_DONE;
+                     mbox_state <= m_issue;
+                  else
+                     bg_counter <= bg_counter + 1;
+                  end if;
+               elsif mac_valid_local = '0' then
+                  -- REAL BUG fixed here (found via tb_shim_loopback.vhd,
+                  -- 2026-08-28): this used to sit AFTER the econ1_rxen
+                  -- branch below, so once RXEN was enabled (which happens
+                  -- early and stays on for the rest of the session), the
+                  -- ERXHEAD poll's permanent priority meant this branch
+                  -- never got a turn at all -- the shim never actually
+                  -- picked up a real daemon-published MAC in practice.
+                  -- Not gated on RXEN itself: real firmware reads MAADR
+                  -- (initenc) well before RXEN is ever enabled. Runs from
+                  -- reset until the daemon publishes a real MAC (see the
+                  -- boot-ordering fix in reg_mac_addr's declaration
+                  -- comment).
+                  if bg_counter = BG_POLL_PERIOD then
+                     bg_counter <= 0;
+                     mbox_active <= mr_mac_valid_poll;
+                     req_valid_i <= '1';
+                     req_rw_i <= '0';
+                     req_addr_i <= DDR_MAC_VALID;
+                     mbox_state <= m_issue;
+                  else
+                     bg_counter <= bg_counter + 1;
+                  end if;
+               elsif mac_addr_fetched = '0' then
+                  -- MAC_VALID just turned '1' -- one final read of the
+                  -- real MAC_ADDR, then never poll either again (both are
+                  -- write-once at daemon startup), clearing the way for
+                  -- ERXHEAD polling below to take over exclusively.
+                  if bg_counter = BG_POLL_PERIOD then
+                     bg_counter <= 0;
+                     mbox_active <= mr_mac_addr_poll;
+                     req_valid_i <= '1';
+                     req_rw_i <= '0';
+                     req_addr_i <= DDR_MAC_ADDR;
+                     mbox_state <= m_issue;
+                  else
+                     bg_counter <= bg_counter + 1;
+                  end if;
+               elsif econ1_rxen = '1' then
+                  -- background ERXHEAD poll (same throttle discipline as
+                  -- TXRTS_DONE above) -- gives real firmware's ESTAT<7:0>
+                  -- read (its primary RX gate, checked before anything
+                  -- else) a chance to see frames the daemon has enqueued.
+                  if bg_counter = BG_POLL_PERIOD then
+                     bg_counter <= 0;
+                     mbox_active <= mr_erxhead_poll;
+                     req_valid_i <= '1';
+                     req_rw_i <= '0';
+                     req_addr_i <= DDR_ERXHEAD;
                      mbox_state <= m_issue;
                   else
                      bg_counter <= bg_counter + 1;
@@ -543,6 +983,33 @@ begin
                   if mbox_active = mr_txrts_done_poll and resp_rdata(0) = '1' then
                      econ1_txrts <= '0';
                      fg_pending <= mr_txrts_req_clear;
+                  end if;
+                  if mbox_active = mr_stream_prefetch then
+                     -- full aligned 64-bit word lands here, whole -- see
+                     -- rx_cur_data's declaration comment. rx_fetch_addr's
+                     -- low 3 bits are always "000" (word-aligned fetch),
+                     -- so no byte-lane selection is needed here (unlike
+                     -- the old per-byte design).
+                     if rx_fetch_is_nxt = '1' then
+                        rx_nxt_data <= resp_rdata;
+                        rx_nxt_tag <= rx_fetch_addr(15 downto 3);
+                        rx_nxt_valid <= '1';
+                        rx_nxt_pending <= '0';
+                     else
+                        rx_cur_data <= resp_rdata;
+                        rx_cur_tag <= rx_fetch_addr(15 downto 3);
+                        rx_cur_valid <= '1';
+                     end if;
+                  end if;
+                  if mbox_active = mr_erxhead_poll then
+                     reg_erxhead_ddr <= resp_rdata(15 downto 0);
+                  end if;
+                  if mbox_active = mr_mac_valid_poll then
+                     mac_valid_local <= resp_rdata(0);
+                  end if;
+                  if mbox_active = mr_mac_addr_poll then
+                     reg_mac_addr <= resp_rdata(47 downto 0);
+                     mac_addr_fetched <= '1';
                   end if;
                end if;
 
