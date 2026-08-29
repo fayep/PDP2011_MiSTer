@@ -1093,13 +1093,29 @@ begin
 
                            interrupt_trigger <= '0';
 
-                           if pcsr0_inte /= bus_dato(6) then
-                              pcsr0_inte <= bus_dato(6);
-                           else
-                              pcsr0_port_command <= bus_dato(3 downto 0);
-                              pcsr0_dni <= '0';
-                              pcsr0_pcmw <= '1';                               -- flag command written
-                           end if;
+                           -- PARKED, NOT THE FIX (2026-08-29): looked like
+                           -- a plausible bug -- a changed INTE bit was
+                           -- gating command-write detection, silently
+                           -- dropping the command field on any write that
+                           -- also toggles INTE (e.g. the real DEUNA
+                           -- driver's own "CMD_START | PCSR0_INTE"). It's
+                           -- genuinely present in the pristine upstream
+                           -- code, unchanged since the initial commit --
+                           -- not something introduced by this session's
+                           -- native-networking work. But a real hardware
+                           -- test with this exact fix built and deployed
+                           -- (PDP2011_20260829.rbf) showed p0cmd=0004
+                           -- (START) still never dispatches, across a
+                           -- single, clean, uninterrupted firmware
+                           -- lifetime -- so this is NOT the cause of the
+                           -- RX-never-processes bug. Parked here on its
+                           -- own branch rather than merged into mainline
+                           -- work, in case it's a real latent issue worth
+                           -- fixing later for its own sake.
+                           pcsr0_inte <= bus_dato(6);
+                           pcsr0_port_command <= bus_dato(3 downto 0);
+                           pcsr0_dni <= '0';
+                           pcsr0_pcmw <= '1';                               -- flag command written
 
                         when "10" =>
                            pcsr2_pcbb(7 downto 1) <= bus_dato(7 downto 1);
