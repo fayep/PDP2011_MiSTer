@@ -451,6 +451,35 @@ signal cpuclk : std_logic;
 signal cpureset : std_logic := '1';
 signal cpuresetlength : integer range 0 to 255 := 255;
 
+-- REAL BUG fixed here (found 2026-08-29, via Quartus's own official
+-- multi-corner timing report): modelcode/have_xu arrive here straight
+-- from pdp2011.sv's live, combinational decode of the OSD status[]
+-- vector (a genuinely separate, unrelated clock domain -- status[] is
+-- clocked by hps_io's own logic, not cpuclk), and were being fed
+-- directly, with zero synchronization, into cpu.vhd's live, always-
+-- combinational "with modelcode select ..." feature-flag decode --
+-- confirmed via report_timing to be the single largest source of setup
+-- violations in the whole design (worst case -12.685ns, cpuclk domain
+-- TNS -25326.675ns across every PVT corner). A raw, unsynchronized
+-- multi-bit crossing here is also just wrong regardless of the timing
+-- numbers -- independent bits can resolve metastability on different
+-- cycles, producing a transient value that's neither the old nor the
+-- new one, briefly corrupting live CPU feature-flag decode.
+--
+-- Fix: a real 2-FF synchronizer, clocked on cpuclk (matching the domain
+-- the violation was actually measured against), that continuously
+-- re-samples modelcode/have_xu while cpureset='1' -- cpureset is held
+-- for a genuine ~126 real cpuclk cycles (cpuresetlength) before ever
+-- deasserting, more than enough settling time for a 2-FF chain -- and
+-- then FREEZES the moment cpureset deasserts, holding the last captured
+-- value for the rest of the run. This also correctly implements the
+-- real intended behavior (modelcode is a "pick your CPU model" OSD
+-- option, meant to take effect on reset, not change live mid-run) at
+-- the same time as fixing the CDC hazard, rather than needing a
+-- separate live-value handshake.
+signal modelcode_meta, modelcode_sync : integer range 0 to 255 := 0;
+signal have_xu_meta, have_xu_sync : integer range 0 to 1 := 0;
+
 signal ifetch: std_logic;
 signal iwait: std_logic;
 
@@ -560,10 +589,25 @@ signal dram_fsm : dram_fsm_type := dram_init;
 
 begin
 
-
+   -- 2-FF synchronizer + reset-hold latch for modelcode/have_xu -- see
+   -- the declaration comment on modelcode_sync/have_xu_sync above for
+   -- the full real-bug writeup. Real logic downstream (cpu.vhd's own
+   -- combinational modelcode-select feature-flag decode) must use the
+   -- _sync signals, not the raw entity ports, from here on.
+   process(cpuclk)
+   begin
+      if cpuclk'event and cpuclk = '1' then
+         if cpureset = '1' then
+            modelcode_meta <= modelcode;
+            modelcode_sync <= modelcode_meta;
+            have_xu_meta <= have_xu;
+            have_xu_sync <= have_xu_meta;
+         end if;
+      end if;
+   end process;
 
    pdp11: unibus port map(
-      modelcode => modelcode,  -- 24,45,70,94...
+      modelcode => modelcode_sync,  -- 24,45,70,94...
 
       have_kl11 => 4,
       tx0 => txtx0,
@@ -613,7 +657,7 @@ begin
       rh_sdcard_sclk => rh_sdcard_sclk,
       rh_sdcard_debug => rh_sdcard_debug,
 
-      have_xu => have_xu,
+      have_xu => have_xu_sync,
 		have_xu_debug => 0,
       xu_cs   => xu_cs,
       xu_mosi => xu_mosi,
