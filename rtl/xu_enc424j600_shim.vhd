@@ -1034,15 +1034,46 @@ begin
                      -- low 3 bits are always "000" (word-aligned fetch),
                      -- so no byte-lane selection is needed here (unlike
                      -- the old per-byte design).
+                     --
+                     -- Real, confirmed-on-hardware bug fix (2026-08-30):
+                     -- this used to accept the completed fetch
+                     -- unconditionally. The speculative prefetch (see
+                     -- its own declaration comment, "fires on the first
+                     -- bit of literally every SPI transaction") is
+                     -- requested using whatever reg_erxrdpt held *at
+                     -- that moment* -- for a WCRU-to-ADDR_ERXRDPT
+                     -- transaction (werxrdpt, once per frame in pktin),
+                     -- that's the OLD position, since the opcode byte
+                     -- (and so this speculative fetch) is shifted in
+                     -- before the new erxrdpt value is ever written.
+                     -- If that in-flight fetch completes *after* the
+                     -- WCRU has already updated reg_erxrdpt and (this
+                     -- file's own earlier fix) cleared rx_cur_valid, it
+                     -- would land here and silently set rx_cur_valid
+                     -- back to '1' with data for the OLD address again
+                     -- -- real hardware evidence: firmware's own DBG
+                     -- pktin flen: trace showed a small, fixed set of
+                     -- wrong values repeating in lockstep with the RX
+                     -- ring's real 6 positions, exactly matching "always
+                     -- landing on whatever address was current right
+                     -- before the last werxrdpt." Fix: only accept the
+                     -- result if the address it was actually fetched
+                     -- for still matches what's currently needed --
+                     -- otherwise the erxrdpt moved on while this fetch
+                     -- was in flight, and the data is simply stale now.
                      if rx_fetch_is_nxt = '1' then
-                        rx_nxt_data <= resp_rdata;
-                        rx_nxt_tag <= rx_fetch_addr(15 downto 3);
-                        rx_nxt_valid <= '1';
+                        if rx_fetch_addr(15 downto 3) = reg_erxrdpt(15 downto 3) + 1 then
+                           rx_nxt_data <= resp_rdata;
+                           rx_nxt_tag <= rx_fetch_addr(15 downto 3);
+                           rx_nxt_valid <= '1';
+                        end if;
                         rx_nxt_pending <= '0';
                      else
-                        rx_cur_data <= resp_rdata;
-                        rx_cur_tag <= rx_fetch_addr(15 downto 3);
-                        rx_cur_valid <= '1';
+                        if rx_fetch_addr(15 downto 3) = reg_erxrdpt(15 downto 3) then
+                           rx_cur_data <= resp_rdata;
+                           rx_cur_tag <= rx_fetch_addr(15 downto 3);
+                           rx_cur_valid <= '1';
+                        end if;
                      end if;
                   end if;
                   if mbox_active = mr_erxhead_poll then
