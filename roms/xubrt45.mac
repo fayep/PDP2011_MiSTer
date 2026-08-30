@@ -156,12 +156,34 @@ t45:
          inc    hbcnt
 11$:
          tst    running                ; in running state?
-         beq    20$                    ; no - jump
+         beq    12$                    ; no - jump
+         ; queue/flow control: our RX ring only has 6 real slots. If the
+         ; chip-side backlog (PKTCNT via ESTAT) is bigger than that, clear
+         ; RXEN so the chip stops accepting new frames while we drain what
+         ; it already has -- otherwise continuous real LAN traffic keeps
+         ; recvdw set forever and we never catch up. Re-enabled below once
+         ; the backlog is gone.
+         xubl   restat,20,destat,20    ; peek chip-side backlog before draining
+         movb   destat,pktcnt
+         cmp    #6,pktcnt              ; more queued than our ring can absorb this pass?
+         blos   13$
+         tst    rxdis
+         bne    13$                    ; already throttled
+         xascil <DBG throttling: clearing RXEN to drain backlog>
+         xubl   cecon1,40              ; clear RXEN -- stop chip accepting new frames
+         mov    #1,rxdis
+13$:
          jsr    pc,pktin               ; process input packets
          tst    recvdw                 ; did we do any work receiving?
-         beq    20$                    ; no - jump
+         beq    12$                    ; no - jump
          bis    #20000,@#174510        ; set rxi
          br     10$                    ; see if there is another frame - FIXME, check if there is an owned buffer first?
+12$:
+         tst    rxdis                  ; were we throttling reception?
+         beq    20$
+         xascil <DBG caught up: re-enabling RXEN>
+         xubl   xecon1,40              ; re-enable RXEN -- backlog drained
+         clr    rxdis
 20$:
 ;
 ; check if the chip is ok - reading the eidled register; this serves no particular purpose other than checking if we're still talking to the chip
@@ -1569,6 +1591,7 @@ recon1:  .byte rcru,econ1
 decon1:  .word 0
 xecon1:  .byte bfsu,econ1,1,0
 tecon1:  .byte bfsu,econ1,2,0
+cecon1:  .byte bfcu,econ1,1,0     ; clear RXEN -- throttle chip while our 6-slot ring drains a backlog
 
          .even
 recon2:  .byte rcru,econ2
@@ -2103,6 +2126,7 @@ hextab:  .ascii /0123456789abcdef/
 hbcnt:   .word 0                       ; DBG heartbeat counter, temporary
 rawcsr0: .word 0                    ; DBG: raw pre-mask pcsr0 value, temporary
 running: .word 0                       ; if nonzero, then recv/xmit is active
+rxdis:   .word 0                       ; nonzero while RXEN is held clear to drain a backlog
 npp:     .word 0                       ; the next packet pointer in the encx24j600
 flen:    .word 0                       ; frame length in the encx24j600 received frame header
 p0cmd:   .word 0                       ; masked off value of the pcsr0
