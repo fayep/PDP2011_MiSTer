@@ -165,7 +165,15 @@ t45:
          ; the backlog is gone.
          xubl   restat,20,destat,20    ; peek chip-side backlog before draining
          movb   destat,pktcnt
-         cmp    #6,pktcnt              ; more queued than our ring can absorb this pass?
+         cmp    pktcnt,#6              ; more queued than our ring can absorb this pass?
+         ; NOTE: CMP src,dst computes src-dst; BLOS branches on src<=dst.
+         ; Must be pktcnt (src) vs #6 (dst) so BLOS means pktcnt<=6 --
+         ; the reversed order ("cmp #6,pktcnt") made BLOS branch on
+         ; 6<=pktcnt instead, inverting the whole throttle: it cleared
+         ; RXEN whenever pktcnt was BELOW 6 and skipped it when a real
+         ; backlog existed. Confirmed on real hardware (2026-08-30):
+         ; "DBG throttling"/"caught up" pairs firing 16184 times at
+         ; pktcnt=00, every single loop pass.
          blos   13$
          tst    rxdis
          bne    13$                    ; already throttled
