@@ -663,6 +663,27 @@ begin
                            when ADDR_ERXRDPT =>
                               if cur_opcode = OP_WCRU then
                                  reg_erxrdpt <= in_byte & cur_word(15 downto 8);
+                                 -- Real, confirmed-on-hardware bug fix
+                                 -- (2026-08-30): a WCRU here means
+                                 -- firmware is starting a fresh read at
+                                 -- a new position (werxrdpt, once per
+                                 -- frame in pktin) -- any word cached
+                                 -- from a *previous* RRXDATA session
+                                 -- must not be reused, even if its tag
+                                 -- happens to coincidentally match the
+                                 -- new erxrdpt's word address. Without
+                                 -- this, a stale rx_cur_data get served
+                                 -- for the new frame's header, landing
+                                 -- firmware's read squarely inside the
+                                 -- PREVIOUS frame's payload instead --
+                                 -- confirmed via real hardware traces
+                                 -- showing broadcast-MAC/EtherType-
+                                 -- looking bytes (ff ff ff ff 08 00)
+                                 -- where the header's small next_ptr/
+                                 -- framelen values should have been.
+                                 rx_cur_valid <= '0';
+                                 rx_nxt_valid <= '0';
+                                 rx_nxt_pending <= '0';
                               end if;
                            when ADDR_ETXST =>
                               if cur_opcode = OP_WCRU then
