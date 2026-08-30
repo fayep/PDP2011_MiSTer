@@ -148,10 +148,12 @@ t45:
 ;
 10$:
          clr    dogtick                ; need to do this every 10 seconds, or watchdog will cause reboot
-         inc    hbcnt                  ; DBG heartbeat -- low-rate proof the main loop is still cycling,
-         tst    hbcnt                  ; not silently stuck (console alone can't tell idle from hung).
-         bne    11$                    ; prints only once every 65536 passes -- cheap, won't flood.
-         xascil <DBG heartbeat>
+         ; DBG heartbeat -- disabled 2026-08-29. Already proved conclusively
+         ; (many hours of real logs) that the main loop never halts; kept
+         ; hbcnt itself counting (harmless, may be useful again later) but
+         ; stopped printing so it no longer drowns out the p0cmd/pcsr0
+         ; dispatch trace, which is the actually-useful signal right now.
+         inc    hbcnt
 11$:
          tst    running                ; in running state?
          beq    20$                    ; no - jump
@@ -250,9 +252,15 @@ psv100:
          jmp    psv900                 ; no
 psv110:
          clrb   @#174510               ; reset flag bit - only a byte write to the low byte does this :-)
+         mov    r1,rawcsr0           ; DBG: full raw register content, pre-mask -- added
+                                        ; 2026-08-29 to see e.g. the real INTE bit state
+                                        ; alongside p0cmd on every dispatch, not just the
+                                        ; masked command nibble
          bic    #177760,r1             ; mask off p0cmd bit field from pcsr0
          mov    r1,p0cmd               ; store it
-         xasciz <DBG p0cmd=>
+         xasciz <DBG pcsr0=>
+         xwhx   rawcsr0,2
+         xasciz < p0cmd=>
          xwhx   p0cmd,2
          xascnl
          asl    r1
@@ -358,6 +366,33 @@ c0101:                                 ; boot
 ;
 c1000:                                 ; pdmd
          xascil <DBG c1000 enter>
+         ; REAL FIX added here (2026-08-29): p0cmd=4 (START, c0100) has
+         ; never once dispatched across this entire session's real
+         ; hardware logs -- confirmed exhaustively (full session logs,
+         ; multiple shim versions, multiple xu.vhd variants, a real GHDL
+         ; isolated-write-sequence test that DID trigger it cleanly). But
+         ; p0cmd=8 (PDMD, this handler) fires reliably every single time,
+         ; and TX already works unconditionally (xmitxx never checks
+         ; running at all) -- PDMD activity is itself undeniable proof
+         ; the guest considers the device in active service; there is no
+         ; real scenario where the driver polls-demand a device it
+         ; doesn't believe is running. Mirror c0100's own first-time
+         ; setup here (rcurr/xcurr from rdrb/tdrb -- already correctly
+         ; populated by fc11/WTRING, which does reliably dispatch every
+         ; time) so RX processing (gated on running in the main service
+         ; loop) actually gets enabled by real traffic, regardless of
+         ; whatever the real root cause of START never dispatching turns
+         ; out to be.
+         tst    running
+         bne    05$                    ; already running, nothing to do
+         xascil <DBG c1000 auto-start, running was 0>
+         mov    #1,running
+         mov    tdrbh,xcurrh
+         mov    tdrbl,xcurrl
+         mov    rdrbh,rcurrh
+         mov    rdrbl,rcurrl
+         mov    #3,@#174512            ; pcsr1 - state=running, matching c0100
+05$:
          jsr    pc,xmitpl              ; poll xmit ring
          xascil <DBG xmitpl returned>
          tst    xmitdw
@@ -2066,6 +2101,7 @@ hextab:  .ascii /0123456789abcdef/
 
          .even
 hbcnt:   .word 0                       ; DBG heartbeat counter, temporary
+rawcsr0: .word 0                    ; DBG: raw pre-mask pcsr0 value, temporary
 running: .word 0                       ; if nonzero, then recv/xmit is active
 npp:     .word 0                       ; the next packet pointer in the encx24j600
 flen:    .word 0                       ; frame length in the encx24j600 received frame header
