@@ -165,6 +165,12 @@ t45:
          ; the backlog is gone.
          xubl   restat,20,destat,20    ; peek chip-side backlog before draining
          movb   destat,pktcnt
+         tst    pktcnt                 ; nothing queued at all?
+         beq    12$                    ; skip pktin entirely (avoids a second,
+                                        ; redundant restat inside pktin itself)
+                                        ; -- 12$ still checks/clears rxdis below,
+                                        ; so a throttle from an earlier pass gets
+                                        ; re-enabled correctly even on this path.
          cmp    pktcnt,#6              ; more queued than our ring can absorb this pass?
          ; NOTE: CMP src,dst computes src-dst; BLOS branches on src<=dst.
          ; Must be pktcnt (src) vs #6 (dst) so BLOS means pktcnt<=6 --
