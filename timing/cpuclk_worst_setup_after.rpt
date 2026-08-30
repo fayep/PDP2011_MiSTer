@@ -1,0 +1,1052 @@
+----------------
+; Command Info ;
+----------------
+Report Timing: Found 10 setup paths (10 violated).  Worst case slack is -4.332 
+
+Tcl Command:
+    report_timing -setup -file cpuclk_worst_setup_after.rpt -panel_name {cpuclk worst setup paths after fix} -to_clock [get_clocks {emu:emu|mister_top:mister_top|cpuclk}] -npaths 10 -detail full_path
+
+Options:
+    -to_clock [get_clocks {emu:emu|mister_top:mister_top|cpuclk}] 
+    -setup 
+    -npaths 10 
+    -detail full_path 
+    -panel_name {cpuclk worst setup paths after fix} 
+    -file {cpuclk_worst_setup_after.rpt} 
+
+Delay Model:
+    Slow 1100mV 100C Model
+
++----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+; Summary of Paths                                                                                                                                                                                                                                                           ;
++--------+----------------------------------------+----------------------------------------------------------------+-------------------------------------------------------------------------+--------------------------------------+--------------+------------+------------+
+; Slack  ; From Node                              ; To Node                                                        ; Launch Clock                                                            ; Latch Clock                          ; Relationship ; Clock Skew ; Data Delay ;
++--------+----------------------------------------+----------------------------------------------------------------+-------------------------------------------------------------------------+--------------------------------------+--------------+------------+------------+
+; -4.332 ; emu:emu|mister_top:mister_top|dati[11] ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.892     ; 12.260     ;
+; -4.295 ; emu:emu|mister_top:mister_top|dati[11] ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.892     ; 12.223     ;
+; -4.277 ; emu:emu|mister_top:mister_top|dati[11] ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.892     ; 12.205     ;
+; -4.275 ; emu:emu|mister_top:mister_top|dati[11] ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.914     ; 12.181     ;
+; -4.266 ; emu:emu|mister_top:mister_top|dati[11] ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.892     ; 12.194     ;
+; -4.240 ; emu:emu|mister_top:mister_top|dati[11] ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.892     ; 12.168     ;
+; -4.233 ; emu:emu|mister_top:mister_top|dati[4]  ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.945     ; 12.108     ;
+; -4.225 ; emu:emu|mister_top:mister_top|dati[11] ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.892     ; 12.153     ;
+; -4.215 ; emu:emu|mister_top:mister_top|dati[4]  ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.945     ; 12.090     ;
+; -4.210 ; emu:emu|mister_top:mister_top|dati[11] ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0] ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ; emu:emu|mister_top:mister_top|cpuclk ; 10.000       ; -1.914     ; 12.116     ;
++--------+----------------------------------------+----------------------------------------------------------------+-------------------------------------------------------------------------+--------------------------------------+--------------+------------+------------+
+
+Path #1: Setup slack is -4.332 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.509                                                                 ;
+; Data Required Time ; 143.177                                                                 ;
+; Slack              ; -4.332 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.892 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.260 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 9     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.214       ; 80         ; 1.038 ; 3.176 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 10    ; 9.468       ; 77         ; 0.000 ; 3.612 ;
+;    Cell                ;        ; 11    ; 2.792       ; 23         ; 0.077 ; 0.550 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.817       ; 24         ; 0.000 ; 0.522 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.249   ; 5.249   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.518 ;   3.176 ; RR ; IC   ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|clk                                             ;
+;   135.249 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; 147.509   ; 12.260  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.249 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+;   135.348 ;   0.099 ; FF ; CELL ; 7      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|q                                               ;
+;   138.960 ;   3.612 ; FF ; IC   ; 1      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|dataf                          ;
+;   139.041 ;   0.081 ; FF ; CELL ; 2      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|combout                        ;
+;   141.282 ;   2.241 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N0         ; emu|mister_top|pdp11|mmu0|mmu_datain~135|dataf                          ;
+;   141.374 ;   0.092 ; FR ; CELL ; 1      ; LABCELL_X42_Y14_N0         ; emu|mister_top|pdp11|mmu0|mmu_datain~135|combout                        ;
+;   141.641 ;   0.267 ; RR ; IC   ; 1      ; LABCELL_X42_Y14_N30        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~4|datae                        ;
+;   141.949 ;   0.308 ; RF ; CELL ; 7      ; LABCELL_X42_Y14_N30        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~4|combout                      ;
+;   142.536 ;   0.587 ; FF ; IC   ; 1      ; LABCELL_X43_Y15_N0         ; emu|mister_top|pdp11|cpu0|process_0~1|datae                             ;
+;   142.758 ;   0.222 ; FF ; CELL ; 1      ; LABCELL_X43_Y15_N0         ; emu|mister_top|pdp11|cpu0|process_0~1|combout                           ;
+;   143.011 ;   0.253 ; FF ; IC   ; 1      ; LABCELL_X43_Y15_N39        ; emu|mister_top|pdp11|cpu0|process_0~3|datae                             ;
+;   143.319 ;   0.308 ; FF ; CELL ; 6      ; LABCELL_X43_Y15_N39        ; emu|mister_top|pdp11|cpu0|process_0~3|combout                           ;
+;   144.221 ;   0.902 ; FF ; IC   ; 1      ; LABCELL_X46_Y15_N12        ; emu|mister_top|pdp11|cpu0|rbus_ix~2|datad                               ;
+;   144.602 ;   0.381 ; FR ; CELL ; 6      ; LABCELL_X46_Y15_N12        ; emu|mister_top|pdp11|cpu0|rbus_ix~2|combout                             ;
+;   144.890 ;   0.288 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N39        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~15|datac                           ;
+;   145.302 ;   0.412 ; RR ; CELL ; 1      ; LABCELL_X46_Y15_N39        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~15|combout                         ;
+;   145.526 ;   0.224 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|datab                           ;
+;   146.076 ;   0.550 ; RF ; CELL ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|combout                         ;
+;   147.170 ;   1.094 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|dataf                           ;
+;   147.247 ;   0.077 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|combout                         ;
+;   147.247 ;   0.000 ; FF ; IC   ; 1      ; FF_X56_Y15_N26             ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|d                                  ;
+;   147.509 ;   0.262 ; FF ; CELL ; 1      ; FF_X56_Y15_N26             ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++----------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                         ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location       ; Element                                                        ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;                ; latch edge time                                                ;
+; 143.357   ; 3.357   ;    ;      ;        ;                ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;                ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2   ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2   ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N26 ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|clk                       ;
+;   143.357 ;   0.522 ; RR ; CELL ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
+; 143.177   ; -0.180  ;    ;      ;        ;                ; clock uncertainty                                              ;
+; 143.177   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #2: Setup slack is -4.295 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.472                                                                 ;
+; Data Required Time ; 143.177                                                                 ;
+; Slack              ; -4.295 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.892 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.223 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 9     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.214       ; 80         ; 1.038 ; 3.176 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 10    ; 10.447      ; 85         ; 0.000 ; 3.612 ;
+;    Cell                ;        ; 11    ; 1.776       ; 15         ; 0.077 ; 0.550 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.817       ; 24         ; 0.000 ; 0.522 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.249   ; 5.249   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.518 ;   3.176 ; RR ; IC   ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|clk                                             ;
+;   135.249 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; 147.472   ; 12.223  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.249 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+;   135.348 ;   0.099 ; FF ; CELL ; 7      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|q                                               ;
+;   138.960 ;   3.612 ; FF ; IC   ; 1      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|dataf                          ;
+;   139.041 ;   0.081 ; FF ; CELL ; 2      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|combout                        ;
+;   141.302 ;   2.261 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|dataf                          ;
+;   141.384 ;   0.082 ; FF ; CELL ; 4      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|combout                        ;
+;   141.702 ;   0.318 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N36        ; emu|mister_top|pdp11|mmu0|mmu_datain~184|dataf                          ;
+;   141.793 ;   0.091 ; FR ; CELL ; 2      ; LABCELL_X42_Y14_N36        ; emu|mister_top|pdp11|mmu0|mmu_datain~184|combout                        ;
+;   142.373 ;   0.580 ; RR ; IC   ; 1      ; LABCELL_X42_Y16_N27        ; emu|mister_top|pdp11|mmu0|cpu_datain[3]~12|dataf                        ;
+;   142.472 ;   0.099 ; RF ; CELL ; 49     ; LABCELL_X42_Y16_N27        ; emu|mister_top|pdp11|mmu0|cpu_datain[3]~12|combout                      ;
+;   143.483 ;   1.011 ; FF ; IC   ; 1      ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|dataf                               ;
+;   143.578 ;   0.095 ; FR ; CELL ; 14     ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|combout                             ;
+;   144.645 ;   1.067 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|datad                           ;
+;   144.898 ;   0.253 ; RR ; CELL ; 3      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|combout                         ;
+;   145.178 ;   0.280 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N39        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~15|dataf                           ;
+;   145.265 ;   0.087 ; RR ; CELL ; 1      ; LABCELL_X46_Y15_N39        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~15|combout                         ;
+;   145.489 ;   0.224 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|datab                           ;
+;   146.039 ;   0.550 ; RF ; CELL ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|combout                         ;
+;   147.133 ;   1.094 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|dataf                           ;
+;   147.210 ;   0.077 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|combout                         ;
+;   147.210 ;   0.000 ; FF ; IC   ; 1      ; FF_X56_Y15_N26             ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|d                                  ;
+;   147.472 ;   0.262 ; FF ; CELL ; 1      ; FF_X56_Y15_N26             ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++----------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                         ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location       ; Element                                                        ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;                ; latch edge time                                                ;
+; 143.357   ; 3.357   ;    ;      ;        ;                ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;                ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2   ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2   ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N26 ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|clk                       ;
+;   143.357 ;   0.522 ; RR ; CELL ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
+; 143.177   ; -0.180  ;    ;      ;        ;                ; clock uncertainty                                              ;
+; 143.177   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #3: Setup slack is -4.277 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.454                                                                 ;
+; Data Required Time ; 143.177                                                                 ;
+; Slack              ; -4.277 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.892 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.205 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 8     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.214       ; 80         ; 1.038 ; 3.176 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 9     ; 10.221      ; 84         ; 0.000 ; 3.612 ;
+;    Cell                ;        ; 10    ; 1.984       ; 16         ; 0.081 ; 0.499 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.817       ; 24         ; 0.000 ; 0.522 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.249   ; 5.249   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.518 ;   3.176 ; RR ; IC   ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|clk                                             ;
+;   135.249 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; 147.454   ; 12.205  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.249 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+;   135.348 ;   0.099 ; FF ; CELL ; 7      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|q                                               ;
+;   138.960 ;   3.612 ; FF ; IC   ; 1      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|dataf                          ;
+;   139.041 ;   0.081 ; FF ; CELL ; 2      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|combout                        ;
+;   141.302 ;   2.261 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|dataf                          ;
+;   141.384 ;   0.082 ; FF ; CELL ; 4      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|combout                        ;
+;   141.702 ;   0.318 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N36        ; emu|mister_top|pdp11|mmu0|mmu_datain~184|dataf                          ;
+;   141.793 ;   0.091 ; FR ; CELL ; 2      ; LABCELL_X42_Y14_N36        ; emu|mister_top|pdp11|mmu0|mmu_datain~184|combout                        ;
+;   142.373 ;   0.580 ; RR ; IC   ; 1      ; LABCELL_X42_Y16_N27        ; emu|mister_top|pdp11|mmu0|cpu_datain[3]~12|dataf                        ;
+;   142.472 ;   0.099 ; RF ; CELL ; 49     ; LABCELL_X42_Y16_N27        ; emu|mister_top|pdp11|mmu0|cpu_datain[3]~12|combout                      ;
+;   143.483 ;   1.011 ; FF ; IC   ; 1      ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|dataf                               ;
+;   143.578 ;   0.095 ; FR ; CELL ; 14     ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|combout                             ;
+;   144.645 ;   1.067 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|datad                           ;
+;   144.898 ;   0.253 ; RR ; CELL ; 3      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|combout                         ;
+;   145.180 ;   0.282 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N42        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~14|datac                           ;
+;   145.679 ;   0.499 ; RF ; CELL ; 2      ; LABCELL_X46_Y15_N42        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~14|combout                         ;
+;   146.769 ;   1.090 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N54        ; emu|mister_top|pdp11|cpu0|rbus_ix[2]~22|datad                           ;
+;   147.192 ;   0.423 ; FR ; CELL ; 1      ; LABCELL_X56_Y15_N54        ; emu|mister_top|pdp11|cpu0|rbus_ix[2]~22|combout                         ;
+;   147.192 ;   0.000 ; RR ; IC   ; 1      ; FF_X56_Y15_N56             ; emu|mister_top|pdp11|cpu0|rbus_ix[2]|d                                  ;
+;   147.454 ;   0.262 ; RR ; CELL ; 1      ; FF_X56_Y15_N56             ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++----------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                         ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location       ; Element                                                        ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;                ; latch edge time                                                ;
+; 143.357   ; 3.357   ;    ;      ;        ;                ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;                ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2   ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2   ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N56 ; emu|mister_top|pdp11|cpu0|rbus_ix[2]|clk                       ;
+;   143.357 ;   0.522 ; RR ; CELL ; 1      ; FF_X56_Y15_N56 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2] ;
+; 143.177   ; -0.180  ;    ;      ;        ;                ; clock uncertainty                                              ;
+; 143.177   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N56 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2] ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #4: Setup slack is -4.275 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.430                                                                 ;
+; Data Required Time ; 143.155                                                                 ;
+; Slack              ; -4.275 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.914 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.181 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 8     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.214       ; 80         ; 1.038 ; 3.176 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 9     ; 9.586       ; 79         ; 0.000 ; 3.612 ;
+;    Cell                ;        ; 10    ; 2.595       ; 21         ; 0.081 ; 0.504 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.795       ; 24         ; 0.000 ; 0.500 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.249   ; 5.249   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.518 ;   3.176 ; RR ; IC   ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|clk                                             ;
+;   135.249 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; 147.430   ; 12.181  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.249 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+;   135.348 ;   0.099 ; FF ; CELL ; 7      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|q                                               ;
+;   138.960 ;   3.612 ; FF ; IC   ; 1      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|dataf                          ;
+;   139.041 ;   0.081 ; FF ; CELL ; 2      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|combout                        ;
+;   141.282 ;   2.241 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N0         ; emu|mister_top|pdp11|mmu0|mmu_datain~135|dataf                          ;
+;   141.374 ;   0.092 ; FR ; CELL ; 1      ; LABCELL_X42_Y14_N0         ; emu|mister_top|pdp11|mmu0|mmu_datain~135|combout                        ;
+;   141.641 ;   0.267 ; RR ; IC   ; 1      ; LABCELL_X42_Y14_N30        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~4|datae                        ;
+;   141.949 ;   0.308 ; RF ; CELL ; 7      ; LABCELL_X42_Y14_N30        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~4|combout                      ;
+;   142.910 ;   0.961 ; FF ; IC   ; 1      ; MLABCELL_X39_Y15_N45       ; emu|mister_top|pdp11|cpu0|Equal42~0|dataf                               ;
+;   143.007 ;   0.097 ; FR ; CELL ; 6      ; MLABCELL_X39_Y15_N45       ; emu|mister_top|pdp11|cpu0|Equal42~0|combout                             ;
+;   143.278 ;   0.271 ; RR ; IC   ; 1      ; MLABCELL_X39_Y15_N27       ; emu|mister_top|pdp11|cpu0|process_0~22|datad                            ;
+;   143.545 ;   0.267 ; RR ; CELL ; 6      ; MLABCELL_X39_Y15_N27       ; emu|mister_top|pdp11|cpu0|process_0~22|combout                          ;
+;   143.905 ;   0.360 ; RR ; IC   ; 1      ; LABCELL_X40_Y15_N12        ; emu|mister_top|pdp11|cpu0|process_0~31|datac                            ;
+;   144.408 ;   0.503 ; RF ; CELL ; 41     ; LABCELL_X40_Y15_N12        ; emu|mister_top|pdp11|cpu0|process_0~31|combout                          ;
+;   146.068 ;   1.660 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N15        ; emu|mister_top|pdp11|cpu0|process_0~51|datad                            ;
+;   146.450 ;   0.382 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N15        ; emu|mister_top|pdp11|cpu0|process_0~51|combout                          ;
+;   146.664 ;   0.214 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N0         ; emu|mister_top|pdp11|cpu0|Selector333~6|datad                           ;
+;   147.168 ;   0.504 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N0         ; emu|mister_top|pdp11|cpu0|Selector333~6|combout                         ;
+;   147.168 ;   0.000 ; FF ; IC   ; 1      ; FF_X56_Y15_N2              ; emu|mister_top|pdp11|cpu0|rbus_ix[0]|d                                  ;
+;   147.430 ;   0.262 ; FF ; CELL ; 1      ; FF_X56_Y15_N2              ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++---------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                        ;
++-----------+---------+----+------+--------+---------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location      ; Element                                                        ;
++-----------+---------+----+------+--------+---------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;               ; latch edge time                                                ;
+; 143.335   ; 3.335   ;    ;      ;        ;               ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;               ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2  ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2  ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2    ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2    ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N2 ; emu|mister_top|pdp11|cpu0|rbus_ix[0]|clk                       ;
+;   143.335 ;   0.500 ; RR ; CELL ; 1      ; FF_X56_Y15_N2 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0] ;
+; 143.155   ; -0.180  ;    ;      ;        ;               ; clock uncertainty                                              ;
+; 143.155   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N2 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0] ;
++-----------+---------+----+------+--------+---------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #5: Setup slack is -4.266 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.443                                                                 ;
+; Data Required Time ; 143.177                                                                 ;
+; Slack              ; -4.266 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.892 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.194 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 8     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.214       ; 80         ; 1.038 ; 3.176 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 9     ; 9.620       ; 79         ; 0.000 ; 3.612 ;
+;    Cell                ;        ; 10    ; 2.574       ; 21         ; 0.081 ; 0.503 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.817       ; 24         ; 0.000 ; 0.522 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.249   ; 5.249   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.518 ;   3.176 ; RR ; IC   ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|clk                                             ;
+;   135.249 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; 147.443   ; 12.194  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.249 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+;   135.348 ;   0.099 ; FF ; CELL ; 7      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|q                                               ;
+;   138.960 ;   3.612 ; FF ; IC   ; 1      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|dataf                          ;
+;   139.041 ;   0.081 ; FF ; CELL ; 2      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|combout                        ;
+;   141.282 ;   2.241 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N0         ; emu|mister_top|pdp11|mmu0|mmu_datain~135|dataf                          ;
+;   141.374 ;   0.092 ; FR ; CELL ; 1      ; LABCELL_X42_Y14_N0         ; emu|mister_top|pdp11|mmu0|mmu_datain~135|combout                        ;
+;   141.641 ;   0.267 ; RR ; IC   ; 1      ; LABCELL_X42_Y14_N30        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~4|datae                        ;
+;   141.949 ;   0.308 ; RF ; CELL ; 7      ; LABCELL_X42_Y14_N30        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~4|combout                      ;
+;   142.910 ;   0.961 ; FF ; IC   ; 1      ; MLABCELL_X39_Y15_N45       ; emu|mister_top|pdp11|cpu0|Equal42~0|dataf                               ;
+;   143.007 ;   0.097 ; FR ; CELL ; 6      ; MLABCELL_X39_Y15_N45       ; emu|mister_top|pdp11|cpu0|Equal42~0|combout                             ;
+;   143.278 ;   0.271 ; RR ; IC   ; 1      ; MLABCELL_X39_Y15_N27       ; emu|mister_top|pdp11|cpu0|process_0~22|datad                            ;
+;   143.545 ;   0.267 ; RR ; CELL ; 6      ; MLABCELL_X39_Y15_N27       ; emu|mister_top|pdp11|cpu0|process_0~22|combout                          ;
+;   143.905 ;   0.360 ; RR ; IC   ; 1      ; LABCELL_X40_Y15_N12        ; emu|mister_top|pdp11|cpu0|process_0~31|datac                            ;
+;   144.408 ;   0.503 ; RF ; CELL ; 41     ; LABCELL_X40_Y15_N12        ; emu|mister_top|pdp11|cpu0|process_0~31|combout                          ;
+;   146.069 ;   1.661 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N12        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~9|datad                            ;
+;   146.445 ;   0.376 ; FR ; CELL ; 1      ; LABCELL_X56_Y15_N12        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~9|combout                          ;
+;   146.692 ;   0.247 ; RR ; IC   ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|datad                           ;
+;   147.181 ;   0.489 ; RF ; CELL ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|combout                         ;
+;   147.181 ;   0.000 ; FF ; IC   ; 1      ; FF_X56_Y15_N26             ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|d                                  ;
+;   147.443 ;   0.262 ; FF ; CELL ; 1      ; FF_X56_Y15_N26             ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++----------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                         ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location       ; Element                                                        ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;                ; latch edge time                                                ;
+; 143.357   ; 3.357   ;    ;      ;        ;                ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;                ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2   ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2   ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N26 ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|clk                       ;
+;   143.357 ;   0.522 ; RR ; CELL ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
+; 143.177   ; -0.180  ;    ;      ;        ;                ; clock uncertainty                                              ;
+; 143.177   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #6: Setup slack is -4.240 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.417                                                                 ;
+; Data Required Time ; 143.177                                                                 ;
+; Slack              ; -4.240 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.892 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.168 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 9     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.214       ; 80         ; 1.038 ; 3.176 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 10    ; 10.449      ; 86         ; 0.000 ; 3.612 ;
+;    Cell                ;        ; 11    ; 1.719       ; 14         ; 0.077 ; 0.499 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.817       ; 24         ; 0.000 ; 0.522 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.249   ; 5.249   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.518 ;   3.176 ; RR ; IC   ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|clk                                             ;
+;   135.249 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; 147.417   ; 12.168  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.249 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+;   135.348 ;   0.099 ; FF ; CELL ; 7      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|q                                               ;
+;   138.960 ;   3.612 ; FF ; IC   ; 1      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|dataf                          ;
+;   139.041 ;   0.081 ; FF ; CELL ; 2      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|combout                        ;
+;   141.302 ;   2.261 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|dataf                          ;
+;   141.384 ;   0.082 ; FF ; CELL ; 4      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|combout                        ;
+;   141.702 ;   0.318 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N36        ; emu|mister_top|pdp11|mmu0|mmu_datain~184|dataf                          ;
+;   141.793 ;   0.091 ; FR ; CELL ; 2      ; LABCELL_X42_Y14_N36        ; emu|mister_top|pdp11|mmu0|mmu_datain~184|combout                        ;
+;   142.373 ;   0.580 ; RR ; IC   ; 1      ; LABCELL_X42_Y16_N27        ; emu|mister_top|pdp11|mmu0|cpu_datain[3]~12|dataf                        ;
+;   142.472 ;   0.099 ; RF ; CELL ; 49     ; LABCELL_X42_Y16_N27        ; emu|mister_top|pdp11|mmu0|cpu_datain[3]~12|combout                      ;
+;   143.483 ;   1.011 ; FF ; IC   ; 1      ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|dataf                               ;
+;   143.578 ;   0.095 ; FR ; CELL ; 14     ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|combout                             ;
+;   144.645 ;   1.067 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|datad                           ;
+;   144.898 ;   0.253 ; RR ; CELL ; 3      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|combout                         ;
+;   145.180 ;   0.282 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N42        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~14|datac                           ;
+;   145.679 ;   0.499 ; RF ; CELL ; 2      ; LABCELL_X46_Y15_N42        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~14|combout                         ;
+;   145.903 ;   0.224 ; FF ; IC   ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|dataf                           ;
+;   145.984 ;   0.081 ; FF ; CELL ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|combout                         ;
+;   147.078 ;   1.094 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|dataf                           ;
+;   147.155 ;   0.077 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|combout                         ;
+;   147.155 ;   0.000 ; FF ; IC   ; 1      ; FF_X56_Y15_N26             ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|d                                  ;
+;   147.417 ;   0.262 ; FF ; CELL ; 1      ; FF_X56_Y15_N26             ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++----------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                         ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location       ; Element                                                        ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;                ; latch edge time                                                ;
+; 143.357   ; 3.357   ;    ;      ;        ;                ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;                ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2   ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2   ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N26 ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|clk                       ;
+;   143.357 ;   0.522 ; RR ; CELL ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
+; 143.177   ; -0.180  ;    ;      ;        ;                ; clock uncertainty                                              ;
+; 143.177   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #7: Setup slack is -4.233 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[4]                                   ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.410                                                                 ;
+; Data Required Time ; 143.177                                                                 ;
+; Slack              ; -4.233 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.945 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.108 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 8     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.267       ; 80         ; 1.038 ; 3.229 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 9     ; 9.864       ; 81         ; 0.000 ; 3.709 ;
+;    Cell                ;        ; 10    ; 2.244       ; 19         ; 0.077 ; 0.550 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.817       ; 24         ; 0.000 ; 0.522 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.302   ; 5.302   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.571 ;   3.229 ; RR ; IC   ; 1      ; DDIOINCELL_X60_Y0_N65      ; emu|mister_top|dati[4]|clk                                              ;
+;   135.302 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X60_Y0_N65      ; emu:emu|mister_top:mister_top|dati[4]                                   ;
+; 147.410   ; 12.108  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.302 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X60_Y0_N65      ; emu:emu|mister_top:mister_top|dati[4]                                   ;
+;   135.401 ;   0.099 ; FF ; CELL ; 5      ; DDIOINCELL_X60_Y0_N65      ; emu|mister_top|dati[4]|q                                                ;
+;   139.110 ;   3.709 ; FF ; IC   ; 1      ; MLABCELL_X59_Y2_N24        ; emu|mister_top|pdp11|mmu0|mmu_datain~210|dataf                          ;
+;   139.190 ;   0.080 ; FF ; CELL ; 1      ; MLABCELL_X59_Y2_N24        ; emu|mister_top|pdp11|mmu0|mmu_datain~210|combout                        ;
+;   141.144 ;   1.954 ; FF ; IC   ; 1      ; LABCELL_X43_Y17_N30        ; emu|mister_top|pdp11|mmu0|mmu_datain~219|dataf                          ;
+;   141.235 ;   0.091 ; FR ; CELL ; 1      ; LABCELL_X43_Y17_N30        ; emu|mister_top|pdp11|mmu0|mmu_datain~219|combout                        ;
+;   141.908 ;   0.673 ; RR ; IC   ; 1      ; LABCELL_X42_Y16_N48        ; emu|mister_top|pdp11|mmu0|cpu_datain[4]~13|datae                        ;
+;   142.216 ;   0.308 ; RF ; CELL ; 52     ; LABCELL_X42_Y16_N48        ; emu|mister_top|pdp11|mmu0|cpu_datain[4]~13|combout                      ;
+;   143.079 ;   0.863 ; FF ; IC   ; 1      ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|datad                               ;
+;   143.516 ;   0.437 ; FR ; CELL ; 14     ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|combout                             ;
+;   144.583 ;   1.067 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|datad                           ;
+;   144.836 ;   0.253 ; RR ; CELL ; 3      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|combout                         ;
+;   145.116 ;   0.280 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N39        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~15|dataf                           ;
+;   145.203 ;   0.087 ; RR ; CELL ; 1      ; LABCELL_X46_Y15_N39        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~15|combout                         ;
+;   145.427 ;   0.224 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|datab                           ;
+;   145.977 ;   0.550 ; RF ; CELL ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|combout                         ;
+;   147.071 ;   1.094 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|dataf                           ;
+;   147.148 ;   0.077 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|combout                         ;
+;   147.148 ;   0.000 ; FF ; IC   ; 1      ; FF_X56_Y15_N26             ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|d                                  ;
+;   147.410 ;   0.262 ; FF ; CELL ; 1      ; FF_X56_Y15_N26             ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++----------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                         ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location       ; Element                                                        ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;                ; latch edge time                                                ;
+; 143.357   ; 3.357   ;    ;      ;        ;                ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;                ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2   ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2   ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N26 ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|clk                       ;
+;   143.357 ;   0.522 ; RR ; CELL ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
+; 143.177   ; -0.180  ;    ;      ;        ;                ; clock uncertainty                                              ;
+; 143.177   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #8: Setup slack is -4.225 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.402                                                                 ;
+; Data Required Time ; 143.177                                                                 ;
+; Slack              ; -4.225 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.892 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.153 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 9     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.214       ; 80         ; 1.038 ; 3.176 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 10    ; 9.661       ; 79         ; 0.000 ; 3.612 ;
+;    Cell                ;        ; 11    ; 2.492       ; 21         ; 0.077 ; 0.530 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.817       ; 24         ; 0.000 ; 0.522 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.249   ; 5.249   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.518 ;   3.176 ; RR ; IC   ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|clk                                             ;
+;   135.249 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; 147.402   ; 12.153  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.249 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+;   135.348 ;   0.099 ; FF ; CELL ; 7      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|q                                               ;
+;   138.960 ;   3.612 ; FF ; IC   ; 1      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|dataf                          ;
+;   139.041 ;   0.081 ; FF ; CELL ; 2      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|combout                        ;
+;   141.302 ;   2.261 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|dataf                          ;
+;   141.384 ;   0.082 ; FF ; CELL ; 4      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|combout                        ;
+;   141.636 ;   0.252 ; FF ; IC   ; 1      ; LABCELL_X42_Y14_N18        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~11|datae                       ;
+;   141.864 ;   0.228 ; FF ; CELL ; 10     ; LABCELL_X42_Y14_N18        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~11|combout                     ;
+;   142.940 ;   1.076 ; FF ; IC   ; 1      ; LABCELL_X45_Y13_N15        ; emu|mister_top|pdp11|cpu0|process_0~7|dataf                             ;
+;   143.019 ;   0.079 ; FF ; CELL ; 1      ; LABCELL_X45_Y13_N15        ; emu|mister_top|pdp11|cpu0|process_0~7|combout                           ;
+;   143.641 ;   0.622 ; FF ; IC   ; 1      ; LABCELL_X46_Y15_N33        ; emu|mister_top|pdp11|cpu0|rbus_ix~1|dataf                               ;
+;   143.726 ;   0.085 ; FF ; CELL ; 5      ; LABCELL_X46_Y15_N33        ; emu|mister_top|pdp11|cpu0|rbus_ix~1|combout                             ;
+;   143.987 ;   0.261 ; FF ; IC   ; 1      ; LABCELL_X46_Y15_N12        ; emu|mister_top|pdp11|cpu0|rbus_ix~2|datac                               ;
+;   144.478 ;   0.491 ; FF ; CELL ; 6      ; LABCELL_X46_Y15_N12        ; emu|mister_top|pdp11|cpu0|rbus_ix~2|combout                             ;
+;   144.747 ;   0.269 ; FF ; IC   ; 1      ; LABCELL_X46_Y15_N39        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~15|datac                           ;
+;   145.225 ;   0.478 ; FF ; CELL ; 1      ; LABCELL_X46_Y15_N39        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~15|combout                         ;
+;   145.439 ;   0.214 ; FF ; IC   ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|datab                           ;
+;   145.969 ;   0.530 ; FF ; CELL ; 1      ; LABCELL_X46_Y15_N24        ; emu|mister_top|pdp11|cpu0|Selector332~1|combout                         ;
+;   147.063 ;   1.094 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|dataf                           ;
+;   147.140 ;   0.077 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N24        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~18|combout                         ;
+;   147.140 ;   0.000 ; FF ; IC   ; 1      ; FF_X56_Y15_N26             ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|d                                  ;
+;   147.402 ;   0.262 ; FF ; CELL ; 1      ; FF_X56_Y15_N26             ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++----------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                         ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location       ; Element                                                        ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;                ; latch edge time                                                ;
+; 143.357   ; 3.357   ;    ;      ;        ;                ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;                ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2   ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2   ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N26 ; emu|mister_top|pdp11|cpu0|rbus_ix[1]|clk                       ;
+;   143.357 ;   0.522 ; RR ; CELL ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
+; 143.177   ; -0.180  ;    ;      ;        ;                ; clock uncertainty                                              ;
+; 143.177   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N26 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[1] ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #9: Setup slack is -4.215 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[4]                                   ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.392                                                                 ;
+; Data Required Time ; 143.177                                                                 ;
+; Slack              ; -4.215 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.945 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.090 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 7     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.267       ; 80         ; 1.038 ; 3.229 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 8     ; 9.638       ; 80         ; 0.000 ; 3.709 ;
+;    Cell                ;        ; 9     ; 2.452       ; 20         ; 0.080 ; 0.499 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.817       ; 24         ; 0.000 ; 0.522 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.302   ; 5.302   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.571 ;   3.229 ; RR ; IC   ; 1      ; DDIOINCELL_X60_Y0_N65      ; emu|mister_top|dati[4]|clk                                              ;
+;   135.302 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X60_Y0_N65      ; emu:emu|mister_top:mister_top|dati[4]                                   ;
+; 147.392   ; 12.090  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.302 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X60_Y0_N65      ; emu:emu|mister_top:mister_top|dati[4]                                   ;
+;   135.401 ;   0.099 ; FF ; CELL ; 5      ; DDIOINCELL_X60_Y0_N65      ; emu|mister_top|dati[4]|q                                                ;
+;   139.110 ;   3.709 ; FF ; IC   ; 1      ; MLABCELL_X59_Y2_N24        ; emu|mister_top|pdp11|mmu0|mmu_datain~210|dataf                          ;
+;   139.190 ;   0.080 ; FF ; CELL ; 1      ; MLABCELL_X59_Y2_N24        ; emu|mister_top|pdp11|mmu0|mmu_datain~210|combout                        ;
+;   141.144 ;   1.954 ; FF ; IC   ; 1      ; LABCELL_X43_Y17_N30        ; emu|mister_top|pdp11|mmu0|mmu_datain~219|dataf                          ;
+;   141.235 ;   0.091 ; FR ; CELL ; 1      ; LABCELL_X43_Y17_N30        ; emu|mister_top|pdp11|mmu0|mmu_datain~219|combout                        ;
+;   141.908 ;   0.673 ; RR ; IC   ; 1      ; LABCELL_X42_Y16_N48        ; emu|mister_top|pdp11|mmu0|cpu_datain[4]~13|datae                        ;
+;   142.216 ;   0.308 ; RF ; CELL ; 52     ; LABCELL_X42_Y16_N48        ; emu|mister_top|pdp11|mmu0|cpu_datain[4]~13|combout                      ;
+;   143.079 ;   0.863 ; FF ; IC   ; 1      ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|datad                               ;
+;   143.516 ;   0.437 ; FR ; CELL ; 14     ; LABCELL_X40_Y14_N21        ; emu|mister_top|pdp11|cpu0|Equal88~2|combout                             ;
+;   144.583 ;   1.067 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|datad                           ;
+;   144.836 ;   0.253 ; RR ; CELL ; 3      ; LABCELL_X46_Y15_N48        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~12|combout                         ;
+;   145.118 ;   0.282 ; RR ; IC   ; 1      ; LABCELL_X46_Y15_N42        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~14|datac                           ;
+;   145.617 ;   0.499 ; RF ; CELL ; 2      ; LABCELL_X46_Y15_N42        ; emu|mister_top|pdp11|cpu0|rbus_ix[1]~14|combout                         ;
+;   146.707 ;   1.090 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N54        ; emu|mister_top|pdp11|cpu0|rbus_ix[2]~22|datad                           ;
+;   147.130 ;   0.423 ; FR ; CELL ; 1      ; LABCELL_X56_Y15_N54        ; emu|mister_top|pdp11|cpu0|rbus_ix[2]~22|combout                         ;
+;   147.130 ;   0.000 ; RR ; IC   ; 1      ; FF_X56_Y15_N56             ; emu|mister_top|pdp11|cpu0|rbus_ix[2]|d                                  ;
+;   147.392 ;   0.262 ; RR ; CELL ; 1      ; FF_X56_Y15_N56             ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++----------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                         ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location       ; Element                                                        ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;                ; latch edge time                                                ;
+; 143.357   ; 3.357   ;    ;      ;        ;                ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;                ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2   ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2   ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2     ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N56 ; emu|mister_top|pdp11|cpu0|rbus_ix[2]|clk                       ;
+;   143.357 ;   0.522 ; RR ; CELL ; 1      ; FF_X56_Y15_N56 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2] ;
+; 143.177   ; -0.180  ;    ;      ;        ;                ; clock uncertainty                                              ;
+; 143.177   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N56 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[2] ;
++-----------+---------+----+------+--------+----------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
+Path #10: Setup slack is -4.210 (VIOLATED)
+===============================================================================
++----------------------------------------------------------------------------------------------+
+; Path Summary                                                                                 ;
++--------------------+-------------------------------------------------------------------------+
+; Property           ; Value                                                                   ;
++--------------------+-------------------------------------------------------------------------+
+; From Node          ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; To Node            ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0]          ;
+; Launch Clock       ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+; Latch Clock        ; emu:emu|mister_top:mister_top|cpuclk                                    ;
+; Data Arrival Time  ; 147.365                                                                 ;
+; Data Required Time ; 143.155                                                                 ;
+; Slack              ; -4.210 (VIOLATED)                                                       ;
++--------------------+-------------------------------------------------------------------------+
+
++------------------------------------------------------------------------------------+
+; Statistics                                                                         ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Property               ; Value  ; Count ; Total Delay ; % of Total ; Min   ; Max   ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+; Setup Relationship     ; 10.000 ;       ;             ;            ;       ;       ;
+; Clock Skew             ; -1.914 ;       ;             ;            ;       ;       ;
+; Data Delay             ; 12.116 ;       ;             ;            ;       ;       ;
+; Number of Logic Levels ;        ; 8     ;             ;            ;       ;       ;
+; Physical Delays        ;        ;       ;             ;            ;       ;       ;
+;  Arrival Path          ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 4.214       ; 80         ; 1.038 ; 3.176 ;
+;    Cell                ;        ; 2     ; 1.035       ; 20         ; 0.304 ; 0.731 ;
+;   Data                 ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 9     ; 9.245       ; 76         ; 0.000 ; 3.571 ;
+;    Cell                ;        ; 10    ; 2.871       ; 24         ; 0.086 ; 0.504 ;
+;    uTco                ;        ; 1     ; 0.000       ; 0          ; 0.000 ; 0.000 ;
+;  Required Path         ;        ;       ;             ;            ;       ;       ;
+;   Clock                ;        ;       ;             ;            ;       ;       ;
+;    IC                  ;        ; 2     ; 2.540       ; 76         ; 0.643 ; 1.897 ;
+;    Cell                ;        ; 3     ; 0.795       ; 24         ; 0.000 ; 0.500 ;
++------------------------+--------+-------+-------------+------------+-------+-------+
+Note: Negative delays are omitted from totals when calculating percentages
+
++-------------------------------------------------------------------------------------------------------------------------------------------------+
+; Data Arrival Path                                                                                                                               ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location                   ; Element                                                                 ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+; 130.000   ; 130.000 ;    ;      ;        ;                            ; launch edge time                                                        ;
+; 135.249   ; 5.249   ;    ;      ;        ;                            ; clock path                                                              ;
+;   130.000 ;   0.000 ;    ;      ;        ;                            ; source latency                                                          ;
+;   130.000 ;   0.000 ;    ;      ; 2      ; PLLOUTPUTCOUNTER_X89_Y7_N1 ; emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk ;
+;   131.038 ;   1.038 ; RR ; IC   ; 1      ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|inclk              ;
+;   131.342 ;   0.304 ; RR ; CELL ; 5082   ; CLKCTRL_G7                 ; emu|pll|pll_inst|altera_pll_i|outclk_wire[0]~CLKENA0|outclk             ;
+;   134.518 ;   3.176 ; RR ; IC   ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|clk                                             ;
+;   135.249 ;   0.731 ; RR ; CELL ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+; 147.365   ; 12.116  ;    ;      ;        ;                            ; data path                                                               ;
+;   135.249 ;   0.000 ;    ; uTco ; 1      ; DDIOINCELL_X82_Y0_N71      ; emu:emu|mister_top:mister_top|dati[11]                                  ;
+;   135.365 ;   0.116 ; RR ; CELL ; 7      ; DDIOINCELL_X82_Y0_N71      ; emu|mister_top|dati[11]|q                                               ;
+;   138.936 ;   3.571 ; RR ; IC   ; 1      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|dataf                          ;
+;   139.022 ;   0.086 ; RR ; CELL ; 2      ; LABCELL_X83_Y1_N48         ; emu|mister_top|pdp11|mmu0|mmu_datain~122|combout                        ;
+;   141.132 ;   2.110 ; RR ; IC   ; 1      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|dataf                          ;
+;   141.222 ;   0.090 ; RR ; CELL ; 4      ; LABCELL_X42_Y14_N57        ; emu|mister_top|pdp11|mmu0|mmu_datain~123|combout                        ;
+;   141.497 ;   0.275 ; RR ; IC   ; 1      ; LABCELL_X42_Y14_N18        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~11|datae                       ;
+;   141.753 ;   0.256 ; RR ; CELL ; 10     ; LABCELL_X42_Y14_N18        ; emu|mister_top|pdp11|mmu0|cpu_datain[11]~11|combout                     ;
+;   142.554 ;   0.801 ; RR ; IC   ; 1      ; MLABCELL_X39_Y15_N21       ; emu|mister_top|pdp11|cpu0|process_0~24|datad                            ;
+;   142.974 ;   0.420 ; RR ; CELL ; 3      ; MLABCELL_X39_Y15_N21       ; emu|mister_top|pdp11|cpu0|process_0~24|combout                          ;
+;   143.315 ;   0.341 ; RR ; IC   ; 1      ; LABCELL_X40_Y15_N30        ; emu|mister_top|pdp11|cpu0|process_0~27|datae                            ;
+;   143.566 ;   0.251 ; RR ; CELL ; 1      ; LABCELL_X40_Y15_N30        ; emu|mister_top|pdp11|cpu0|process_0~27|combout                          ;
+;   143.839 ;   0.273 ; RR ; IC   ; 1      ; LABCELL_X40_Y15_N12        ; emu|mister_top|pdp11|cpu0|process_0~31|datad                            ;
+;   144.343 ;   0.504 ; RF ; CELL ; 41     ; LABCELL_X40_Y15_N12        ; emu|mister_top|pdp11|cpu0|process_0~31|combout                          ;
+;   146.003 ;   1.660 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N15        ; emu|mister_top|pdp11|cpu0|process_0~51|datad                            ;
+;   146.385 ;   0.382 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N15        ; emu|mister_top|pdp11|cpu0|process_0~51|combout                          ;
+;   146.599 ;   0.214 ; FF ; IC   ; 1      ; LABCELL_X56_Y15_N0         ; emu|mister_top|pdp11|cpu0|Selector333~6|datad                           ;
+;   147.103 ;   0.504 ; FF ; CELL ; 1      ; LABCELL_X56_Y15_N0         ; emu|mister_top|pdp11|cpu0|Selector333~6|combout                         ;
+;   147.103 ;   0.000 ; FF ; IC   ; 1      ; FF_X56_Y15_N2              ; emu|mister_top|pdp11|cpu0|rbus_ix[0]|d                                  ;
+;   147.365 ;   0.262 ; FF ; CELL ; 1      ; FF_X56_Y15_N2              ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0]          ;
++-----------+---------+----+------+--------+----------------------------+-------------------------------------------------------------------------+
+
++---------------------------------------------------------------------------------------------------------------------------+
+; Data Required Path                                                                                                        ;
++-----------+---------+----+------+--------+---------------+----------------------------------------------------------------+
+; Total     ; Incr    ; RF ; Type ; Fanout ; Location      ; Element                                                        ;
++-----------+---------+----+------+--------+---------------+----------------------------------------------------------------+
+; 140.000   ; 140.000 ;    ;      ;        ;               ; latch edge time                                                ;
+; 143.335   ; 3.335   ;    ;      ;        ;               ; clock path                                                     ;
+;   140.000 ;   0.000 ;    ;      ;        ;               ; source latency                                                 ;
+;   140.000 ;   0.000 ;    ;      ; 1      ; FF_X1_Y36_N2  ; emu:emu|mister_top:mister_top|cpuclk                           ;
+;   140.000 ;   0.000 ; RR ; CELL ; 1      ; FF_X1_Y36_N2  ; emu|mister_top|cpuclk|q                                        ;
+;   140.643 ;   0.643 ; RR ; IC   ; 1      ; CLKCTRL_G2    ; emu|mister_top|cpuclk~CLKENA0|inclk                            ;
+;   140.938 ;   0.295 ; RR ; CELL ; 8185   ; CLKCTRL_G2    ; emu|mister_top|cpuclk~CLKENA0|outclk                           ;
+;   142.835 ;   1.897 ; RR ; IC   ; 1      ; FF_X56_Y15_N2 ; emu|mister_top|pdp11|cpu0|rbus_ix[0]|clk                       ;
+;   143.335 ;   0.500 ; RR ; CELL ; 1      ; FF_X56_Y15_N2 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0] ;
+; 143.155   ; -0.180  ;    ;      ;        ;               ; clock uncertainty                                              ;
+; 143.155   ; 0.000   ;    ; uTsu ; 1      ; FF_X56_Y15_N2 ; emu:emu|mister_top:mister_top|unibus:pdp11|cpu:cpu0|rbus_ix[0] ;
++-----------+---------+----+------+--------+---------------+----------------------------------------------------------------+
+
+----------------------------
+; Extra Fitter Information ;
+----------------------------
+HTML report is unavailable in plain text report export.
+
+
