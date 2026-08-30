@@ -13,6 +13,30 @@ set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 
+# Separate Design Partition around XU (the embedded PDP-11-compatible
+# coprocessor + firmware, xu.vhd) -- added 2026-08-30, attempting to fix
+# real, confirmed-in-a-build-log full-recompile-on-any-change behavior
+# (the whole design was one single root partition, so a firmware-only
+# blockram-init edit like roms/xubrt45.vhd forced a full Analysis &
+# Synthesis + Fitter placement + Fitter routing every time).
+#
+# CURRENTLY INERT -- do not expect this to do anything. Confirmed via a
+# real build log (2026-08-30): "Critical Warning (138067): Current
+# license file does not support incremental compilation. The Quartus
+# Prime software removes all the user-specified design partitions in
+# the design automatically." This install is Quartus Prime LITE Edition
+# (free) -- Lite does not support multi-partition/incremental
+# compilation at all; it silently strips any partition beyond the root
+# one at synthesis time regardless of what's declared here. Getting a
+# real speedup for firmware-only rebuilds would need a paid Standard or
+# Pro Edition license -- left in place (harmless, ignored) so this
+# isn't re-derived from scratch next time the "why is every build full
+# price" question comes up.
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id xu
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id xu
+set_global_assignment -name PARTITION_COLOR 6737151 -section_id xu
+set_instance_assignment -name PARTITION_HIERARCHY xu -to emu:emu\|mister_top:mister_top\|unibus:pdp11\|xu:xu0 -section_id xu
+
 set_global_assignment -name LAST_QUARTUS_VERSION "17.0.2 Lite Edition"
 
 set_global_assignment -name GENERATE_RBF_FILE ON
