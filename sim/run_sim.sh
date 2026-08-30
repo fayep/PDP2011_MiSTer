@@ -1,9 +1,7 @@
 #!/bin/sh
-# Local GHDL simulation runner. Needs the real rtl/roms sources present
-# alongside this sim/ dir (unibus.vhd, mister_top.vhd, cpu.vhd etc are
-# not tracked in this repo -- served from the Quartus build volume; see
-# the pdp2011-debugging-playbook memory for how to pull them out via
-# `container run ... cat /work/rtl/<file>` if they're missing locally).
+# Local GHDL simulation runner. All dependency files (rtl/, roms/) are
+# tracked in this repo -- this script just needs to find them relative
+# to its own location, one level up from sim/.
 #
 # Usage: sim/run_sim.sh <top-entity> [ghdl -r extra args...]
 # Example: sim/run_sim.sh tb_shim_stream --stop-time=2ms
@@ -21,9 +19,18 @@ mncaa.vhd mncad.vhd mncdi.vhd mncdo.vhd paneldb.vhd paneldriver.vhd \
 panelos.vhd csdr.vhd xu.vhd unibus.vhd mister_top.vhd"
 
 cd "$(dirname "$0")"
+
+# All compiled artifacts (GHDL work library + object files + the
+# executable) live in build/, entirely gitignored -- keeps them out of
+# both git and any rsync of the source tree into the Quartus container
+# (which would otherwise pick up arm64-compiled .o/.cf junk into an x86
+# build, harmless to Quartus itself but real clutter worth not creating).
+mkdir -p build
+GHDL_FLAGS="$GHDL_FLAGS --workdir=build -Pbuild"
+
 for f in $DEPS; do
 	found=""
-	for d in rtl roms . ..; do
+	for d in ../rtl ../roms . ..; do
 		if [ -f "$d/$f" ]; then found="$d/$f"; break; fi
 	done
 	[ -n "$found" ] || { echo "MISSING: $f (not in rtl/, roms/, ./, or ../ -- see comment at top of this script)"; exit 1; }
@@ -31,5 +38,5 @@ for f in $DEPS; do
 done
 
 ghdl -a $GHDL_FLAGS "$TOP.vhd"
-ghdl -e $GHDL_FLAGS "$TOP"
-exec ghdl -r $GHDL_FLAGS "$TOP" "$@"
+ghdl -e $GHDL_FLAGS -o "build/$TOP" "$TOP"
+exec "build/$TOP" "--vcdgz=build/$TOP.vcd.gz" "$@"
