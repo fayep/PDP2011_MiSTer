@@ -571,9 +571,17 @@ begin
                      when xmit_data =>
                         tx <= xmit_buf(xmit_bit);
                         if xmit_sample >= samplerate-1 then
-                           xmit_bit <= xmit_bit + 1;
+                           -- xmit_bit is declared 0 to 7 -- must not
+                           -- increment past 7 (real, previously-diagnosed
+                           -- bound-check failure in simulation; harmless
+                           -- in real synthesis since the state leaves
+                           -- xmit_data on this same cycle, but a genuine
+                           -- sim/synth semantic mismatch worth fixing
+                           -- properly rather than leaving it latent).
                            if xmit_bit = 7 then
                               xmit_state <= xmit_stopbit;
+                           else
+                              xmit_bit <= xmit_bit + 1;
                            end if;
                         end if;
 

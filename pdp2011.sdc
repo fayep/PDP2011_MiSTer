@@ -8,6 +8,11 @@ create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|rl11:rl
 derive_pll_clocks -use_net_name
 derive_clock_uncertainty
 
+# cpuclk is a DRAM-FSM gated clock (~140ns), asynchronous to the PLL
+# 50MHz that clocks xu_ddr_mailbox and ram1. req_valid is 2-FF'd into
+# clk50mhz; addr/data/be remain handshake-stable from cpuclk (see
+# rtl/xu_ddr_mailbox.vhd). Do not set_false_path that whole cut.
+
 # cpuclk -> sdspi crossings (rh0/rk0/rl0): the only signals crossing this
 # boundary are quasi-static per-command config registers (e.g. rh11's
 # rmdc, "desired cylinder number", a UNIBUS register written once by the
@@ -25,3 +30,4 @@ set_false_path -from [get_clocks {emu:emu|mister_top:mister_top|cpuclk}] \
   -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rk11:rk0|sdspi:sd1|clk}]
 set_false_path -from [get_clocks {emu:emu|mister_top:mister_top|cpuclk}] \
   -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rl11:rl0|sdspi:sd1|clk}]
+

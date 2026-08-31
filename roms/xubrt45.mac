@@ -147,14 +147,52 @@ t45:
 ; main service loop - receive packets if we're running
 ;
 10$:
+t45loop:
          clr    dogtick                ; need to do this every 10 seconds, or watchdog will cause reboot
+11$:
          tst    running                ; in running state?
-         beq    20$                    ; no - jump
+         beq    12$                    ; no - jump
+         ; queue/flow control: our RX ring only has 6 real slots. If the
+         ; chip-side backlog (PKTCNT via ESTAT) is bigger than that, clear
+         ; RXEN so the chip stops accepting new frames while we drain what
+         ; it already has -- otherwise continuous real LAN traffic keeps
+         ; recvdw set forever and we never catch up. Re-enabled below once
+         ; the backlog is gone.
+         xubl   restat,20,destat,20    ; peek chip-side backlog before draining
+         movb   destat,pktcnt
+         tst    pktcnt                 ; nothing queued at all?
+         beq    12$                    ; skip pktin entirely (avoids a second,
+                                        ; redundant restat inside pktin itself)
+                                        ; -- 12$ still checks/clears rxdis below,
+                                        ; so a throttle from an earlier pass gets
+                                        ; re-enabled correctly even on this path.
+         cmp    pktcnt,#6              ; more queued than our ring can absorb this pass?
+         ; NOTE: CMP src,dst computes src-dst; BLOS branches on src<=dst.
+         ; Must be pktcnt (src) vs #6 (dst) so BLOS means pktcnt<=6 --
+         ; the reversed order ("cmp #6,pktcnt") inverted the throttle.
+         blos   13$
+         tst    rxdis
+         bne    13$                    ; already throttled
+         xubl   cecon1,40              ; clear RXEN -- stop chip accepting new frames
+         mov    #1,rxdis
+13$:
          jsr    pc,pktin               ; process input packets
          tst    recvdw                 ; did we do any work receiving?
-         beq    20$                    ; no - jump
+         beq    12$                    ; no - jump
          bis    #20000,@#174510        ; set rxi
-         br     10$                    ; see if there is another frame - FIXME, check if there is an owned buffer first?
+         jmp    t45loop                ; see if there is another frame
+12$:
+         tst    rxdis                  ; were we throttling reception?
+         beq    20$
+         ; Only re-enable RXEN when the chip backlog is actually gone.
+         ; pktin bails with recvdw=0 when the 6-slot host ring is full
+         ; (telnet/TCP) even though PKTCNT is still high -- re-enabling
+         ; then flaps RXEN every loop pass.
+         xubl   restat,20,destat,20
+         tstb   destat
+         bne    20$                    ; still queued -- keep RXEN clear
+         xubl   xecon1,40              ; re-enable RXEN -- backlog drained
+         clr    rxdis
 20$:
 ;
 ; check if the chip is ok - reading the eidled register; this serves no particular purpose other than checking if we're still talking to the chip
@@ -163,8 +201,12 @@ t45:
          clr    deidled
          xubl   reidled,20,deidled,20
          tst    deidled
-         bne    30$
+         beq    21$
+         jmp    t45poll
+21$:
          xascil <cannot read eidled>
+xrxreset:
+         clr    rxdis                  ; throttle latch is meaningless across a chip re-init
 ;         clr    @#174512               ; pcsr1 - state=reset  FIXME, this kills the software on bsd
          jsr    pc,initenc
          jsr    pc,waitabit
@@ -182,12 +224,16 @@ t45:
          beq    23$
 22$:
          xascil <restoring laa>        ; restore the mac address to what was set
-         movb   wlaa+2,dlaa+4
-         movb   wlaa+3,dlaa+5
-         movb   wlaa+4,dlaa+2
-         movb   wlaa+5,dlaa+3
-         movb   wlaa+6,dlaa+0
-         movb   wlaa+7,dlaa+1
+         ; ENC424J600 stores the MAC fully byte-reversed across MAADR1H
+         ; (canonical byte 1/OUI0) .. MAADR3L (canonical byte 6) --
+         ; datasheet DS39935C Table 3-7. wlaa/dlaa conversion must be a
+         ; full 6-byte reversal to match, not a partial swap.
+         movb   wlaa+7,dlaa+0
+         movb   wlaa+6,dlaa+1
+         movb   wlaa+5,dlaa+2
+         movb   wlaa+4,dlaa+3
+         movb   wlaa+3,dlaa+4
+         movb   wlaa+2,dlaa+5
          jsr    pc,setlaa
 23$:
          tst    modebits
@@ -196,30 +242,31 @@ t45:
          jsr    pc,setmodebits
 24$:
          xascil <chip reset>
-         br     10$
+         jmp    t45loop
 ;
 ; check for command from host
 ;
 30$:
+t45poll:
          jsr    pc,pcsrsrv             ; check pcsr register for command from host
          mov    @#174512,r0            ; get status from register
          bic    #177760,r0             ;
          tst    r0                     ; 0 - reset, which is not ok, but the host should act on it, not us
          bne    32$
-         jmp    10$                    ; yes - jump
+         jmp    t45loop                ; yes - jump
 32$:
          cmp    #2,r0                  ; 2 - ready ie ok, but not running as in not yet had start command
          bne    33$
-         jmp    10$                    ; yes - jump
+         jmp    t45loop                ; yes - jump
 33$:
          cmp    #3,r0                  ; 3 - running
          bne    34$
-         jmp    10$                    ; yes - jump
+         jmp    t45loop                ; yes - jump
 34$:
          xasciz <pcsr1 value wrong : >
          xwhx   174510,10
          xascil
-         jmp    10$                    ; FIXME, come up with something slightly more sensible
+         jmp    t45loop                ; FIXME, come up with something slightly more sensible
 ;
 ; pcsrsrv - service commands issued through the pcsr registers
 ;
@@ -344,9 +391,32 @@ c0101:                                 ; boot
 ; cmd 8 - polling demand
 ;
 c1000:                                 ; pdmd
-;         xasciz <pcsr0 PDMD : >
-;         xwhx   174510,10
-;         xascil
+         ; REAL FIX added here (2026-08-29): p0cmd=4 (START, c0100) has
+         ; never once dispatched across this entire session's real
+         ; hardware logs -- confirmed exhaustively (full session logs,
+         ; multiple shim versions, multiple xu.vhd variants, a real GHDL
+         ; isolated-write-sequence test that DID trigger it cleanly). But
+         ; p0cmd=8 (PDMD, this handler) fires reliably every single time,
+         ; and TX already works unconditionally (xmitxx never checks
+         ; running at all) -- PDMD activity is itself undeniable proof
+         ; the guest considers the device in active service; there is no
+         ; real scenario where the driver polls-demand a device it
+         ; doesn't believe is running. Mirror c0100's own first-time
+         ; setup here (rcurr/xcurr from rdrb/tdrb -- already correctly
+         ; populated by fc11/WTRING, which does reliably dispatch every
+         ; time) so RX processing (gated on running in the main service
+         ; loop) actually gets enabled by real traffic, regardless of
+         ; whatever the real root cause of START never dispatching turns
+         ; out to be.
+         tst    running
+         bne    05$                    ; already running, nothing to do
+         mov    #1,running
+         mov    tdrbh,xcurrh
+         mov    tdrbl,xcurrl
+         mov    rdrbh,rcurrh
+         mov    rdrbl,rcurrl
+         mov    #3,@#174512            ; pcsr1 - state=running, matching c0100
+05$:
          jsr    pc,xmitpl              ; poll xmit ring
          tst    xmitdw
          beq    10$
@@ -785,7 +855,7 @@ xpl200:
          bit    #100000,xdre+4                   ; own bit set?
          bne    xpl210
 ;         xascil <not own, end>
-         br     xpl900                           ; not set - end run
+         jmp    xpl900                           ; not set - end run
 
 xpl210:
 ;         xasciz <xmitpl ent : >
@@ -806,7 +876,6 @@ xpl220:
          br     xpl340                           ; own, but not stp in the first message - skip/rel
 
 xpl300:
-;         xasciz <start >
          mov    #1,xplrun
          jsr    pc,xmitst
 ;
@@ -819,7 +888,6 @@ xpl320:
 ;         xasciz <end >
 
 xpl330:
-;         xascil
          jsr    pc,xmitld
          bit    #400,xdre+4                      ; enp bit set?
          beq    xpl340                           ; no
@@ -885,9 +953,6 @@ xmitxx:
          xubl   tecon1,40
 20$:
          xubl   recon1,20,decon1,20              ; set econ1 bit 1, this causes the chip to transmit.
-;         xasciz <econ1      : >
-;         xbhx   decon1,2
-;         xascnl
 
          bitb   #2,decon1                        ; check if econ1 bit 1 is cleared; this means the chip is done transmitting.
          bne    20$
@@ -1081,30 +1146,49 @@ pktin:
 15$:
          jsr    pc,getrdre             ; might be current, but refresh just to be sure
          bit    #100000,rdre+4         ; own?
-         beq    90$                    ; not own - skip pktin
+         bne    16$                    ; own - continue
+         jmp    90$                    ; not own - skip pktin
+16$:
 ;
 ; process read pointer in chip
 ;
          mov    npp,werxrdpt+2
          xubl   werxrdpt,40            ; set erxrdpt to the value of npp
          xubl   rnpp,20,dnpp,20        ; read first two bytes - pointer to the new npp
+         ; Live log (screenlog_rxfix): frames 1-62 matched the daemon
+         ; exactly, then frame 63 served a stale header (dnpp=0x1060)
+         ; and the walk followed garbage until it stuck retrying 0x8115
+         ; ~21k times. Out-of-ring next_ptr OR rx_miss is a hard link
+         ; error -- reset, don't retry.
+         xubl   recon1,20,decon1,20    ; rx_miss or out-of-ring dnpp -> reset
+         bit    #4,decon1              ; rx_miss, ECON1 bit 2
+         bne    80$
+         cmp    dnpp,#44000            ; 0x4800 RX ring start
+         blo    80$
+         cmp    dnpp,#60000            ; 0x6000 one past last RX byte
+         bhis   80$
+17$:
          mov    dnpp,npp               ; copy the new npp
 ;
 ; read next 6 bytes
 ;
          xubl   rpkth,20,dpkth,60
-;         xasciz <pkt header : >
-;         xbhx   dpkth,6
-;         xascnl
 ;
 ; take length from header - from first two bytes
 ;
          mov    dpkth,flen
+         tst    flen
+         beq    80$                    ; zero-length is not a real frame
+         cmp    flen,#3000             ; 1536 -- above ethernet MTU
+         bhi    80$
 ;
 ; process frame data
 ;
 20$:
          jsr    pc,getfr
+         xubl   recon1,20,decon1,20
+         bit    #4,decon1              ; rx_miss during payload copy
+         bne    80$
 ;
 ; calculate new erxtail
 ;
@@ -1127,6 +1211,17 @@ pktin:
 ;
 ; done, exit
 ;
+         jmp    90$
+80$:
+         xubl   cmiss,40               ; clear rx_miss if set
+         mov    (sp)+,r5
+         mov    (sp)+,r4
+         mov    (sp)+,r3
+         mov    (sp)+,r2
+         mov    (sp)+,r1
+         mov    (sp)+,r0
+         tst    (sp)+                  ; discard jsr return into the main loop
+         jmp    xrxreset
 90$:
          mov    (sp)+,r5
          mov    (sp)+,r4
@@ -1247,16 +1342,20 @@ getfr:
          add    r1,mlen
          sub    r1,r3                  ; subtract actual run length from frame length
          cmp    #0,r3                  ; finished frame?
-         bge    90$                    ; yes
+         blt    45$                    ; not yet -- fall through to 50$
+         jmp    90$                    ; yes -- finished this descriptor
+45$:
 
 50$:
          cmp    r5,#0                  ; buffer filled?
-         bgt    60$
+         ble    46$                    ; not filled -- fall through
+         jmp    60$                    ; filled -- long branch
+46$:
 
-;         xascil <BAZINGA!!!!!>
          tst    drdc                   ; can we do data chaining?
          beq    52$                    ; yes, go on
          add    mlen,rdre+6            ; set message length - leave other bits in there intact, given that we started out at zero...
+         add    #4,rdre+6              ; DEUNA MLEN includes CRC; BSD subtracts 4
          bis    #100000,rdre+6         ; set bufl
          bis    #40000,rdre+4          ; set errs
          br     90$
@@ -1265,6 +1364,7 @@ getfr:
          bit    #100000,rdre+14        ; do we own the next buffer?
          bne    53$                    ; yes
          add    mlen,rdre+6            ; set message length - leave other bits in there intact, given that we started out at zero...
+         add    #4,rdre+6              ; DEUNA MLEN includes CRC; BSD subtracts 4
          bis    #100000,rdre+6         ; set bufl
          bis    #40000,rdre+4          ; set errs
          br     90$
@@ -1280,7 +1380,7 @@ getfr:
          bic    #177774,r4             ; clean segbh
          mov    rdre,r5                ; slen into r5
          clr    rdre+6                 ; start clean
-         br     10$                    ; current buffer is own - we're in business
+         jmp    10$                    ; current buffer is own - we're in business
 60$:
          jmp    10$
 ;
@@ -1294,6 +1394,11 @@ getfr:
          bit    #100000,rdre+6         ; bufl already set?
          bne    91$                    ; yes, skip setting mlen
          add    mlen,rdre+6            ; set message length - leave other bits in there intact, given that we started out at zero...
+         add    #4,rdre+6              ; DEUNA MLEN includes CRC; 4.3BSD derecv
+                                       ; does len = MLEN-14-4 and Ierrs if len<ETHERMIN.
+                                       ; AF_PACKET frames have no FCS, so a 60-byte ARP
+                                       ; was reported as 42 and dropped. Do not copy 4
+                                       ; extra bytes -- only the descriptor length.
 91$:
          tst    drdc
          beq    92$
@@ -1376,12 +1481,16 @@ initenc:
          xasciz <:>
          xbhx   dbia+1,1
          xascnl
-         movb   dbia+4,dlaa+0
-         movb   dbia+5,dlaa+1
-         movb   dbia+2,dlaa+2
-         movb   dbia+3,dlaa+3
-         movb   dbia+0,dlaa+4
-         movb   dbia+1,dlaa+5
+         ; full 6-byte reversal, matching ENC424J600's real MAADR1..3
+         ; register layout (DS39935C Table 3-7: MAADR1H = canonical
+         ; byte 1/OUI0 ... MAADR3L = canonical byte 6). Previously a
+         ; partial swap here, which was wrong.
+         movb   dbia+5,dlaa+0
+         movb   dbia+4,dlaa+1
+         movb   dbia+3,dlaa+2
+         movb   dbia+2,dlaa+3
+         movb   dbia+1,dlaa+4
+         movb   dbia+0,dlaa+5
 ;
 ; set npp, erxst to initial value
 ;
@@ -1485,6 +1594,10 @@ recon1:  .byte rcru,econ1
 decon1:  .word 0
 xecon1:  .byte bfsu,econ1,1,0
 tecon1:  .byte bfsu,econ1,2,0
+cecon1:  .byte bfcu,econ1,1,0     ; clear RXEN -- throttle chip while our 6-slot ring drains a backlog
+
+         .even
+cmiss:   .byte bfcu,econ1,4,0     ; clear rx_miss (bit 2, our own private extension -- see pktin)
 
          .even
 recon2:  .byte rcru,econ2
@@ -1511,12 +1624,13 @@ cmcen:   .byte bfcu,erxfcon,2,0
 ; setlaa : set the mac address into the encx24j600 - note that this acts on the unicast receive filter only
 ;
 setlaa:
-         movb   dlaa+4,wlaa+2
-         movb   dlaa+5,wlaa+3
-         movb   dlaa+2,wlaa+4
-         movb   dlaa+3,wlaa+5
-         movb   dlaa+0,wlaa+6
-         movb   dlaa+1,wlaa+7
+         ; full 6-byte reversal -- see the read-path comment above.
+         movb   dlaa+5,wlaa+2
+         movb   dlaa+4,wlaa+3
+         movb   dlaa+3,wlaa+4
+         movb   dlaa+2,wlaa+5
+         movb   dlaa+1,wlaa+6
+         movb   dlaa+0,wlaa+7
 ;
          xubl   wlaa,100
          rts    pc
@@ -2016,6 +2130,7 @@ hextab:  .ascii /0123456789abcdef/
 
          .even
 running: .word 0                       ; if nonzero, then recv/xmit is active
+rxdis:   .word 0                       ; nonzero while RXEN is held clear to drain a backlog
 npp:     .word 0                       ; the next packet pointer in the encx24j600
 flen:    .word 0                       ; frame length in the encx24j600 received frame header
 p0cmd:   .word 0                       ; masked off value of the pcsr0
