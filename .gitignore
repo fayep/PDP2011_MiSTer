@@ -4,3 +4,5 @@ output_files/
 build_id.v
 jtag.cdf
 *.qsf.bak
+timing/*.rpt
+timing/*.sta.summary

@@ -436,6 +436,16 @@ signal cpuclk : std_logic;
 signal cpureset : std_logic := '1';
 signal cpuresetlength : integer range 0 to 255 := 255;
 
+-- modelcode/have_xu arrive from pdp2011.sv's combinational decode of the
+-- OSD status[] vector (hps_io's clock domain, not cpuclk) and were fed
+-- straight into cpu.vhd's always-combinational "with modelcode select"
+-- feature-flag decode. That is both a real multi-bit CDC hazard and the
+-- largest cpuclk setup-TNS source in the design. 2-FF sync on cpuclk
+-- while cpureset='1' (~126 cpuclk cycles), then freeze -- also the
+-- intended "OSD CPU model takes effect on reset" behavior.
+signal modelcode_meta, modelcode_sync : integer range 0 to 255 := 0;
+signal have_xu_meta, have_xu_sync : integer range 0 to 1 := 0;
+
 signal ifetch: std_logic;
 signal iwait: std_logic;
 
@@ -537,10 +547,20 @@ signal dram_fsm : dram_fsm_type := dram_init;
 
 begin
 
-
+   process(cpuclk)
+   begin
+      if cpuclk'event and cpuclk = '1' then
+         if cpureset = '1' then
+            modelcode_meta <= modelcode;
+            modelcode_sync <= modelcode_meta;
+            have_xu_meta <= have_xu;
+            have_xu_sync <= have_xu_meta;
+         end if;
+      end if;
+   end process;
 
    pdp11: unibus port map(
-      modelcode => modelcode,  -- 24,45,70,94...
+      modelcode => modelcode_sync,  -- 24,45,70,94...
 
       have_kl11 => 4,
       tx0 => txtx0,
@@ -590,7 +610,7 @@ begin
       rh_sdcard_sclk => rh_sdcard_sclk,
       rh_sdcard_debug => rh_sdcard_debug,
 
-      have_xu => have_xu,
+      have_xu => have_xu_sync,
 		have_xu_debug => 0,
       xu_cs   => xu_cs,
       xu_mosi => xu_mosi,
