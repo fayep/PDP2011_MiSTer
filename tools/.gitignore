@@ -1,0 +1,7 @@
+macro11
+genblkram
+dumpobj
+fontconvert
+sdfmt
+*.o
+.deps/

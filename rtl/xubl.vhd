@@ -216,7 +216,17 @@ begin
                         cmd_state <= cmd_xmit;
 
                      when cmd_xmit =>
-                        bitcount <= bitcount - 1;
+                        -- bitcount is declared 0 to 15 -- must not
+                        -- decrement past 0 (same real, previously-latent
+                        -- bound-check class as kl11.vhd's xmit_bit; the
+                        -- explicit "bitcount <= 15" below already
+                        -- overrides this on the bitcount=0 cycle, but
+                        -- GHDL range-checks at the point of assignment,
+                        -- before any later override in the same process
+                        -- is considered).
+                        if bitcount /= 0 then
+                           bitcount <= bitcount - 1;
+                        end if;
                         if bitcount = 15 then
                            bus_master_control_dati <= '0';
                            work <= bus_master_dati(14 downto 0) & bus_master_dati(15);
@@ -249,7 +259,9 @@ begin
                         else
                            rl <= rl - 1;
                         end if;
-                        bitcount <= bitcount - 1;
+                        if bitcount /= 0 then
+                           bitcount <= bitcount - 1;
+                        end if;
                         if bitcount = 0 then
                            bitcount <= 15;
                            bus_master_addr <= "00" & rt;
@@ -257,7 +269,6 @@ begin
                            bus_master_control_dato <= '1';
                            rt <= rt + 2;
                         else
-                           bitcount <= bitcount - 1;
                            bus_master_control_dato <= '0';
                         end if;
 
