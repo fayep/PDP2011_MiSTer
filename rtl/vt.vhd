@@ -150,6 +150,8 @@ component cpu is
       cons_kernel : out std_logic;                                   -- '1' if kernel mode
       cons_super : out std_logic;                                    -- '1' if super mode
       cons_user : out std_logic;                                     -- '1' if user mode
+      dbg_r7 : out std_logic_vector(15 downto 0);
+      dbg_ir : out std_logic_vector(15 downto 0);
 
       clk : in std_logic;                                            -- input clock
       reset : in std_logic                                           -- reset cpu, also causes init signal to devices on the bus to be asserted
@@ -651,6 +653,8 @@ begin
       modelcode => modelcode,
       init_r7 => init_r7,
       init_psw => init_psw,
+      dbg_r7 => open,
+      dbg_ir => open,
       clk => cpuclk,
       reset => reset
    );

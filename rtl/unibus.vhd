@@ -34,6 +34,9 @@ entity unibus is
       ifetch : out std_logic;                                        -- '1' if this cycle is an ifetch cycle
       iwait : out std_logic;                                         -- '1' if the cpu is in wait state
       cpu_addr_v : out std_logic_vector(15 downto 0);                -- virtual address from cpu, for debug and general interest
+      dbg_r7 : out std_logic_vector(15 downto 0);                    -- live PC (R7)
+      dbg_ir : out std_logic_vector(15 downto 0);                    -- last fetched instruction
+      dbg_psw : out std_logic_vector(15 downto 0);                   -- live PSW
 
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -336,6 +339,9 @@ component cpu is
       cons_kernel : out std_logic;                                   -- '1' if kernel mode
       cons_super : out std_logic;                                    -- '1' if super mode
       cons_user : out std_logic;                                     -- '1' if user mode
+
+      dbg_r7 : out std_logic_vector(15 downto 0);
+      dbg_ir : out std_logic_vector(15 downto 0);
 
       clk : in std_logic;                                            -- input clock
       reset : in std_logic                                           -- reset cpu, also causes init signal to devices on the bus to be asserted
@@ -1419,6 +1425,8 @@ begin
       cons_kernel => cons_kernel,
       cons_super => cons_super,
       cons_user => cons_user,
+      dbg_r7 => dbg_r7,
+      dbg_ir => dbg_ir,
       clk => clk,
       reset => reset
    );
@@ -2424,6 +2432,7 @@ begin
 -- console logic
 
    cons_run <= cpu_cons_run;
+   dbg_psw <= cpu_psw;
    cons_consphy <= cpu_cons_consphy;
    process(nclk)
    begin
