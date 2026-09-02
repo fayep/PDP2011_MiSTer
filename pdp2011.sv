@@ -225,6 +225,22 @@ localparam CONF_STR = {
 	"P1O[14],VT test E,Off,On;",
 	"P1O[15],VT test F,Off,On;",
 	"-;",
+	"P2,Front panel;",
+	"P2O[16],CPU,Run,Halt;",
+	"P2T[17],Continue;",
+	"P2T[18],Start;",
+	"P2T[19],Load address;",
+	"P2T[20],Examine;",
+	"P2T[37],Deposit;",
+	"P2-;",
+	"P2O[38],SR 17600000,0,1;",
+	"P2O[36],SR 100000,0,1;",
+	"P2O[35:33],SR 070000,0,1,2,3,4,5,6,7;",
+	"P2O[32:30],SR 007000,0,1,2,3,4,5,6,7;",
+	"P2O[29:27],SR 000700,0,1,2,3,4,5,6,7;",
+	"P2O[26:24],SR 000070,0,1,2,3,4,5,6,7;",
+	"P2O[23:21],SR 000007,0,1,2,3,4,5,6,7;",
+	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
 	"V,v",`BUILD_DATE 
@@ -255,12 +271,16 @@ wire  [7:0] uart_mode;
 
 
 
+wire [35:0] ext_bus;
+wire [15:0] dbg_r7, dbg_ir, dbg_psw, dbg_data, dbg_addr;
+wire        dbg_run, dbg_nxm;
+
 hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(3),.PS2DIV(3125)) hps_io
 (
    
 	.clk_sys(clk_100mhz),
 	.HPS_BUS(HPS_BUS),
-	.EXT_BUS(),
+	.EXT_BUS(ext_bus),
    .gamma_bus(gamma_bus),
 	.buttons(buttons),
 	.status(status),
@@ -540,7 +560,38 @@ mister_top mister_top
    .vga_cursor_blink(status[12]),
    .teste(status[14]),
    .testf(status[15]),
-   .have_act(have_act)
+   .have_act(have_act),
+
+   .osd_halt (status[16]),
+   .osd_cont (status[17]),
+   .osd_start(status[18]),
+   .osd_load (status[19]),
+   .osd_exa  (status[20]),
+   .osd_dep  (status[37]),
+   .osd_sr22 (status[38]),
+   .osd_sr   ({status[36], status[35:33], status[32:30],
+               status[29:27], status[26:24], status[23:21]}),
+   .osd_status(OSD_STATUS),
+   .dbg_r7   (dbg_r7),
+   .dbg_ir   (dbg_ir),
+   .dbg_psw  (dbg_psw),
+   .dbg_run  (dbg_run),
+   .dbg_data (dbg_data),
+   .dbg_addr (dbg_addr),
+   .dbg_nxm  (dbg_nxm)
+);
+
+panel_dbg panel_dbg
+(
+	.clk_sys (clk_100mhz),
+	.EXT_BUS (ext_bus),
+	.r7      (dbg_r7),
+	.ir      (dbg_ir),
+	.psw     (dbg_psw),
+	.run     (dbg_run),
+	.data    (dbg_data),
+	.addr    (dbg_addr),
+	.nxm     (dbg_nxm)
 );
 
 

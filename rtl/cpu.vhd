@@ -104,6 +104,9 @@ entity cpu is
       cons_super : out std_logic;                                    -- '1' if super mode
       cons_user : out std_logic;                                     -- '1' if user mode
 
+      dbg_r7 : out std_logic_vector(15 downto 0);                    -- live PC (R7) for the OSD front-panel banner
+      dbg_ir : out std_logic_vector(15 downto 0);                    -- last fetched instruction word (*ir_addr)
+
       clk : in std_logic;                                            -- input clock
       reset : in std_logic                                           -- reset cpu, also causes init signal to devices on the bus to be asserted
    );
@@ -752,6 +755,8 @@ begin
       "0000000000000000" when others;
 
    addr_v <= addr;
+   dbg_r7 <= r7;
+   dbg_ir <= ir;
 
 
 -- id : map states onto instruction or data access

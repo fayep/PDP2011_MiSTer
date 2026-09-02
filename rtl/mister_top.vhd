@@ -99,6 +99,29 @@ entity mister_top is
       dram_we_n      : out std_logic;
       dram_cs_n      : out std_logic;
 
+      -- OSD virtual front panel (MiSTer menu). Halt is a level;
+      -- Continue/Start/Load/Examine/Deposit are raw OSD T[] bits --
+      -- edge-detected here so a long menu click does not single-step
+      -- at full speed.
+      osd_halt       : in std_logic := '0';
+      osd_cont       : in std_logic := '0';
+      osd_start      : in std_logic := '0';
+      osd_load       : in std_logic := '0';
+      osd_exa        : in std_logic := '0';
+      osd_dep        : in std_logic := '0';
+      osd_sr22       : in std_logic := '0';
+      osd_sr         : in std_logic_vector(15 downto 0) := (others => '0');
+      osd_status     : in std_logic := '0';
+
+      -- live host CPU state for the OSD front-panel banner
+      dbg_r7         : out std_logic_vector(15 downto 0);
+      dbg_ir         : out std_logic_vector(15 downto 0);
+      dbg_psw        : out std_logic_vector(15 downto 0);
+      dbg_run        : out std_logic;
+      dbg_data       : out std_logic_vector(15 downto 0);  -- cons_shfr (examine data)
+      dbg_addr       : out std_logic_vector(15 downto 0);  -- consoleaddr[15:0]
+      dbg_nxm        : out std_logic;
+
       -- board peripherals
       greenled       : out std_logic
   );
@@ -121,6 +144,9 @@ component unibus is
       ifetch : out std_logic;                                        -- '1' if this cycle is an ifetch cycle
       iwait : out std_logic;                                         -- '1' if the cpu is in wait state
       cpu_addr_v : out std_logic_vector(15 downto 0);                -- virtual address from cpu, for debug and general interest
+      dbg_r7 : out std_logic_vector(15 downto 0);
+      dbg_ir : out std_logic_vector(15 downto 0);
+      dbg_psw : out std_logic_vector(15 downto 0);
 
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -424,6 +450,7 @@ component vt is
       vga_cursor_blink : in std_logic := '0';                        -- cursor blinks ('1') or not ('0')
       have_act_seconds : in integer range 0 to 7200 := 900;          -- auto screen off time, in seconds; 0 means disabled
       have_act : in integer range 1 to 2 := 2;                       -- auto screen off counter reset by keyboard and serial port activity (1) or keyboard only (2)
+      vga_wake : in std_logic := '0';
 
 -- clock & reset
       cpuclk : in std_logic;                                         -- cpuclk : should be around 10MHz, give or take a few
@@ -473,6 +500,20 @@ signal cons_cont : std_logic;
 signal cons_ena : std_logic;
 signal cons_start : std_logic;
 signal cons_sw : std_logic_vector(21 downto 0);
+signal panel_cont : std_logic;
+signal panel_ena : std_logic;
+signal panel_start : std_logic;
+signal panel_load : std_logic;
+signal panel_exa : std_logic;
+signal panel_dep : std_logic;
+signal osd_halt_meta, osd_halt_sync : std_logic := '0';
+signal osd_cont_meta, osd_cont_d : std_logic := '0';
+signal osd_start_meta, osd_start_d : std_logic := '0';
+signal osd_load_meta, osd_load_d : std_logic := '0';
+signal osd_exa_meta, osd_exa_d : std_logic := '0';
+signal osd_dep_meta, osd_dep_d : std_logic := '0';
+signal osd_cont_pulse, osd_start_pulse : std_logic := '0';
+signal osd_load_pulse, osd_exa_pulse, osd_dep_pulse : std_logic := '0';
 signal cons_adss_mode : std_logic_vector(1 downto 0);
 signal cons_adss_id : std_logic;
 signal cons_adss_cons : std_logic;
@@ -620,6 +661,9 @@ begin
 
       cons_adrserr => cons_adrserr,
       cons_run => cons_run,
+      dbg_r7 => dbg_r7,
+      dbg_ir => dbg_ir,
+      dbg_psw => dbg_psw,
       cons_pause => cons_pause,
       cons_master => cons_master,
       cons_kernel => cons_kernel,
@@ -673,8 +717,8 @@ begin
 		ifetch => ifetch,
 		iwait  => iwait,
 
-      have_act_seconds => 900,  -- screen activity counter
       have_act => have_act,     --Screen activity
+      vga_wake => osd_status,
 
       cpuclk => cpuclk,
       clk50mhz => clk_50,
@@ -682,18 +726,60 @@ begin
    );
 
 	
+   -- OSD T[] bits live in the HPS/100 MHz domain. Sample and edge-detect
+   -- on cpuclk so Continue/Start/Load/Examine/Deposit are one CPU cycle,
+   -- not a menu-length hold (which would run full-speed while "halted").
+   process(cpuclk)
+   begin
+      if cpuclk'event and cpuclk = '1' then
+         osd_halt_meta <= osd_halt;
+         osd_halt_sync <= osd_halt_meta;
+         osd_cont_meta <= osd_cont;
+         osd_cont_d <= osd_cont_meta;
+         osd_cont_pulse <= osd_cont_meta and not osd_cont_d;
+         osd_start_meta <= osd_start;
+         osd_start_d <= osd_start_meta;
+         osd_start_pulse <= osd_start_meta and not osd_start_d;
+         osd_load_meta <= osd_load;
+         osd_load_d <= osd_load_meta;
+         osd_load_pulse <= osd_load_meta and not osd_load_d;
+         osd_exa_meta <= osd_exa;
+         osd_exa_d <= osd_exa_meta;
+         osd_exa_pulse <= osd_exa_meta and not osd_exa_d;
+         osd_dep_meta <= osd_dep;
+         osd_dep_d <= osd_dep_meta;
+         osd_dep_pulse <= osd_dep_meta and not osd_dep_d;
+      end if;
+   end process;
+
+   dbg_run <= cons_run;
+   dbg_data <= cons_shfr;
+   dbg_addr <= cons_consphy(15 downto 0);
+   dbg_nxm <= cons_adrserr;
+
+   cons_ena <= '0' when osd_halt_sync = '1' else panel_ena;
+   cons_cont <= osd_cont_pulse or panel_cont;
+   cons_start <= osd_start_pulse or panel_start;
+   cons_load <= osd_load_pulse or panel_load;
+   cons_exa <= osd_exa_pulse or panel_exa;
+   cons_dep <= osd_dep_pulse or panel_dep;
+   -- paneltype is 0 on MiSTer (no physical switches). OSD owns the SR
+   -- visible at 177570 and used for Load/Start/Examine/Deposit.
+   -- osd_sr22 ORs 17600000 so Load 177600+n hits the GPR file.
+   cons_sw <= (5 downto 0 => osd_sr22) & osd_sr;
+
    panel: paneldriver port map(
       panel_xled => open,
       panel_col => open,
       panel_row => open,
 
-      cons_load => cons_load,
-      cons_exa => cons_exa,
-      cons_dep => cons_dep,
-      cons_cont => cons_cont,
-      cons_ena => cons_ena,
-      cons_start => cons_start,
-      cons_sw => cons_sw,
+      cons_load => panel_load,
+      cons_exa => panel_exa,
+      cons_dep => panel_dep,
+      cons_cont => panel_cont,
+      cons_ena => panel_ena,
+      cons_start => panel_start,
+      cons_sw => open,
       cons_adss_mode => cons_adss_mode,
       cons_adss_id => cons_adss_id,
       cons_adss_cons => cons_adss_cons,
