@@ -100,14 +100,18 @@ entity mister_top is
       dram_cs_n      : out std_logic;
 
       -- OSD virtual front panel (MiSTer menu). Halt is a level;
-      -- Continue/Start/Load/Examine are raw OSD T[] bits -- edge-detected
-      -- here so a long menu click does not single-step at full speed.
+      -- Continue/Start/Load/Examine/Deposit are raw OSD T[] bits --
+      -- edge-detected here so a long menu click does not single-step
+      -- at full speed.
       osd_halt       : in std_logic := '0';
       osd_cont       : in std_logic := '0';
       osd_start      : in std_logic := '0';
       osd_load       : in std_logic := '0';
       osd_exa        : in std_logic := '0';
+      osd_dep        : in std_logic := '0';
+      osd_sr22       : in std_logic := '0';
       osd_sr         : in std_logic_vector(15 downto 0) := (others => '0');
+      osd_status     : in std_logic := '0';
 
       -- live host CPU state for the OSD front-panel banner
       dbg_r7         : out std_logic_vector(15 downto 0);
@@ -446,6 +450,7 @@ component vt is
       vga_cursor_blink : in std_logic := '0';                        -- cursor blinks ('1') or not ('0')
       have_act_seconds : in integer range 0 to 7200 := 900;          -- auto screen off time, in seconds; 0 means disabled
       have_act : in integer range 1 to 2 := 2;                       -- auto screen off counter reset by keyboard and serial port activity (1) or keyboard only (2)
+      vga_wake : in std_logic := '0';
 
 -- clock & reset
       cpuclk : in std_logic;                                         -- cpuclk : should be around 10MHz, give or take a few
@@ -500,13 +505,15 @@ signal panel_ena : std_logic;
 signal panel_start : std_logic;
 signal panel_load : std_logic;
 signal panel_exa : std_logic;
+signal panel_dep : std_logic;
 signal osd_halt_meta, osd_halt_sync : std_logic := '0';
 signal osd_cont_meta, osd_cont_d : std_logic := '0';
 signal osd_start_meta, osd_start_d : std_logic := '0';
 signal osd_load_meta, osd_load_d : std_logic := '0';
 signal osd_exa_meta, osd_exa_d : std_logic := '0';
+signal osd_dep_meta, osd_dep_d : std_logic := '0';
 signal osd_cont_pulse, osd_start_pulse : std_logic := '0';
-signal osd_load_pulse, osd_exa_pulse : std_logic := '0';
+signal osd_load_pulse, osd_exa_pulse, osd_dep_pulse : std_logic := '0';
 signal cons_adss_mode : std_logic_vector(1 downto 0);
 signal cons_adss_id : std_logic;
 signal cons_adss_cons : std_logic;
@@ -710,8 +717,8 @@ begin
 		ifetch => ifetch,
 		iwait  => iwait,
 
-      have_act_seconds => 900,  -- screen activity counter
       have_act => have_act,     --Screen activity
+      vga_wake => osd_status,
 
       cpuclk => cpuclk,
       clk50mhz => clk_50,
@@ -720,8 +727,8 @@ begin
 
 	
    -- OSD T[] bits live in the HPS/100 MHz domain. Sample and edge-detect
-   -- on cpuclk so Continue/Start/Load/Examine are one CPU cycle, not a
-   -- menu-length hold (which would run full-speed while "halted").
+   -- on cpuclk so Continue/Start/Load/Examine/Deposit are one CPU cycle,
+   -- not a menu-length hold (which would run full-speed while "halted").
    process(cpuclk)
    begin
       if cpuclk'event and cpuclk = '1' then
@@ -739,6 +746,9 @@ begin
          osd_exa_meta <= osd_exa;
          osd_exa_d <= osd_exa_meta;
          osd_exa_pulse <= osd_exa_meta and not osd_exa_d;
+         osd_dep_meta <= osd_dep;
+         osd_dep_d <= osd_dep_meta;
+         osd_dep_pulse <= osd_dep_meta and not osd_dep_d;
       end if;
    end process;
 
@@ -752,9 +762,11 @@ begin
    cons_start <= osd_start_pulse or panel_start;
    cons_load <= osd_load_pulse or panel_load;
    cons_exa <= osd_exa_pulse or panel_exa;
+   cons_dep <= osd_dep_pulse or panel_dep;
    -- paneltype is 0 on MiSTer (no physical switches). OSD owns the SR
-   -- visible at 177570 and used for Load/Start address bits 15:0.
-   cons_sw <= "000000" & osd_sr;
+   -- visible at 177570 and used for Load/Start/Examine/Deposit.
+   -- osd_sr22 ORs 17600000 so Load 177600+n hits the GPR file.
+   cons_sw <= (5 downto 0 => osd_sr22) & osd_sr;
 
    panel: paneldriver port map(
       panel_xled => open,
@@ -763,7 +775,7 @@ begin
 
       cons_load => panel_load,
       cons_exa => panel_exa,
-      cons_dep => cons_dep,
+      cons_dep => panel_dep,
       cons_cont => panel_cont,
       cons_ena => panel_ena,
       cons_start => panel_start,

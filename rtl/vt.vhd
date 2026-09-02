@@ -56,6 +56,7 @@ entity vt is
       vga_cursor_blink : in std_logic := '0';                        -- cursor blinks ('1') or not ('0')
       have_act_seconds : in integer range 0 to 7200 := 900;          -- auto screen off time, in seconds; 0 means disabled
       have_act : in integer range 1 to 2 := 2;                       -- auto screen off counter reset by keyboard and serial port activity (1) or keyboard only (2)
+      vga_wake : in std_logic := '0';                                -- force VGA act timer to 0
 
 -- clock & reset
       cpuclk : in std_logic;                                         -- cpuclk : should be around 10MHz, give or take a few
@@ -390,6 +391,7 @@ component vga is
 
       have_act_seconds : in integer range 0 to 7200 := 900;          -- auto screen off time, in seconds; 0 means disabled
       have_act : in integer range 1 to 2 := 2;                       -- auto screen off counter reset by keyboard and serial port activity (1) or keyboard only (2)
+      vga_wake : in std_logic := '0';
 
       reset : in std_logic;                                          -- reset
       clk : in std_logic;                                            -- bus clock
@@ -843,6 +845,7 @@ begin
       vttype => vttype,
       have_act_seconds => have_act_seconds,
       have_act => have_act,
+      vga_wake => vga_wake,
 
       reset => reset,
       clk50mhz => clk50mhz,
