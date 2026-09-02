@@ -33,6 +33,7 @@ entity mister_top is
 		have_rk        : in integer;
 		have_rl        : in integer;
 		have_rh        : in integer;
+		have_tm        : in integer;
 		have_xu        : in integer;
 		
 		-- VT settings
@@ -67,6 +68,13 @@ entity mister_top is
       rh_sdcard_sclk : out std_logic;
       rh_sdcard_miso : in std_logic;
 		rh_sdcard_debug: out std_logic_vector (3 downto 0);
+
+      tm_media_change: in std_logic;
+      tm_sdcard_cs   : out std_logic;
+      tm_sdcard_mosi : out std_logic;
+      tm_sdcard_sclk : out std_logic;
+      tm_sdcard_miso : in std_logic;
+		tm_sdcard_debug: out std_logic_vector (3 downto 0);
 
       -- Ethernet
       xu_cs   : out std_logic;
@@ -147,6 +155,15 @@ component unibus is
       rh_sdcard_miso : in std_logic := '0';
       rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
       rh_type : in integer range 1 to 7 := 6;
+
+-- tm11 magtape controller
+      have_tm : in integer range 0 to 1 := 0;
+      tm_media_change : in std_logic := '0';
+      tm_sdcard_cs : out std_logic;
+      tm_sdcard_mosi : out std_logic;
+      tm_sdcard_sclk : out std_logic;
+      tm_sdcard_miso : in std_logic := '0';
+      tm_sdcard_debug : out std_logic_vector(3 downto 0);
 
 -- xu enc424j600 controller interface
       have_xu : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -589,6 +606,14 @@ begin
       rh_sdcard_mosi => rh_sdcard_mosi,
       rh_sdcard_sclk => rh_sdcard_sclk,
       rh_sdcard_debug => rh_sdcard_debug,
+
+      have_tm => have_tm,
+      tm_media_change => tm_media_change,
+      tm_sdcard_cs => tm_sdcard_cs,
+      tm_sdcard_miso => tm_sdcard_miso,
+      tm_sdcard_mosi => tm_sdcard_mosi,
+      tm_sdcard_sclk => tm_sdcard_sclk,
+      tm_sdcard_debug => tm_sdcard_debug,
 
       have_xu => have_xu,
 		have_xu_debug => 0,
