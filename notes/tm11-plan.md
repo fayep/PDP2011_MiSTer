@@ -249,6 +249,20 @@ rtl/tm11.vhd`) next to the `rk11.vhd` / `rl11.vhd` lines.
   here so the tape works standalone; it drops out on rebase once that
   merges.
 
+### Boot from tape (2026-09-02) — working on hardware
+
+- `roms/m9312h47.mac` `mtgo` routine, probed first in `boot:`.  Space
+  forward over record 0, read record 1 (512-byte primary bootstrap) to
+  address 0, jump.  Modelled on SIMH `pdp11_tm.c` boot2_rom.
+- **Verified on the DE10-Nano**: MGL with the RSTS/E V10.1 install tape
+  on S3 boots `RSTS V10.1 (MT0) INIT V10.1-0L` to "Today's date?".
+- The hi rom is a hard 256-word window (173000-173777).  mtgo had to be
+  written tight (unit-0-only, `r1` autodecrement walk) and the boot
+  banners cut to bare mnemonics to fit; image ends at 173776.
+- MGL gotcha: the tape must be `delay="0"` -- the M9312 `boot:` runs
+  once at power-up, `delay="1"` mounts it too late and the probe
+  NXM-falls-through to rp.
+
 ## Not done / deferred
 
 - `ts11.vhd` (MS:) for the RSTS 10.1 kit, and factoring a shared
