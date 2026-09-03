@@ -379,7 +379,7 @@ begin
 
 -- specific logic for the device
 
-   rmcs1_sc <= '1' when rmcs1_tre = '1' or rmcs1_mcpe = '1'-- FIXME, others?
+   rmcs1_sc <= '1' when rmcs1_tre = '1' or rmcs1_mcpe = '1' or rmds_ata = '1'   -- SC = TRE | MCPE | any-drive-ATA (RH11/RH70)
       else '0';
    rmcs1_tre <= '1' when rmcs2_dlt = '1' or rmcs2_wce = '1' or rmcs2_pe = '1' or rmcs2_ned = '1'
       or rmcs2_nem = '1' or rmcs2_mxf = '1' or rmcs2_pge = '1' or rmcs2_mdpe = '1'
@@ -607,7 +607,9 @@ begin
                               rmcs1_fnc <= bus_dato(5 downto 1);
                               if rmcs1_sc = '0' then
                                  rmcs1_go <= bus_dato(0);
-                                 if rmds_err = '0' then
+                                 -- ATA is cleared only when a new command is
+                                 -- actually started (GO), not on every CS1 poke
+                                 if rmds_err = '0' and bus_dato(0) = '1' then
                                     rmds_ata <= '0';
                                  end if;
                               end if;
@@ -647,7 +649,9 @@ begin
 
 -- rmas  17 776 716                                             -- attention summary
                            when "00111" =>
-                              rmds_ata <= '0';                   -- FIXME, not correct@!
+                              if bus_dato(0) = '1' then          -- write-1-to-clear per drive bit
+                                 rmds_ata <= '0';
+                              end if;
 
 -- rmmr1  17 776 724                                            -- maintenance register
                            when "01010" =>
