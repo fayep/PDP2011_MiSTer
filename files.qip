@@ -21,6 +21,7 @@ set_global_assignment -name VHDL_FILE rtl/mncad.vhd
 set_global_assignment -name VHDL_FILE rtl/mncdi.vhd
 set_global_assignment -name VHDL_FILE rtl/mncdo.vhd
 set_global_assignment -name VHDL_FILE rtl/mnckw.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/panel_dbg.sv
 set_global_assignment -name VHDL_FILE rtl/paneldb.vhd
 set_global_assignment -name VHDL_FILE rtl/paneldriver.vhd
 set_global_assignment -name VHDL_FILE rtl/panelos.vhd

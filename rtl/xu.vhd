@@ -133,6 +133,9 @@ component cpu is
       init_r7 : in std_logic_vector(15 downto 0) := x"f600";         -- start address after reset = o'173000' = m9312 hi rom
       init_psw : in std_logic_vector(15 downto 0) := x"00e0";        -- initial psw for kernel mode, primary register set, priority 7
 
+      dbg_r7 : out std_logic_vector(15 downto 0);
+      dbg_ir : out std_logic_vector(15 downto 0);
+
       clk : in std_logic;
       reset : in std_logic
    );
@@ -597,6 +600,8 @@ begin
       modelcode => modelcode,
       init_r7 => init_r7,
       init_psw => init_psw,
+      dbg_r7 => open,
+      dbg_ir => open,
       clk => cpuclk,
       reset => xureset
    );

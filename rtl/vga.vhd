@@ -76,6 +76,7 @@ entity vga is
 
       have_act_seconds : in integer range 0 to 7200 := 900;          -- auto screen off time, in seconds; 0 means disabled
       have_act : in integer range 1 to 2 := 2;                       -- auto screen off counter reset by keyboard and serial port activity (1) or keyboard only (2)
+      vga_wake : in std_logic := '0';                                -- force seconds=0 (OSD open / front panel)
 
       reset : in std_logic;                                          -- reset
       clk : in std_logic;                                            -- bus clock
@@ -575,6 +576,12 @@ begin
                   actxh <= act2h;
                   seconds <= 0;
                end if;
+            end if;
+
+            -- OSD / console can restore sync even after the timer has fired,
+            -- and even if have_act_seconds is 0.
+            if vga_wake = '1' then
+               seconds <= 0;
             end if;
 
          end if;
