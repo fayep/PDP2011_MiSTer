@@ -68,11 +68,24 @@ tells RSTS's *polled* (IE=0) driver that it is done.
    (not just when GO is set) - if RSTS's poll loop touches CS1 each
    pass, ATA is lost before it is seen.
 
-## Next
+## Update - all three applied (branch fix/rh70-attention, 181d741)
 
-- Fix #1 (SC |= ATA) first - smallest change, most likely.  Rebuild the
-  RBF, boot RSTS, drive Start timesharing.
-- If still hung, add a trace of every RH70 register access during the
-  poll (extend the ODT, or a targeted rh11 debug port) and diff against
-  a SIMH `SHOW RP` / register trace at the same point.
-- Check the AS write-to-clear semantics against SIMH's `rp.c`.
+1. `rmcs1_sc <= ... or rmds_ata = '1'`
+2. RMAS write is now write-1-to-clear (`if bus_dato(0) = '1'`)
+3. CS1 write clears ATA only when GO=1 (`and bus_dato(0) = '1'`)
+
+Building 2026-09-03 (container `rhbuild`).  Deploy the RBF, serial
+console on ttyS1, drive Start timesharing, watch for the hang.
+
+Caveat found while debugging: during the hang `DS` bit 15 (ATA) reads 0
+every sample and `AS` reads 0 - so ATA was not currently set.  Either
+our positioning-completion path is not raising it, or the (now removed)
+premature clears were eating it.  If the build still hangs, next:
+  - watch `DS`/`AS`/`CS1` continuously during Start timesharing to see
+    whether ATA ever flickers on with the new clear semantics;
+  - the poll UCB is at `R1=157762` with fields at `160004..160040` which
+    straddles the kernel page-6/7 boundary (kernel I PDR7 = ACF 2,
+    read-only) - the intermittent `MMR0 = 020003` (RO abort, kernel
+    I-space) that **never traps** may be the real killer.  Check the
+    `mmu.vhd` abort path: an abort sets+freezes MMR0 but if the write
+    still completes / no trap is delivered, RSTS's tables corrupt.
