@@ -135,14 +135,14 @@ signal write_ack_filter : filter_in_t;
 signal write_done_filter : filter_out_t;
 signal card_error_filter : filter_out_t;
 
-signal idle : std_logic;
-signal read_start : std_logic;
-signal read_ack : std_logic;
-signal read_done : std_logic;
-signal write_start : std_logic;
-signal write_ack : std_logic;
-signal write_done : std_logic;
-signal card_error : std_logic;
+signal idle : std_logic := '0';
+signal read_start : std_logic := '0';
+signal read_ack : std_logic := '0';
+signal read_done : std_logic := '0';
+signal write_start : std_logic := '0';
+signal write_ack : std_logic := '0';
+signal write_done : std_logic := '0';           -- otherwise never reset in the FSM; a stray '1' wedges sd_idle
+signal card_error : std_logic := '0';
 
 signal notnow : std_logic := '0';
 
@@ -262,6 +262,7 @@ begin
                   sdcard_cs <= '1';
                   idle <= '0';
                   read_done <= '0';
+                  write_done <= '0';
                   sdcard_debug <= "0011";
                   card_error <= '0';
                end if;
@@ -286,6 +287,7 @@ begin
                      sdhc <= '0';
                      idle <= '0';
                      read_done <= '0';
+                     write_done <= '0';
                      sdcard_debug <= "0011";
                      card_error <= '0';
                      notnow <= '1';
