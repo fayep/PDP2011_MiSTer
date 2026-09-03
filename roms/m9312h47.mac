@@ -39,9 +39,25 @@ L        =bit0                ; lowerbyte multiplier
 bprtascz:
          jmp   @#prtascz      ; 173010
 ;
-; boot: boot from first controller that exists in the system out of rk,rl,rh
+; boot: boot from first controller that exists in the system out of mt,rk,rl,rh
+;
+; mt is probed first: the tm11 csr at 172520 only responds when a tape is
+; mounted (have_tm), so with no tape the tst nxm-traps straight to nomt.
 ;
 boot:
+         mov   #1000,sp
+         clr   @#6
+         mov   #nomt,@#4
+         tst   @#172520
+         mov   #bootmt,r2
+         mov   pc,r1
+         br    bprtascz
+         clr   @#4
+         clr   @#6
+         clr   r0
+         br    mtgo
+;
+nomt:
          mov   #1000,sp
          clr   @#6
          mov   #nork,@#4
@@ -85,6 +101,37 @@ norp:
          mov   pc,r1
          br    bprtascz
          halt
+
+; --------------------------------------------------
+; mt  (TM11 / TU10)
+; --------------------------------------------------
+;
+; modelled on SIMH pdp11_tm.c boot2_rom, verified in SIMH to boot the
+; RSTS/E V10.1 install tape: skip record 0 (a label record) with a space
+; forward, then read record 1 (the 512-byte primary bootstrap) to address
+; 0 and jump there.  MTBRC = -1 lets the read take the whole record.
+
+mtcsr    =172520              ; std TM11 magtape csrbase, +6 = mtcma, +4 = mtbrc, +2 = mtc
+;
+; unit is always 0 here (boot: clears r0 before br mtgo), so the mtc
+; command words are used bare -- no swab-unit-into-8:10 dance.  r1 walks
+; down mtcma -> mtbrc -> mtc via autodecrement, which keeps every later
+; access a bare (r1) and fits the routine inside the 256-word hi rom.
+
+mtgo:    mov   #mtcsr+6,r1    ; -> mtcma
+         clr   (r1)           ; load to address zero
+         mov   #-1,-(r1)      ; mtbrc = -1 (read whole record), r1 -> mtbrc
+         mov   #060011,-(r1)  ; space forward + GO, r1 -> mtc: skip record 0
+1$:      tstb  (r1)           ; test for ready
+         bpl   1$             ; wait
+         mov   #060003,(r1)   ; read + GO: record 1 -> address 0
+2$:      tstb  (r1)           ; test for ready
+         bpl   2$             ; wait
+         tst   (r1)           ; test for error
+         bpl   3$             ; br if ok
+         reset                ; ERROR - reset the world
+         br    mtgo           ; retry
+3$:      clr   pc             ; jump to bootstrap at zero
 
 ; --------------------------------------------------
 ; rl
@@ -273,18 +320,16 @@ prtoct:  mov   #<'0/bit1>,r2  ; ascii 0 right 1b
 ;
 ;
 ;
+bootmt:  .ascii <15><12>
+         .asciz /mt/
 bootrk:  .ascii <15><12>
-         .ascii /boot from rk:/
-         .asciz <15><12>
+         .asciz /rk/
 bootrl:  .ascii <15><12>
-         .ascii /boot from rl:/
-         .asciz <15><12>
+         .asciz /rl/
 bootrp:  .ascii <15><12>
-         .ascii /boot from rp:/
-         .asciz <15><12>
+         .asciz /rp/
 nodev:   .ascii <15><12>
-         .ascii /boot: no dev/
-         .asciz <15><12>
+         .asciz /?/
          .even
 
    .end

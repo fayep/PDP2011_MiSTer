@@ -205,6 +205,7 @@ localparam CONF_STR = {
 	"S0,DSKIMG,Mount RK disk;",
 	"S1,DSKIMG,Mount RL disk;",
 	"S2,DSKIMG,Mount RM/RP (RH) disk;",
+	"S3,TAP,Mount TM11 tape;",
 	"-;",
 	"O[7:5],PDP-11 Model,20,34,44,45,70,94;",
 	"-;",
@@ -239,23 +240,23 @@ wire         ps2k_d;
 wire [21:0] gamma_bus;
 
 
-wire [31:0] sd_lba[3];
-reg   [2:0] sd_rd;
-reg   [2:0] sd_wr;
-wire  [2:0] sd_ack;
+wire [31:0] sd_lba[4];
+reg   [3:0] sd_rd;
+reg   [3:0] sd_wr;
+wire  [3:0] sd_ack;
 wire [7:0]sd_buff_addr;
 wire [15:0] sd_buff_dout;
-wire [15:0] sd_buff_din[3];
+wire [15:0] sd_buff_din[4];
 wire        sd_buff_wr;
-wire  [2:0] img_mounted;
-wire  [2:0] img_readonly;
+wire  [3:0] img_mounted;
+wire  [3:0] img_readonly;
 wire  [63:0]img_size;
 
 wire  [7:0] uart_mode;
 
 
 
-hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(3),.PS2DIV(3125)) hps_io
+hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(4),.PS2DIV(3125)) hps_io
 (
    
 	.clk_sys(clk_100mhz),
@@ -312,15 +313,20 @@ wire vsdmiso;
 reg vsd_sel_rk = 0;
 reg vsd_sel_rl = 0;
 reg vsd_sel_rh = 0;
+reg vsd_sel_tm = 0;
+reg tape_mount_tgl = 0;
 
 always @(posedge clk_100mhz) begin
 	if(img_mounted[0]) vsd_sel_rk <= |img_size;
 	if(img_mounted[1]) vsd_sel_rl <= |img_size;
 	if(img_mounted[2]) vsd_sel_rh <= |img_size;
+	if(img_mounted[3]) vsd_sel_tm <= |img_size;
+	if(img_mounted[3]) tape_mount_tgl <= ~tape_mount_tgl;
 	if(RESET) begin
    	vsd_sel_rk <= 0;
 		vsd_sel_rl <= 0;
 		vsd_sel_rh <= 0;
+		vsd_sel_tm <= 0;
 	end
 end
 
@@ -402,13 +408,41 @@ sd_card #(.WIDE(1)) sd_card_rh
 
 );
 
+sd_card #(.WIDE(1)) sd_card_tm
+(
+	.clk_sys     (clk_100mhz),
+	.clk_spi     (clk_100mhz),
+	.reset       (reset),
+
+	.sdhc(1),
+
+	.sd_lba      (sd_lba[3]),
+	.sd_rd       (sd_rd[3]),
+	.sd_wr       (sd_wr[3]),
+	.sd_ack      (sd_ack[3]),
+
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_din (sd_buff_din[3]),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_wr  (sd_buff_wr),
+
+
+	.sck         (tm_sclk),
+	.ss          (tm_cs | ~vsd_sel_tm),
+	.mosi        (tm_mosi),
+	.miso        (tm_miso)
+
+);
+
 int have_rk;
 int have_rl;
 int have_rh;
+int have_tm;
 
 assign have_rk = vsd_sel_rk ? 1 : 0;
 assign have_rl = vsd_sel_rl ? 1 : 0;
 assign have_rh = 1;
+assign have_tm = vsd_sel_tm ? 1 : 0;
 
 //
 wire rk_sclk;
@@ -428,6 +462,12 @@ wire rl_cs;
 wire rl_mosi;
 wire rl_miso;
 wire [3:0]rl_sddebug;
+//
+wire tm_sclk;
+wire tm_cs;
+wire tm_mosi;
+wire tm_miso;
+wire [3:0]tm_sddebug;
 //
 //
 
@@ -511,6 +551,14 @@ mister_top mister_top
    .rh_sdcard_mosi (rh_mosi),
    .rh_sdcard_sclk (rh_sclk),
    .rh_sdcard_debug(rh_sddebug),
+
+   .have_tm (have_tm),
+   .tm_media_change (tape_mount_tgl),
+   .tm_sdcard_cs   (tm_cs),
+   .tm_sdcard_miso (tm_miso),
+   .tm_sdcard_mosi (tm_mosi),
+   .tm_sdcard_sclk (tm_sclk),
+   .tm_sdcard_debug(tm_sddebug),
 	
 	.dram_addr (SDRAM_A),
 	.dram_dq   (SDRAM_DQ),
