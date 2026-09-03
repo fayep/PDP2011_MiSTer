@@ -730,7 +730,7 @@ begin
 
 -- rmas  17 776 716                                             -- attention summary
                            when "00111" =>
-                              rmds_ata <= '0';
+                              null;                              -- ATA cleared by bit 0 in the low-byte handler (write-1-to-clear)
 
 -- rmof  17 776 732                                             -- offset
                            when "01101" =>
