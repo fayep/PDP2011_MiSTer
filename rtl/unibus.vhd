@@ -1344,7 +1344,7 @@ signal cr_dati : std_logic_vector(15 downto 0);
 
 signal nclk : std_logic;
 
-signal have_oddabort : integer range 0 to 1;
+signal have_oddabort : integer range 0 to 255;   -- width matches mmu's have_odd_abort port (only ever 0/1); wider range keeps strict simulators happy
 
 begin
 

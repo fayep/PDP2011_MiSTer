@@ -1,0 +1,152 @@
+	.title	tb_rsts_overlay - polled RH70 read, MMU on, kernel D-space
+
+;  Reproduces the shape of the RSTS/E V10.1 wedge with the *real* MMU
+;  configuration seen at the hang:
+;
+;    MMR3 = 000065  (kernel-D + user-D + 22-bit + UNIBUS map)
+;    kernel I PDR7 = read-only (ACF 010) ; kernel D PDR7 = read/write
+;    kI/kD PAR7 -> I/O page ; PAR 0..6 identity
+;    running in register set 1, priority 5
+;
+;  The poll loop then touches the RH70 registers (I/O page) as DATA -
+;  which on a correct separate-I/D core must go through kernel D-space
+;  (PDR7 r/w), never kernel I-space (PDR7 read-only).  If the core routes
+;  the I/O-page data access through the I-space PDR, the write to CS1
+;  (GO) or a read takes a read-only mem-management abort.
+;
+;  result(500):  1  = every sector's poll completed          (PASS)
+;               77  = RH raised SC/error
+;               66  = memory-management trap (vector 250)     <-- the bug
+;                0  = poll never saw RDY, harness timed out    (HANG)
+
+RHCS1	= 176700
+RHWC	= 176702
+RHBA	= 176704
+RHDA	= 176706
+RHDC	= 176734
+RHBAE	= 176750
+KWCSR	= 177546
+PSW	= 177776
+MMR0	= 177572
+MMR2	= 177576
+MMR3	= 172516
+
+KIPAR0	= 172340
+KIPDR0	= 172300
+KDPAR0	= 172360
+KDPDR0	= 172320
+
+NSECT	= 4.
+
+	.asect
+
+	.=100				; line clock vector
+	.word	clkisr
+	.word	4340			; kernel, register set 1, priority 7
+	.=250				; memory management vector
+	.word	mmtrap
+	.word	340
+
+	.=500
+result:	.word	0
+count:	.word	0			; sectors whose poll completed
+ticks:	.word	0			; clock interrupts taken
+last:	.word	0			; last CS1 value seen in the poll
+mmr0v:	.word	0
+mmr2v:	.word	0
+
+	.=1000
+start:
+	mov	#4000,sp
+
+; ---- kernel I PAR 0..6 identity, PAR7 -> I/O page ----
+	mov	#KIPAR0,r0
+	clr	r1
+	mov	#7.,r2
+1$:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,1$
+	mov	#177600,(r0)		; kI PAR7
+
+; ---- kernel D PAR 0..6 identity, PAR7 -> I/O page ----
+	mov	#KDPAR0,r0
+	clr	r1
+	mov	#7.,r2
+2$:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,2$
+	mov	#177600,(r0)		; kD PAR7
+
+; ---- kernel I PDR 0..6 r/w, PDR7 read-only (ACF 010) ----
+	mov	#KIPDR0,r0
+	mov	#7.,r2
+3$:	mov	#77406,(r0)+
+	sob	r2,3$
+	mov	#77402,(r0)		; kI PDR7 = ACF 2, read only
+
+; ---- kernel D PDR 0..7 r/w ----
+	mov	#KDPDR0,r0
+	mov	#8.,r2
+4$:	mov	#77406,(r0)+
+	sob	r2,4$
+
+; ---- MMR3: kernel-D + user-D + 22-bit + UNIBUS map ----
+	mov	#65,@#MMR3
+
+; ---- enable relocation ----
+	mov	#1,@#MMR0
+
+; ---- drop to register set 1, priority 5 ----
+	mov	#4240,@#PSW
+
+	clr	@#result
+	clr	@#count
+	clr	@#ticks
+	mov	#100,@#KWCSR		; line clock interrupt enable
+	clr	r4			; sector index
+
+loop:
+	clr	@#RHBAE
+	mov	#40000,@#RHBA
+	clr	@#RHDC
+	mov	r4,@#RHDA
+	mov	#-400,@#RHWC
+	mov	#71,@#RHCS1		; fnc = read data + GO ; IE = 0
+
+poll:
+	mov	@#RHCS1,r0
+	mov	r0,@#last
+	bit	#100000,r0		; SC / error?
+	bne	fail
+	bit	#200,r0			; RDY?
+	beq	poll
+
+	inc	r4
+	inc	@#count
+	cmp	r4,#NSECT
+	blt	loop
+
+	mov	#1,@#result
+done:	br	done
+
+fail:
+	mov	#77,@#result
+	br	done
+
+; ---- line clock ISR ----
+clkisr:
+	inc	@#ticks
+	mov	#40,-(sp)
+1$:	dec	(sp)
+	bne	1$
+	tst	(sp)+
+	rti
+
+; ---- memory-management trap ----
+mmtrap:
+	mov	@#MMR0,@#mmr0v
+	mov	@#MMR2,@#mmr2v
+	mov	#66,@#result
+	halt
+
+	.end	start

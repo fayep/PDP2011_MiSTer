@@ -803,7 +803,7 @@ begin
 
                end if;
 
-               rmclock <= rmclock + 1;
+               if rmclock = 4095 then rmclock <= 0; else rmclock <= rmclock + 1; end if;  -- 12-bit free-running counter; explicit wrap for strict simulators
                if rmclock = 0 then
                   if rmla_sc = "11111" then
                      rmla_sc <= "00000";
