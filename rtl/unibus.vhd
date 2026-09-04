@@ -1022,12 +1022,17 @@ signal bus_control_dato : std_logic;
 signal bus_control_datob : std_logic;
 
 -- RH70-idle watchdog (debug aid for the RSTS/E V10.1 boot wedge): if no
--- write pokes RH CS1 GO for WD_THRESHOLD cpuclk cycles (~5s at the
+-- write pokes RH CS1 GO for WD_THRESHOLD cpuclk cycles (~90s at the
 -- nominal ~10MHz cpuclk), auto-halt the cpu so the exact wedged state
 -- can be examined over the ODT console instead of guessing when to
--- halt by hand.  See notes/rsts-v10-rh70-hang.md.
-constant WD_THRESHOLD : unsigned(26 downto 0) := conv_unsigned(50000000, 27);
-signal wd_cnt : unsigned(26 downto 0) := (others => '0');
+-- halt by hand.  The real hang is confirmed to sit idle for 200s+, so
+-- there's no cost to a generous margin here - and it has to clear
+-- comfortably past the RSTS INIT date/time prompts, which sit idle on
+-- the disk for as long as it takes a human (or an SSH-scripted
+-- keystroke-by-keystroke drive) to answer them.  See
+-- notes/rsts-v10-rh70-hang.md.
+constant WD_THRESHOLD : unsigned(29 downto 0) := conv_unsigned(900000000, 30);
+signal wd_cnt : unsigned(29 downto 0) := (others => '0');
 signal wd_trig : std_logic := '0';
 signal cons_ena_eff : std_logic;
 
