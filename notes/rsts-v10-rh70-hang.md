@@ -89,3 +89,67 @@ premature clears were eating it.  If the build still hangs, next:
     I-space) that **never traps** may be the real killer.  Check the
     `mmu.vhd` abort path: an abort sets+freezes MMR0 but if the write
     still completes / no trap is delivered, RSTS's tables corrupt.
+
+## 2026-09-03 - CONFIRMED: lost RH70 completion interrupt
+
+Live ODT forensics on the hung core (no rebuild - the hang was still
+up).  The mainline is stuck at **PC 121344**, kernel / **register set 1**
+/ **priority 5**, and *never retires a single instruction*: single-step
+shows a perfectly rigid 40-instruction cycle - clock IRQ (BR6, vector
+100 -> ISR at 040150) runs 40 instrs, `RTI` to 121344, and the clock is
+*immediately pending again*, so the priority-5 code is 100% starved.
+
+The instruction at 121344 is `TSTB 2(R1) / BNE`, R1 = R1' = **004514**,
+an I/O request block.  The three fields it polls -
+  [004516] completion byte  = 000000   (TSTB -> Z=1, never branches)
+  [004556] (BIT #4000)       = 000000
+  [004602] (BIT #140000)     = 000000
+are all zero and never change.  This is a queued disk read waiting for
+its completion to be posted by the RP interrupt service - which never
+runs.
+
+RH70 registers (frozen): `CS1=004670` (RDY=1, GO=0, **IE=0**, fnc=READ
+DATA), `WC=0`, `ER1=0`, `AS=0`, `DS=010700`, `DC=CC=0647`,
+`DA=006417` (trk 13, sec 15), `BA=131000`, `BAE=1`.  So: read of cyl
+647(8)=423(10) / trk 13 / sec 15, DMA target phys **0o1131000** (BAE=1,
+the >256KW buffer-pool region - NOT resident monitor; 18-bit 0o131000
+holds intact monitor code, untouched, so nothing was over-written).
+The transfer *finished* (WC=0, RDY=1, no error) but no BR5 interrupt
+ever reached the CPU.
+
+**PROOF:** `poke 17776700 04770` (set CS1 IE=1 while RDY=1) + `cont`
+released the hang instantly.  The rigid 40-instr clock loop broke and
+RSTS resumed broad multi-module execution (49 unique PCs / 61 samples
+across the scheduler + 5 monitor modules).  It then settles into a
+*second* monitor-level wait (PC ~142040, again `TST`/`TSTB` on an
+R1-relative flag) with no new disk I/O - i.e. the next queued read has
+also lost its interrupt.  (Console progress unconfirmed: serial console
+was not enabled this run and the core's video can't be screenshotted
+from the CLI.)
+
+### Where the interrupt is lost - rtl/rh11.vhd:429-465 (interrupt FSM)
+
+Completion raises a **1-cycle** `rmcs1_rdyset` pulse (rh11.vhd:878 etc);
+line 801 consumes it the next cycle (`rmcs1_rdy<='1'; rmcs1_rdyset<='0'`).
+The interrupt FSM (`i_idle`, line 435) only fires if it catches that
+pulse **and** `interrupt_trigger = '0'`.  `interrupt_trigger` is set on
+fire (439) and only cleared in `i_idle` when the fire condition is
+*false* (442) or when IE drops mid-`i_req` (452) - never on the normal
+`i_wait -> i_idle` return.  So after any interrupt the FSM sits in
+`i_idle` with `interrupt_trigger` still '1'; it self-clears one cycle
+later *because IE was auto-cleared at 459* - but if the driver has
+already re-written CS1 with IE=1 and the next `rmcs1_rdyset` pulse lands
+in that same cycle, line 435's condition is TRUE, so line 442 is skipped,
+`interrupt_trigger` stays '1', and the 1-cycle pulse is gone by the next
+cycle.  **Interrupt silently dropped; IE left as the driver set it.**
+
+Fix direction: replace the "FSM must catch the 1-cycle pulse" design
+with a latched pending-interrupt flip-flop - set on `rmcs1_rdyset |
+rmds_ataset`, cleared only when the interrupt is actually granted
+(`i_wait` exit).  Then a coincident pulse can't be missed.  Relates to
+the CDC concerns in the `device-flag-cdc` / `sdspi-clocks-unconstrained`
+memories.
+
+This supersedes the SC/ATA theory above: at the hang ATA is genuinely 0
+and irrelevant - the missing signal is the plain data-transfer-complete
+BR5 interrupt.
