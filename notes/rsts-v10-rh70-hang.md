@@ -322,3 +322,30 @@ file, not directory structure.
    no-trap loop is the likely direct cause of the spin.
 3. Fix MMR1 (`cpu.vhd:937` gaps) so abort recovery restores registers,
    in case R1=157762 is the corrupt-by-partial-instruction case.
+
+## 2026-09-04 - reproduction harness `sim/tb_rsts_overlay`
+
+Full unibus (cpu + mmu + kw11l + rh11) + zero-wait RAM + behavioural
+sdspi that serves data after an 8000-cycle delay so the ~125us line
+clock ticks while the CPU spins.  Program in `tb_rsts_overlay.mac`.
+
+ - **Phase 1** (polled read, no MMU, set 0): 4-sector polled RH70 read,
+   5 clock preemptions -> **PASS**.  A bare polled-read-vs-clock race is
+   not the bug.
+ - **Phase 2** (polled read + MMU exactly as at the hang: MMR3=65,
+   kernel-D + user-D + 22-bit + UB-map, **kI PDR7 read-only**, kD PDR7
+   r/w, register **set 1**, priority 5): still **PASS**, no
+   memory-management trap.  So the MMU *does* route I/O-page data
+   accesses through kernel D-space correctly - the "kernel-D routed to
+   the I-space RO PDR" idea is disproven in isolation, and the
+   `MMR0 = 020017` seen on hardware really was the artefact of repeated
+   `poke 17777572 0`.
+ - **Phase 3** (interrupt-driven read, CS1 IE=1, spin on a software
+   flag the BR5 ISR sets, clock at BR6): <running>.
+
+Still not reproduced by phases 1-2.  Remaining deltas from the real
+hang: interrupt-driven (phase 3), the APR-5 remapped overlay window
+(the wrapper at v.142600 that swaps kI/kD PAR5), BAE=1 DMA target with
+the UB-map active, and the real poll's actual condition (it tests
+`146(R1)` / a retry counter, R1 = a monitor control block, not plain
+CS1.RDY).
