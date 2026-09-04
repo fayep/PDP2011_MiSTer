@@ -257,6 +257,30 @@ This RO abort is present with **stock mmu.vhd** (this build does not
 carry the ACF-001 change from fix/rsts-candidate, and that change was
 already tested = no change).
 
+### How much of the disk got read (2026-09-04)
+
+`MiSTer_pdp2011` serves the pack from a normal fd - `/proc/<pid>/fdinfo`
+gives the live file offset.
+
+ - Image `rsts_v10.1_rp.dsk` = 174,419,968 bytes = 340,664 blocks
+   (a full RP06 bar 6 blocks).
+ - At the hang the fd offset is frozen at **90,693,632 bytes = block
+   177,136 = exactly 52.00 % of the pack** (RP06 cyl 423 / ~trk 13).
+   Byte-identical across every boot / process instance.
+ - It is NOT a sequential rebuild scan: within ~15 s of the disk going
+   active the offset jumps straight to ~52 %, then wobbles in an
+   ~3.5 MB window (blocks ~170,000-177,400) before wedging.
+ - `/proc/<pid>/io`: ~10 k read syscalls, only a few MB of file data -
+   so RSTS is chewing on directory / allocation structures clustered
+   near pack-middle (where RSTS/E places the MFD/GFD and SATT.SYS),
+   not scanning the whole disk.
+ - RH70 shows that final read *complete* (cyl 423/trk 13/sec 15, WC=0,
+   RDY=1, ER1=0) with nothing issued afterwards.
+
+So the disk itself is fine and ~half the pack's addressable range has
+been touched; RSTS gets one specific mid-pack block back and then never
+issues another I/O.
+
 ### Next
 
 1. Is the abort real or spurious?  At the hang, decode MMR2=142612 +
