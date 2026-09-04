@@ -364,7 +364,33 @@ Remaining unmodelled deltas from the real hang:
   - a corrupt base pointer (R1=157762) whose *cause* is upstream and
     isn't something a repro can just inject
 
-Next: either phase 5 (BAE=1 + UB-map), or instrument the hardware -
-add a debug trap/counter to the FPGA build that latches PC + both
-register sets + CS1 when the overlay-load poll spins N times, instead
-of continuing to guess in the sim.
+ - **Phase 5** (BAE=1 DMA target, matching the real hang's DMA address
+   exactly, plus a data-verification check on the BAE=1 buffer): PASS -
+   4 sectors, 5 interleaved clock ints, correct data, `last CS1 =
+   004670` (the exact frozen value from the real hang).  First attempt
+   found a *test* bug, not a core bug: every word write to RH CS1 also
+   loads BAE(1:0) from CS1's own bits 9:8 (real RH70 behaviour,
+   rh11.vhd ~719) - my program's separate BAE-register write was
+   getting clobbered by the following GO write.
+
+**Five mechanisms eliminated; none reproduces the wedge.**
+
+## 2026-09-04 - RH70-idle watchdog (hardware instrumentation)
+
+`unibus.vhd`: auto-halts the cpu (same path as the OSD Halt toggle) if
+no write pokes RH CS1's GO bit for a long time, so the exact wedged
+state can be read over the ODT console without guessing when to halt
+by hand - the manual halting/poking this session has repeatedly
+perturbed state and produced artefacts (the self-induced MMR0=020017
+episode).  Threshold: originally 5s of cpuclk activity, but that's
+short enough to trigger *during the interactive INIT date/time
+prompts* (RSTS is legitimately disk-idle there for as long as it takes
+to answer them over a scripted SSH session) - widened to ~90s (900M
+cpuclk cycles @ ~10MHz).  The real hang sits disk-idle for 200s+, so
+the wide margin costs nothing.  Building on branch fix/rh70-attention,
+commit 64ae750.
+
+Next once the build lands: reload, drive to the hang, let the watchdog
+auto-halt, and read the *undisturbed* state - both register sets, PSW,
+MMR0-3, RH70 registers - directly, instead of the noisy manually-timed
+snapshots this session relied on.
