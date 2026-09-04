@@ -340,12 +340,31 @@ clock ticks while the CPU spins.  Program in `tb_rsts_overlay.mac`.
    the I-space RO PDR" idea is disproven in isolation, and the
    `MMR0 = 020017` seen on hardware really was the artefact of repeated
    `poke 17777572 0`.
- - **Phase 3** (interrupt-driven read, CS1 IE=1, spin on a software
-   flag the BR5 ISR sets, clock at BR6): <running>.
+ - **Phase 3** (interrupt-driven, wait at priority 5): HANG - but
+   *expected*: priority 5 masks BR5, so the disk ISR can't be entered.
+   Tells us the real hang (CPU pinned at pri 5) must be *polling*, not
+   waiting on the disk interrupt.
+ - **Phase 3b** (interrupt-driven, wait at priority 4 so BR5+BR6 both
+   deliverable): PASS - 6 sectors, 7 interleaved clock ints.  BR5/BR6
+   arbitration and RH70 completion delivery are correct.
+ - **Phase 4** (APR-5 overlay window: pri-5 mainline and pri-7 clock
+   ISR both doing save/remap/restore of kI+kD PAR5, JSRing into virtual
+   120000): PASS - 800 rounds, every caller got the overlay it asked
+   for, no stale mapping, no MM abort.
 
-Still not reproduced by phases 1-2.  Remaining deltas from the real
-hang: interrupt-driven (phase 3), the APR-5 remapped overlay window
-(the wrapper at v.142600 that swaps kI/kD PAR5), BAE=1 DMA target with
-the UB-map active, and the real poll's actual condition (it tests
-`146(R1)` / a retry counter, R1 = a monitor control block, not plain
-CS1.RDY).
+**Four mechanisms eliminated; none reproduces the wedge.**  The core's
+polled read, interrupt path + arbitration, MMU D-space routing, and
+PAR-5 remapping all behave correctly under a preempting clock.
+
+Remaining unmodelled deltas from the real hang:
+  - the actual RSTS.SIL monitor instruction stream (its RAM image is in
+    the FPGA's separate SDRAM chip - not ARM-mappable, and ~56k
+    `pdp-odt peek`s to dump is impractical)
+  - BAE=1 DMA target with the UNIBUS map active (phase 5, not yet done)
+  - a corrupt base pointer (R1=157762) whose *cause* is upstream and
+    isn't something a repro can just inject
+
+Next: either phase 5 (BAE=1 + UB-map), or instrument the hardware -
+add a debug trap/counter to the FPGA build that latches PC + both
+register sets + CS1 when the overlay-load poll spins N times, instead
+of continuing to guess in the sim.
