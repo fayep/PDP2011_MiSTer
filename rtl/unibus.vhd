@@ -1021,6 +1021,16 @@ signal bus_control_dati : std_logic;
 signal bus_control_dato : std_logic;
 signal bus_control_datob : std_logic;
 
+-- RH70-idle watchdog (debug aid for the RSTS/E V10.1 boot wedge): if no
+-- write pokes RH CS1 GO for WD_THRESHOLD cpuclk cycles (~5s at the
+-- nominal ~10MHz cpuclk), auto-halt the cpu so the exact wedged state
+-- can be examined over the ODT console instead of guessing when to
+-- halt by hand.  See notes/rsts-v10-rh70-hang.md.
+constant WD_THRESHOLD : unsigned(26 downto 0) := conv_unsigned(50000000, 27);
+signal wd_cnt : unsigned(26 downto 0) := (others => '0');
+signal wd_trig : std_logic := '0';
+signal cons_ena_eff : std_logic;
+
 signal busmaster_nxmabort : std_logic;
 
 signal unibus_addr_match : std_logic;
@@ -1348,6 +1358,28 @@ signal have_oddabort : integer range 0 to 255;   -- width matches mmu's have_odd
 
 begin
 
+   -- RH70-idle watchdog: see the constant/signal declarations above.
+   cons_ena_eff <= cons_ena and not wd_trig;
+
+   process(clk)
+   begin
+      if clk = '1' and clk'event then
+         if reset = '1' then
+            wd_cnt <= (others => '0');
+            wd_trig <= '0';
+         elsif bus_control_dato = '1' and bus_addr(21 downto 18) = "1111"
+               and bus_addr(17 downto 0) = o"776700" and bus_dato(0) = '1' then
+            wd_cnt <= (others => '0');           -- RH CS1 GO written: disk is active again
+         elsif wd_trig = '0' then
+            if wd_cnt >= WD_THRESHOLD then
+               wd_trig <= '1';                    -- latch: stays halted till the next reset
+            else
+               wd_cnt <= wd_cnt + 1;
+            end if;
+         end if;
+      end if;
+   end process;
+
    cpu0: cpu port map(
       addr_v => cpu_addr,
       datain => cpu_datain,
@@ -1404,7 +1436,7 @@ begin
       cons_exa => cons_exa,
       cons_dep => cons_dep,
       cons_cont => cons_cont,
-      cons_ena => cons_ena,
+      cons_ena => cons_ena_eff,
       cons_start => cons_start,
       cons_sw => cons_sw,
       cons_consphy => cpu_cons_consphy,
