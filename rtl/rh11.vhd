@@ -111,6 +111,12 @@ end component;
 
 signal base_addr_match : std_logic;
 signal interrupt_trigger : std_logic := '0';
+signal int_owed : std_logic := '0';        -- latched interrupt-pending: set by a
+                                            -- completion (rdyset/ataset) or by IE being
+                                            -- armed on an already-ready controller; gated
+                                            -- by IE, cleared only when the interrupt is
+                                            -- granted. Survives IE enabled after completion.
+signal rmcs1_ie_d : std_logic := '0';       -- IE delayed one cycle, for edge detect
 type interrupt_state_type is (
    i_idle,
    i_req,
@@ -412,6 +418,8 @@ begin
 
             br <= '0';
             interrupt_trigger <= '0';
+            int_owed <= '0';
+            rmcs1_ie_d <= '0';
             interrupt_state <= i_idle;
 
             rmcs2_clr <= '1';
@@ -432,7 +440,7 @@ begin
                   when i_idle =>
 
                      br <= '0';
-                     if rmcs1_ie = '1' and (rmcs1_rdyset = '1' or rmds_ataset = '1') then
+                     if rmcs1_ie = '1' and int_owed = '1' then
                         if interrupt_trigger = '0' then
                            interrupt_state <= i_req;
                            br <= '1';
@@ -456,13 +464,24 @@ begin
                   when i_wait =>
                      if bg = '0' then
                         interrupt_state <= i_idle;
-                        rmcs1_ie <= '0';                                      -- automatically reset ie when interrupt recognized
+                        int_owed <= '0';                                      -- interrupt granted: clear the pending latch
                      end if;
 
                   when others =>
                      interrupt_state <= i_idle;
 
                end case;
+
+               -- Latch an interrupt request into int_owed: on a completion (RDY 0->1 or
+               -- attention) even if IE is currently off, or on IE being armed while the
+               -- controller is already ready (the "enable interrupts on a ready
+               -- controller" probe).  After the case so a completion coincident with a
+               -- grant is kept.
+               rmcs1_ie_d <= rmcs1_ie;
+               if rmcs1_rdyset = '1' or rmds_ataset = '1'
+                  or (rmcs1_ie = '1' and rmcs1_ie_d = '0' and (rmcs1_rdy = '1' or rmds_ata = '1')) then
+                  int_owed <= '1';
+               end if;
             else
                br <= '0';
             end if;

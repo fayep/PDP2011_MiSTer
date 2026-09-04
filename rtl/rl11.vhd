@@ -99,6 +99,12 @@ end component;
 
 signal base_addr_match : std_logic;
 signal interrupt_trigger : std_logic := '0';
+signal int_owed : std_logic := '0';        -- latched interrupt-pending: set by a
+                                            -- completion (CRDY 0->1) or by IE being armed
+                                            -- on an already-ready controller; gated by IE,
+                                            -- cleared only when the interrupt is granted.
+signal csr_crdy_d : std_logic := '1';       -- CRDY delayed one cycle, for edge detect
+signal csr_ie_d : std_logic := '0';         -- IE delayed one cycle, for edge detect
 type interrupt_state_type is (
    i_idle,
    i_req,
@@ -277,6 +283,9 @@ begin
 
                br <= '0';
                interrupt_trigger <= '0';
+               int_owed <= '0';
+               csr_crdy_d <= '1';
+               csr_ie_d <= '0';
                interrupt_state <= i_idle;
 
             end if;
@@ -289,7 +298,7 @@ begin
                   when i_idle =>
 
                      br <= '0';
-                     if csr_ie = '1' and csr_crdy = '1' then
+                     if csr_ie = '1' and int_owed = '1' then
                         if interrupt_trigger = '0' then
                            interrupt_state <= i_req;
                            br <= '1';
@@ -309,12 +318,24 @@ begin
                   when i_wait =>
                      if bg = '0' then
                         interrupt_state <= i_idle;
+                        int_owed <= '0';                                      -- interrupt granted: clear the pending latch
                      end if;
 
                   when others =>
                      interrupt_state <= i_idle;
 
                end case;
+
+               -- Latch an interrupt request into int_owed: on CRDY 0->1 (command/seek
+               -- complete) regardless of IE, or on IE being armed while CRDY is already
+               -- set (the classic "enable interrupts on a ready controller" probe).
+               -- After the case so a completion coincident with a grant is not lost.
+               csr_crdy_d <= csr_crdy;
+               csr_ie_d <= csr_ie;
+               if (csr_crdy = '1' and csr_crdy_d = '0')
+                  or (csr_ie = '1' and csr_ie_d = '0' and csr_crdy = '1') then
+                  int_owed <= '1';
+               end if;
 
             else
                br <= '0';

@@ -100,6 +100,12 @@ end component;
 
 signal base_addr_match : std_logic;
 signal interrupt_trigger : std_logic := '0';
+signal int_owed : std_logic := '0';        -- latched interrupt-pending: set by a
+                                            -- completion (RDY 0->1) or by IDE armed on an
+                                            -- already-ready controller; gated by IDE,
+                                            -- cleared only when the interrupt is granted.
+signal rkcs_rdy_d : std_logic := '1';       -- RDY delayed one cycle, for edge detect
+signal rkcs_ide_d : std_logic := '0';       -- IDE delayed one cycle, for edge detect
 type interrupt_state_type is (
    i_idle,
    i_req,
@@ -332,6 +338,9 @@ begin
 
             br <= '0';
             interrupt_trigger <= '0';
+            int_owed <= '0';
+            rkcs_rdy_d <= '1';
+            rkcs_ide_d <= '0';
             interrupt_state <= i_idle;
             scpset <= '0';
 
@@ -413,7 +422,7 @@ begin
                         scpset <= '0';
                      end if;
 
-                     if rkcs_ide = '1' and rkcs_rdy = '1' then
+                     if rkcs_ide = '1' and int_owed = '1' then
                         if interrupt_trigger = '0' then
                            interrupt_state <= i_req;
                            br <= '1';
@@ -438,12 +447,24 @@ begin
                   when i_wait =>
                      if bg = '0' then
                         interrupt_state <= i_idle;
+                        int_owed <= '0';                                      -- interrupt granted: clear the pending latch
                      end if;
 
                   when others =>
                      interrupt_state <= i_idle;
 
                end case;
+
+               -- Latch an interrupt request into int_owed: on RDY 0->1 (function
+               -- complete) regardless of IDE, or on IDE armed while RDY is already set
+               -- (the "enable interrupts on a ready controller" probe).  After the case
+               -- so a completion coincident with a grant is not lost.
+               rkcs_rdy_d <= rkcs_rdy;
+               rkcs_ide_d <= rkcs_ide;
+               if (rkcs_rdy = '1' and rkcs_rdy_d = '0')
+                  or (rkcs_ide = '1' and rkcs_ide_d = '0' and rkcs_rdy = '1') then
+                  int_owed <= '1';
+               end if;
             else
                br <= '0';
             end if;
