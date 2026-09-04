@@ -205,3 +205,68 @@ Relates to `device-flag-cdc` / `sdspi-clocks-unconstrained` memories
 TODO: capture the RL02 hang's CSR (`peek 17774400`) - expect
 `IE=1, CRDY=1` (bits 6,7) with no interrupt in flight, which nails
 defect A for RL.
+
+## 2026-09-04 - the interrupt fix does NOT fix this hang
+
+Built the int_owed fix (rh11/rl11/rk11, commit e5186d9) and ran it on
+hardware with the RP image + serial console.  **RSTS stops at the exact
+same point** ("4 devices disabled", 112 bytes on the console, no more),
+with the set-0 registers **byte-identical** to the pre-fix hang:
+
+    R0=176700  R1=157762  R2=000400  R3=000402  R4=160000  R5=000071
+
+So the disk completion interrupt is not what's missing.  tb_rh11_dma /
+tb_rh11_attn still pass; keep the commits (real bugs) but they are not
+this bug.
+
+### The single-step "clock livelock" was a measurement artefact
+
+Earlier I read the rigid "40 instructions of clock ISR, RTI, immediately
+re-interrupted, mainline never advances" as the bug.  It is not.  The
+KW11-L divider (`kw11l.vhd`, second process) free-runs on `clk50mhz`
+**while the CPU is halted**.  Between two SSH-paced `pdp-odt step`
+calls (tens of ms) the divider overflows many times, so every single
+step lands on a fresh pending tick.  At full `cont` speed the mainline
+runs broadly across the scheduler + monitor - it just never makes
+forward progress.  Do NOT diagnose the mainline by single-stepping here.
+
+### What is actually latched at the hang: a read-only MMU abort
+
+    MMR0 (777572) = 020017   bit13 = ABORT: read-only violation
+                             bit0  = MMU enable, bits3:1 = page 7
+                             bit4 (I/D) = 0  (but this bit is known
+                             unreliable in our MMU - see the kernel-D
+                             note below)
+    MMR2 (777576) = 142612   VA of the aborted instruction
+    MMR3 (772516) = 000065   kernel-D + user-D + UB-map + 22-bit all on
+
+MMR0 stays frozen at 020017 - the MMU latched an abort and nothing
+cleared it, which means the vector-250 abort trap was **not delivered**
+(or RSTS's handler never ran).  RSTS is spinning instead of running its
+memory-management trap handler.
+
+R1 = 157762 makes the disk-completion poll (`BIT #100,30(R1)` etc, at
+~122432) index into virtual 0o160000+ = MMU **page 7 = the I/O page**.
+Either R1 is corrupt (register left wrong by a partially-executed
+instruction - MMR1 is incompletely implemented, see
+`notes/mmr1-incomplete.md`) and the poll then faults on the bad
+address; or the poll address is fine and the MMU is wrongly RO-aborting
+a legal kernel I/O-page access.
+
+This RO abort is present with **stock mmu.vhd** (this build does not
+carry the ACF-001 change from fix/rsts-candidate, and that change was
+already tested = no change).
+
+### Next
+
+1. Is the abort real or spurious?  At the hang, decode MMR2=142612 +
+   the kernel PDRs for page 7 (I and D) - `peek 172356` (kI PDR7),
+   `peek 172376` (kD PDR7) - and see what ACF page 7 has and whether
+   the faulting access should have been allowed.
+2. Trace the vector-250 path in `cpu.vhd` (`state_mmuabort`, ~2503):
+   `have_mmuimmediateabort = 0` for model 70, so it waits for
+   `mmuabort` to deassert before trapping - if `mmuabort` never
+   deasserts (MMR0 stuck), the trap never fires.  That stuck-MMR0 ->
+   no-trap loop is the likely direct cause of the spin.
+3. Fix MMR1 (`cpu.vhd:937` gaps) so abort recovery restores registers,
+   in case R1=157762 is the corrupt-by-partial-instruction case.
