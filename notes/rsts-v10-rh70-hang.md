@@ -153,3 +153,55 @@ memories.
 This supersedes the SC/ATA theory above: at the hang ATA is genuinely 0
 and irrelevant - the missing signal is the plain data-transfer-complete
 BR5 interrupt.
+
+### Why RL02 hangs the same way - it is the SAME idiom in rl11/rk11
+
+`rh11.vhd`, `rl11.vhd`, `rk11.vhd` all carry the identical copy-pasted
+interrupt FSM (`i_idle`/`i_req`/`i_wait`, `interrupt_trigger`).  Two
+defects:
+
+**A. `interrupt_trigger` is never cleared on interrupt delivery.**
+All three: `i_wait -> i_idle` on `bg='0'` does NOT clear
+`interrupt_trigger`.  It is only cleared in `i_idle` when the fire
+condition is *false* (the `else`).  So after any delivered interrupt the
+flag stays '1' until a cycle where IE is off or the ready/done bit is
+off.  If the driver re-arms IE while the controller is still
+ready/done and expects a fresh interrupt (fully legal PDP-11
+semantics - "setting IE while DONE=1 interrupts"), it never comes.
+  - rl11.vhd:289-312 - condition is `csr_ie='1' and csr_crdy='1'`
+    (LEVEL); no auto-clear of `csr_ie`.  Stuck-trigger bites directly.
+  - rk11.vhd:407-441 - condition `rkcs_ide='1' and rkcs_rdy='1'`
+    (LEVEL) plus the `scpset` seek path.  Same.
+  - This is exactly the pattern RSTS uses at SET/config time ("N
+    devices disabled"): poke IE=1 on an already-ready controller to
+    provoke an interrupt and check the vector.  If `interrupt_trigger`
+    is stuck from a prior real completion, that probe interrupt is
+    eaten -> hang right where we see it.
+
+**B. RH70 only: the ready condition is an EDGE, not a level.**
+rh11.vhd:435 gates on `rmcs1_rdyset` / `rmds_ataset` - 1-cycle pulses,
+consumed by line 801 the next cycle.  If IE is 0 when the pulse passes
+(e.g. auto-cleared at 459 by the previous interrupt, driver hasn't
+re-set it yet) and the driver later sets IE=1 without re-pulsing bit 7,
+`rmcs1_rdy` is still '1' but no interrupt is generated.  rl11/rk11 do
+not have this half because they test the level.
+
+The `poke 17776700 04770` proof works precisely because CS1 write bit 7
+re-creates the `rmcs1_rdyset` pulse (rh11.vhd:605) alongside IE
+(rh11.vhd:606) - i.e. it manufactures the edge that defect B otherwise
+loses.
+
+### Fix
+
+1. Clear `interrupt_trigger <= '0'` on the `i_wait -> i_idle` transition
+   in all three (rh11, rl11, rk11).  Minimal, fixes defect A everywhere.
+2. rh11.vhd: gate the interrupt on the `rmcs1_rdy` **level** (`rmcs1_ie
+   and rmcs1_rdy and not already-serviced`), or latch `rdyset|ataset`
+   into a pending FF cleared on grant.  Fixes defect B.
+
+Relates to `device-flag-cdc` / `sdspi-clocks-unconstrained` memories
+(same "fragile 1-cycle handshake across the device/CPU boundary" theme).
+
+TODO: capture the RL02 hang's CSR (`peek 17774400`) - expect
+`IE=1, CRDY=1` (bits 6,7) with no interrupt in flight, which nails
+defect A for RL.
