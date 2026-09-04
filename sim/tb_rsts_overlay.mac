@@ -1,59 +1,70 @@
-	.title	tb_rsts_overlay - interrupt-driven RH70 read vs the line clock
+	.title	tb_rsts_overlay - kernel APR-5 overlay window remapped under the clock
 
-;  Phase 3.  Phases 1-2 (polled read, then polled + full MMU + set 1)
-;  both PASS - a polled read survives clock preemption.  This one runs
-;  the RH70 read *interrupt driven* (CS1 IE = 1), the way a normal RSTS
-;  disk request does, and spins on a software "done" flag that only the
-;  BR5 completion ISR sets.  If an RH70 completion interrupt is lost
-;  when it coincides with BR6 clock-interrupt activity, the flag is
-;  never set and the wait loop spins forever.
+;  Phase 4.  Models the RSTS/E monitor overlay mechanism: monitor code
+;  runs through kernel APR 5 (virtual 120000-137777); to invoke a
+;  different overlay the monitor saves kI/kD PAR5, points them at the
+;  overlay's physical page, JSRs into 120000, then restores PAR5 (the
+;  wrapper at v.142600 on the hang).  The line clock ISR *also* remaps
+;  APR 5, runs its own overlaid code, and restores - so PAR5 is being
+;  saved/reloaded from two priority levels concurrently.
 ;
-;  MMU config matches the hardware hang (MMR3 = 65, kernel-D, kI PDR7
-;  read-only), main runs in register set 1 at priority 5.
+;  Each overlay writes its id to its OWN marker.  A correct core: every
+;  caller sees the overlay it asked for.  A stale mapping (old physical
+;  page used for a cycle after a PAR write, or kI/kD PAR5 briefly out of
+;  sync) shows up as the wrong overlay running or a mem-management abort.
 ;
-;  result(500):  1  = every sector's completion interrupt arrived (PASS)
-;               77  = RH raised SC/error
+;  result(500):  1  = every window call ran the overlay it asked for  (PASS)
+;               55  = a window call ran the WRONG overlay              (BUG)
+;               44  = the clock ISR's own window call ran wrong        (BUG)
 ;               66  = memory-management trap
-;                0  = a completion interrupt was lost -> HANG
+;                0  = wander / lockup                                  (HANG)
 
-RHCS1	= 176700
-RHWC	= 176702
-RHBA	= 176704
-RHDA	= 176706
-RHDC	= 176734
-RHBAE	= 176750
-KWCSR	= 177546
 PSW	= 177776
 MMR0	= 177572
 MMR2	= 177576
 MMR3	= 172516
+KWCSR	= 177546
 KIPAR0	= 172340
+KIPAR5	= 172352
 KIPDR0	= 172300
 KDPAR0	= 172360
+KDPAR5	= 172372
 KDPDR0	= 172320
 
-NSECT	= 6.
+PAFA	= 1200			; overlay A -> physical page 120000
+PAFB	= 1300			; overlay B -> physical page 130000
+PAFD	= 1500			; overlay D -> physical page 150000 (clock ISR)
+WIN	= 120000		; APR-5 window virtual address
+NITER	= 800.
 
 	.asect
 
-	.=100				; line clock vector
+	.=100
 	.word	clkisr
-	.word	4340			; kernel set 1, priority 7
-	.=250				; memory management vector
+	.word	4340
+	.=250
 	.word	mmtrap
 	.word	340
-	.=254				; RH (BR5) vector
-	.word	rhisr
-	.word	4340			; kernel set 1, priority 7
 
 	.=500
 result:	.word	0
-count:	.word	0
+iter:	.word	0
 ticks:	.word	0
-last:	.word	0
+wmarkA:	.word	0
+wmarkB:	.word	0
+wmarkD:	.word	0
 mmr0v:	.word	0
 mmr2v:	.word	0
-dflag:	.word	0			; set by rhisr, cleared before each read
+
+	.=120000
+ovlA:	mov	#1111,@#wmarkA
+	rts	pc
+	.=130000
+ovlB:	mov	#2222,@#wmarkB
+	rts	pc
+	.=150000
+ovlD:	mov	#4444,@#wmarkD
+	rts	pc
 
 	.=1000
 start:
@@ -61,26 +72,24 @@ start:
 
 	mov	#KIPAR0,r0
 	clr	r1
-	mov	#7.,r2
+	mov	#8.,r2
 1$:	mov	r1,(r0)+
 	add	#200,r1
 	sob	r2,1$
-	mov	#177600,(r0)
+	mov	#177600,@#172356
 
 	mov	#KDPAR0,r0
 	clr	r1
-	mov	#7.,r2
+	mov	#8.,r2
 2$:	mov	r1,(r0)+
 	add	#200,r1
 	sob	r2,2$
-	mov	#177600,(r0)
+	mov	#177600,@#172376
 
 	mov	#KIPDR0,r0
-	mov	#7.,r2
+	mov	#8.,r2
 3$:	mov	#77406,(r0)+
 	sob	r2,3$
-	mov	#77402,(r0)		; kI PDR7 read-only
-
 	mov	#KDPDR0,r0
 	mov	#8.,r2
 4$:	mov	#77406,(r0)+
@@ -88,56 +97,65 @@ start:
 
 	mov	#65,@#MMR3
 	mov	#1,@#MMR0
-	mov	#4200,@#PSW		; register set 1, priority 4 (BR5 disk + BR6 clock both deliverable)
+	mov	#4240,@#PSW		; register set 1, priority 5
 
 	clr	@#result
-	clr	@#count
+	clr	@#iter
 	clr	@#ticks
-	mov	#100,@#KWCSR		; line clock interrupt enable
-	clr	r4
+	mov	#100,@#KWCSR
 
-kick:
-	clr	@#RHBAE
-	mov	#40000,@#RHBA
-	clr	@#RHDC
-	mov	r4,@#RHDA
-	mov	#-400,@#RHWC
-	clr	@#dflag
-	mov	#171,@#RHCS1		; fnc = read data + GO + IE (bit 6)
+loop:
+	clr	@#wmarkA
+	mov	#PAFA,r5
+	jsr	pc,@#callwin
+	cmp	@#wmarkA,#1111
+	bne	wrong
 
-wait:
-	tst	@#dflag
-	beq	wait			; spin until the completion ISR fires
+	clr	@#wmarkB
+	mov	#PAFB,r5
+	jsr	pc,@#callwin
+	cmp	@#wmarkB,#2222
+	bne	wrong
 
-	inc	r4
-	inc	@#count
-	cmp	r4,#NSECT
-	blt	kick
+	inc	@#iter
+	cmp	@#iter,#NITER
+	blt	loop
 
 	mov	#1,@#result
 done:	br	done
 
-; ---- RH completion ISR (BR5) ----
-rhisr:
-	mov	@#RHCS1,r0
-	mov	r0,@#last
-	bit	#100000,r0		; SC / error?
-	bne	1$
-	mov	#1,@#dflag
-	rti
-1$:	mov	#77,@#result
+wrong:	mov	#55,@#result
 	halt
 
-; ---- line clock ISR ----
+; ---- invoke overlay whose PAF is in r5 ----
+callwin:
+	mov	@#KIPAR5,-(sp)
+	mov	r5,@#KIPAR5
+	mov	r5,@#KDPAR5
+	jsr	pc,@#WIN
+	mov	(sp)+,@#KIPAR5
+	mov	@#KIPAR5,@#KDPAR5
+	rts	pc
+
+; ---- line clock ISR : also drives the APR-5 window ----
 clkisr:
 	inc	@#ticks
-	mov	#40,-(sp)
-2$:	dec	(sp)
-	bne	2$
-	tst	(sp)+
+	mov	r5,-(sp)
+	mov	@#KIPAR5,-(sp)
+	clr	@#wmarkD
+	mov	#PAFD,@#KIPAR5
+	mov	#PAFD,@#KDPAR5
+	jsr	pc,@#WIN
+	cmp	@#wmarkD,#4444
+	bne	isrwrong
+	mov	(sp)+,@#KIPAR5
+	mov	@#KIPAR5,@#KDPAR5
+	mov	(sp)+,r5
 	rti
+isrwrong:
+	mov	#44,@#result
+	halt
 
-; ---- memory-management trap ----
 mmtrap:
 	mov	@#MMR0,@#mmr0v
 	mov	@#MMR2,@#mmr2v
