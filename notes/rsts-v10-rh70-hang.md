@@ -281,6 +281,34 @@ So the disk itself is fine and ~half the pack's addressable range has
 been touched; RSTS gets one specific mid-pack block back and then never
 issues another I/O.
 
+### What that block actually is (parsed the RDS directory offline)
+
+Copied the pack image and parsed the RSTS RDS 1.2 directory
+(`scratchpad/rds*.py`).  PCS = 8.  The `[0,1]` UFD is at block 170360+.
+
+ - Stuck read = **block 177115 = device cluster DCN 22139**.
+ - DCN 22139 is retrieval entry 14/39 of **`[0,1]RSTS.SIL`** - the
+   RSTS/E V10.1 **monitor Saved Image Library** (monitor code +
+   overlays + tables).  RSTS.SIL = odd DCNs 22113..22189, blocks
+   176904..177519, interleaved 1:1 with another file on the even
+   clusters.
+ - Immediately before it: **`[0,1]SWAP1.SYS`** = DCNs 21313..22112,
+   blocks 170504..176903 - the big system swap file.  The ~7000-block
+   "wobble window" the fd offset bounced around IS essentially all of
+   SWAP1.SYS plus the start of RSTS.SIL.
+ - ASCII strings recovered from blocks 176900-177400 (LOGIN messages,
+   the DCL `RSTS>` prompt + "?Unable to attach to resident library",
+   the RSTS privilege-name table, VT100 escape sequences,
+   `@[0,1]SYSINI.COM START` / `CRASH`) are all monitor code / monitor
+   tables - consistent with RSTS.SIL.
+
+**Meaning:** at the hang ("N devices disabled", before "Proceed with
+system startup?"), INIT.SYS is **reading RSTS.SIL to load the monitor
+into memory and start it**.  It gets ~1/3 of the way through the
+monitor image, the last read completes in the RH70 (WC=0, RDY=1), and
+then nothing.  The hang is on loading the monitor itself - not a data
+file, not directory structure.
+
 ### Next
 
 1. Is the abort real or spurious?  At the hang, decode MMR2=142612 +
