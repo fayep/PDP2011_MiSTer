@@ -133,7 +133,11 @@ architecture sim of tb_rsts_overlay is
    signal dbg_psw    : std_logic_vector(15 downto 0);
    signal dbg_ir     : std_logic_vector(15 downto 0);
 
-   type ram_t is array(0 to 32767) of std_logic_vector(15 downto 0);
+   -- 0..32767 = low 64K (program + result cells, BAE=0); 32768..65535 =
+   -- physical 65536..131071 bytes (BAE=1), used by phase 5 to check the
+   -- DMA target the real hang actually used (BAE=1|BA=131000, i.e.
+   -- physical bit 16 set)
+   type ram_t is array(0 to 65535) of std_logic_vector(15 downto 0);
 
    impure function load_mem return ram_t is
       variable m : ram_t := (others => (others => '0'));
@@ -209,12 +213,12 @@ begin
          reset        => reset
       );
 
-   -- zero-wait-state RAM, physical 0..0177777 (below the I/O page)
+   -- zero-wait-state RAM, physical 0..0377777 (BAE 0 and 1; below the I/O page)
    addr_match <= '1' when addr(21 downto 13) /= "111111111"
-                     and unsigned(addr) < 65536
+                     and unsigned(addr) < 131072
                  else '0';
 
-   dati <= ram(to_integer(unsigned(addr(15 downto 1))))
+   dati <= ram(to_integer(unsigned(addr(16 downto 1))))
            when addr_match = '1'
            else (others => '0');
 
@@ -223,11 +227,11 @@ begin
       if rising_edge(clk) then
          if addr_match = '1' and control_dato = '1' then
             if control_datob = '0' then
-               ram(to_integer(unsigned(addr(15 downto 1)))) <= dato;
+               ram(to_integer(unsigned(addr(16 downto 1)))) <= dato;
             elsif addr(0) = '0' then
-               ram(to_integer(unsigned(addr(15 downto 1))))(7 downto 0) <= dato(7 downto 0);
+               ram(to_integer(unsigned(addr(16 downto 1))))(7 downto 0) <= dato(7 downto 0);
             else
-               ram(to_integer(unsigned(addr(15 downto 1))))(15 downto 8) <= dato(15 downto 8);
+               ram(to_integer(unsigned(addr(16 downto 1))))(15 downto 8) <= dato(15 downto 8);
             end if;
          end if;
       end if;
