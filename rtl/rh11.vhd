@@ -1376,13 +1376,13 @@ begin
                         bus_master_dato <= sdcard_xfer_out;
                         bus_master_control_dato <= '0';
                      end if;
-                     sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                     sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
 
 
                   when busmaster_read =>
                      if sectorcounter /= "000000000" then
                         work_bar <= work_bar + 1;
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
                         sectorcounter <= sectorcounter - 1;
 
                         if have_rh70 = 1 then
