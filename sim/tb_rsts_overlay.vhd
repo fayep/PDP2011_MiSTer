@@ -18,6 +18,15 @@
 --                         last(0506) = the CS1 value the poll kept seeing
 --
 -- Run:  sim/run_sim.sh tb_rsts_overlay --ieee-asserts=disable
+--
+-- This file defines its own behavioural `entity sdspi` (below) to shadow
+-- the real rtl/sdspi.vhd, so it needs the explicit-deps form of
+-- run_sim.sh (auto-import via `ghdl -m` would fight the mock) -- see
+-- run_sim.sh's own header comment. Full transitive closure of what
+-- `dut : entity work.unibus` (below) needs to elaborate, real sdspi.vhd
+-- included so this file's own mock architecture is the last one
+-- analysed and wins the default binding:
+-- deps: cpuregs.vhd fpuregs.vhd cpu.vhd mmu.vhd cr.vhd csdr.vhd xubm.vhd xubl.vhd xubrt45.vhd xu.vhd m9312h47.vhd m9312l47.vhd kl11.vhd kw11l.vhd sdspi.vhd rh11.vhd rk11.vhd rl11.vhd dr11c.vhd mncad.vhd mnckw.vhd mncaa.vhd mncdi.vhd mncdo.vhd unibus.vhd
 
 ------------------------------------------------------------------------
 -- behavioural sdspi (bound in place of the real one: run_sim.sh analyses
@@ -204,9 +213,9 @@ begin
          addr_match   => addr_match,
 
          cons_run     => cons_run,
-         dbg_r7       => dbg_r7,
-         dbg_psw      => dbg_psw,
-         dbg_ir       => dbg_ir,
+         -- dbg_r7/dbg_psw/dbg_ir (front-panel debug ports) don't exist
+         -- on this branch's unibus.vhd -- left unconnected; the report
+         -- line below that reads them stays a best-effort debug print.
 
          clk          => clk,
          clk50mhz     => clk50,
