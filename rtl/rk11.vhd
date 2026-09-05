@@ -632,7 +632,9 @@ begin
                end if;
 
                if rkcs_rdy = '0' and start = '0' and rkcs_go = '0' then
-                  if conv_integer(rkda_dr) < have_rk_num then
+                  if conv_integer(rkda_dr) < have_rk_num
+                  and (have_media = '1' or rkcs_fu = "000") then          -- control reset always allowed, like
+                                                                           -- RH11's RIP/pack-ack exemption
                      start <= '1';
                      rkdelay <= 120;
                      rkcs_scp <= '0';

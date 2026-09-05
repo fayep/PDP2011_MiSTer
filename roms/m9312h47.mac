@@ -45,7 +45,9 @@ boot:
          mov   #1000,sp
          clr   @#6
          mov   #nork,@#4
-         tst   @#177400
+         tst   @#177400       ; NXM probe -- traps to nork if RK isn't present at all
+         bit   #200,@#177400  ; RKDS bit 07 (DRY) -- present but no pack loaded?
+         beq   nork           ; not ready -- fall through, same as not present
          mov   #bootrk,r2
          mov   pc,r1
          br    bprtascz
