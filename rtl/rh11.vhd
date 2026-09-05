@@ -63,6 +63,10 @@ entity rh11 is
       have_rh70 : in integer range 0 to 1 := 0;
       rh_type : in integer range 1 to 7 := 6;              -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
       rh_noofcyl : in integer range 128 to 8192 := 1024;   -- for RM06 and RP2G: how many cylinders are available
+      img_mounted : in integer range 0 to 1 := 1;          -- is a disk image actually mounted; a real RP06 always has
+                                                            -- the controller present (that's have_rh, a build-time
+                                                            -- choice) but reports "no medium" via DS, not by vanishing
+                                                            -- from the bus -- see rmds_mol/rmds_dry/rmds_vv below
 
       reset : in std_logic;
       clk50mhz : in std_logic;
@@ -168,6 +172,7 @@ signal rmcs2_u : std_logic_vector(2 downto 0);                       -- drive se
 signal rmds_ata : std_logic;                                         -- attention active
 signal rmds_err : std_logic;                                         -- composite error
 signal rmds_pip : std_logic;                                         -- positioning operation in progress
+signal have_media : std_logic;                                       -- img_mounted, as a std_logic
 signal rmds_mol : std_logic;                                         -- medium online
 signal rmds_wrl : std_logic;                                         -- write lock
 signal rmds_lst : std_logic;                                         -- last sector txfrd
@@ -314,6 +319,8 @@ type busmaster_state_t is (
 signal busmaster_state : busmaster_state_t := busmaster_idle;
 
 begin
+
+   have_media <= '1' when img_mounted = 1 else '0';
 
    with rh_type select noofsec <=
       "01000000" when 1,                         -- 64                         RM06
@@ -514,7 +521,7 @@ begin
 
 -- rmds  17 776 712                                             -- drive status
                      when "00101" =>
-                        bus_dati <= rmds_ata & rmds_err & rmds_pip & rmds_mol & rmds_wrl & rmds_lst & rmds_pgm & rmds_dpr & rmds_dry & rmds_vv & "00000" & rmds_om;
+                        bus_dati <= rmds_ata & rmds_err & rmds_pip & (rmds_mol and have_media) & rmds_wrl & rmds_lst & rmds_pgm & rmds_dpr & (rmds_dry and have_media) & (rmds_vv and have_media) & "00000" & rmds_om;
 
 -- rmer1 17 776 714                                             -- error status 1
                      when "00110" =>
@@ -848,7 +855,7 @@ begin
                   rmcs2_pge <= '0';
                   rmcs2_mdpe <= '0';
 
-                  if (rmds_vv = '0' or rmds_dry = '0')
+                  if (rmds_vv = '0' or rmds_dry = '0' or have_media = '0')
                   and rmcs1_fnc /= "01000" and rmcs1_fnc /= "01001" then
                      rmer2_ivc <= '1';
                      rmcs1_go <= '0';
@@ -1167,13 +1174,13 @@ begin
                   rmds_ata <= '0';
 --                  rmds_err <= '0';
                   rmds_pip <= '0';
-                  rmds_mol <= '1';                                   -- medium is online
+                  rmds_mol <= '1';                                   -- medium is online (gated by have_media at readout/accept time, below)
                   rmds_wrl <= '0';
                   rmds_lst <= '0';
                   rmds_pgm <= '0';
                   rmds_dpr <= '1';                                   -- drive is available to this controller, there is no other controller
-                  rmds_dry <= '1';                                   -- FIXME, set according to sdcard state?
-                  rmds_vv <= '1';                                    -- FIXME, set according to sdcard state?
+                  rmds_dry <= '1';                                   -- drive ready (gated by have_media at readout/accept time, below)
+                  rmds_vv <= '1';                                    -- volume valid (gated by have_media at readout/accept time, below)
                   rmds_om <= '0';
 
 -- rmmr1  17 776 724                                             -- maintenance register
