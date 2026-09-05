@@ -455,9 +455,17 @@ signal cpuresetlength : integer range 0 to 255 := 255;
 -- (roms/m9312h47.mac) for a present-but-medialess drive is handled at
 -- the ROM + controller command-enforcement level instead of by hiding
 -- the controller -- see notes/rsts-v10-rh70-hang.md.
-signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 1;
-signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 1;
-signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 1;
+--
+-- default 0 (no media), not 1: these come from pdp2011.sv's vsd_sel_*,
+-- which the ARM/HPS side doesn't set until it's actually opened the
+-- .mgl-declared file and sent SDINFO+SDSTAT over SPI (real milliseconds
+-- after cpureset releases). The boot ROM's settle loop (m9312h47.mac)
+-- covers the normal case; this default makes the failure mode safe
+-- ("no device found") rather than unsafe ("falsely reports ready") if
+-- that settle ever isn't long enough.
+signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 0;
+signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 0;
+signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 0;
 
 signal ifetch: std_logic;
 signal iwait: std_logic;
