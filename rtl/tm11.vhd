@@ -547,6 +547,10 @@ begin
                         res_eof <= '0'; res_eot <= '0'; res_bot <= '0';
                         res_rle <= '0'; res_nxm <= '0'; res_ill <= '0';
 
+                        if have_media = '0' then                       -- no tape mounted: every real
+                           engine_state <= eng_illegal;                -- tape operation is illegal, same
+                                                                        -- as write/wreof/wrext below
+                        else
                         case lat_fnc is
                            when fnc_read =>
                               hd_pos <= tape_pos;
@@ -562,6 +566,7 @@ begin
                            when others =>                             -- write / wreof / wrext
                               engine_state <= eng_illegal;
                         end case;
+                        end if;
                      end if;
 
 -- --- block loader subroutine --------------------------------------------------
