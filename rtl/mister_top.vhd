@@ -31,8 +31,10 @@ entity mister_top is
 		modelcode      : in integer;
 		serial_console : in std_logic;
 		have_rk        : in integer;
+		rk_img_mounted : in integer;
 		have_rl        : in integer;
 		have_rh        : in integer;
+		rh_img_mounted : in integer;
 		have_xu        : in integer;
 		
 		-- VT settings
@@ -133,6 +135,7 @@ component unibus is
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       have_rk_num : in integer range 1 to 8 := 8;                    -- active number of drives on the controller; set to < 8 to save core
+      rk_img_mounted : in integer range 0 to 1 := 1;
       rk_sdcard_cs : out std_logic;
       rk_sdcard_mosi : out std_logic;
       rk_sdcard_sclk : out std_logic;
@@ -147,6 +150,7 @@ component unibus is
       rh_sdcard_miso : in std_logic := '0';
       rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
       rh_type : in integer range 1 to 7 := 6;
+      rh_img_mounted : in integer range 0 to 1 := 1;
 
 -- xu enc424j600 controller interface
       have_xu : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -436,15 +440,25 @@ signal cpuclk : std_logic;
 signal cpureset : std_logic := '1';
 signal cpuresetlength : integer range 0 to 255 := 255;
 
--- have_rk/rl/rh come from pdp2011.sv's vsd_sel_* "image mounted" flags
--- in the clk_100 domain and feed combinationally into each controller's
+-- have_rl comes from pdp2011.sv's vsd_sel_rl "image mounted" flag in
+-- the clk_100 domain and feeds combinationally into rl11's
 -- bus_addr_match and the MMU dati mux -- i.e. straight into the cpuclk
 -- datapath. Quasi-static (only changes on mount/unmount) but a real
 -- 1-bit CDC. Plain 2-FF sync on cpuclk -- not reset-frozen, so mounting
--- an image while the core runs still takes effect.
-signal have_rk_meta, have_rk_sync : integer range 0 to 1 := 0;
+-- an image while the core runs still takes effect. Flagged as a
+-- pre-existing issue (same bus-presence-hack class as have_rh/have_rk
+-- below) but not yet fixed -- see notes/rsts-v10-rh70-hang.md.
+--
+-- have_rk/have_rh are NOT part of this anymore -- controller presence
+-- is a build-time choice (a real RK11/RP06 doesn't vanish from the bus
+-- when you eject the pack), so both are back to plain constants. What
+-- DOES need the same 2-FF treatment is rk_img_mounted/rh_img_mounted,
+-- which now flow into rk11's/rh11's own img_mounted port and surface
+-- as a real "no medium" DS/DRY condition instead of a bus-presence
+-- hack -- see rk11.vhd/rh11.vhd.
 signal have_rl_meta, have_rl_sync : integer range 0 to 1 := 0;
-signal have_rh_meta, have_rh_sync : integer range 0 to 1 := 0;
+signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 1;
+signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 1;
 
 signal ifetch: std_logic;
 signal iwait: std_logic;
@@ -550,9 +564,9 @@ begin
    process(cpuclk)
    begin
       if cpuclk'event and cpuclk = '1' then
-         have_rk_meta <= have_rk;  have_rk_sync <= have_rk_meta;
+         rk_img_mounted_meta <= rk_img_mounted;  rk_img_mounted_sync <= rk_img_mounted_meta;
          have_rl_meta <= have_rl;  have_rl_sync <= have_rl_meta;
-         have_rh_meta <= have_rh;  have_rh_sync <= have_rh_meta;
+         rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
       end if;
    end process;
 
@@ -593,14 +607,16 @@ begin
       rl_sdcard_sclk  => rl_sdcard_sclk,
       rl_sdcard_debug => rl_sdcard_debug,
 
-		have_rk => have_rk_sync,
+		have_rk => have_rk,
+		rk_img_mounted => rk_img_mounted_sync,
 		rk_sdcard_cs    => rk_sdcard_cs,
       rk_sdcard_mosi  => rk_sdcard_mosi,
       rk_sdcard_sclk  => rk_sdcard_sclk,
       rk_sdcard_miso  => rk_sdcard_miso,
       rk_sdcard_debug => rk_sdcard_debug,
 
-      have_rh => have_rh_sync,
+      have_rh => have_rh,
+      rh_img_mounted => rh_img_mounted_sync,
       rh_sdcard_cs => rh_sdcard_cs,
       rh_sdcard_miso => rh_sdcard_miso,
       rh_sdcard_mosi => rh_sdcard_mosi,

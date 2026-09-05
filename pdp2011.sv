@@ -403,12 +403,18 @@ sd_card #(.WIDE(1)) sd_card_rh
 );
 
 int have_rk;
+int rk_img_mounted;
 int have_rl;
 int have_rh;
+int rh_img_mounted;
 
-assign have_rk = vsd_sel_rk ? 1 : 0;
+assign have_rk = 1;  // controller presence is a build-time choice, not tied to
+                      // mount state -- see rk11's img_mounted for "no medium"
+assign rk_img_mounted = vsd_sel_rk ? 1 : 0;
 assign have_rl = vsd_sel_rl ? 1 : 0;
-assign have_rh = vsd_sel_rh ? 1 : 0;
+assign have_rh = 1;  // controller presence is a build-time choice, not tied to
+                      // mount state -- see rh11's img_mounted for "no medium"
+assign rh_img_mounted = vsd_sel_rh ? 1 : 0;
 
 //
 wire rk_sclk;
@@ -499,6 +505,7 @@ mister_top mister_top
    .rl_sdcard_debug (rl_sddebug),
 	
    .have_rk  (have_rk),
+   .rk_img_mounted (rk_img_mounted),
 	.rk_sdcard_cs     (rk_cs),
    .rk_sdcard_mosi   (rk_mosi),
    .rk_sdcard_sclk   (rk_sclk),
@@ -506,6 +513,7 @@ mister_top mister_top
    .rk_sdcard_debug  (rk_sddebug),
 	
    .have_rh (have_rh),
+   .rh_img_mounted (rh_img_mounted),
    .rh_sdcard_cs   (rh_cs),
    .rh_sdcard_miso (rh_miso),
    .rh_sdcard_mosi (rh_mosi),

@@ -46,6 +46,7 @@ entity unibus is
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       have_rk_num : in integer range 1 to 8 := 8;                    -- active number of drives on the controller; set to < 8 to save core
+      rk_img_mounted : in integer range 0 to 1 := 1;                 -- is a disk image actually mounted (see rk11's img_mounted)
       rk_sdcard_cs : out std_logic;
       rk_sdcard_mosi : out std_logic;
       rk_sdcard_sclk : out std_logic;
@@ -61,6 +62,7 @@ entity unibus is
       rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
       rh_type : in integer range 1 to 7 := 6;                        -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
       rh_noofcyl : in integer range 128 to 8192 := 1024;             -- for RM06 and RP2G: how many cylinders are available
+      rh_img_mounted : in integer range 0 to 1 := 1;                 -- is a disk image actually mounted (see rh11's img_mounted)
 
 -- xu enc424j600 controller interface
       have_xu : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -651,6 +653,7 @@ component rk11 is
 
       have_rk : in integer range 0 to 1;
       have_rk_num : in integer range 1 to 8;
+      img_mounted : in integer range 0 to 1 := 1;
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -702,6 +705,7 @@ component rh11 is
       have_rh70 : in integer range 0 to 1 := 0;
       rh_type : in integer range 1 to 7 := 6;              -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
       rh_noofcyl : in integer range 128 to 8192 := 1024;   -- for RM06 and RP2G: how many cylinders are available
+      img_mounted : in integer range 0 to 1 := 1;
 
       reset : in std_logic;
       clk50mhz : in std_logic;
@@ -1847,6 +1851,7 @@ begin
 
       have_rk => have_rk,
       have_rk_num => have_rk_num,
+      img_mounted => rk_img_mounted,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       nclk => nclk,
@@ -1895,6 +1900,7 @@ begin
 
       rh_type => rh_type,
       rh_noofcyl => rh_noofcyl,
+      img_mounted => rh_img_mounted,
 
       have_rh => have_rh,
       have_rh70 => have_rh70,

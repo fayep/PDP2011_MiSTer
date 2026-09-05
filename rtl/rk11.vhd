@@ -54,6 +54,11 @@ entity rk11 is
 
       have_rk : in integer range 0 to 1;
       have_rk_num : in integer range 1 to 8;
+      img_mounted : in integer range 0 to 1 := 1;          -- is a disk image actually mounted; a real RK11
+                                                            -- always has the controller present (that's have_rk,
+                                                            -- a build-time choice) but reports "no pack" via DRY
+                                                            -- (RKDS bit 07 per EK-RK11D-OP-001), not by vanishing
+                                                            -- from the bus
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -121,6 +126,7 @@ signal rkds_rk05 : std_logic;                              -- identify the drive
 signal rkds_dru : std_logic;                               -- drive unsafe
 signal rkds_sin : std_logic;                               -- seek incomplete
 signal rkds_sok : std_logic;                               -- sector counter ok
+signal have_media : std_logic;                             -- img_mounted, as a std_logic
 signal rkds_dry : std_logic;                               -- drive ready
 signal rkds_rwsrdy : std_logic;                            -- read/write/seek ready
 signal rkds_wps : std_logic;                               -- write protected if 1
@@ -251,6 +257,8 @@ signal busmaster_state : busmaster_state_t := busmaster_idle;
 
 begin
 
+   have_media <= '1' when img_mounted = 1 else '0';
+
    sd1: sdspi port map(
       sdcard_cs => sdcard_cs,
       sdcard_mosi => sdcard_mosi,
@@ -327,7 +335,7 @@ begin
 
    rkds_rwsrdy <= '1' when conv_integer(rkda_dr) < have_rk_num and rksi(conv_integer(rkda_dr)) = 0 and sdcard_idle = '1'
       else '0';
-   rkds_dry <= '1' when conv_integer(rkda_dr) < have_rk_num else '0';
+   rkds_dry <= '1' when conv_integer(rkda_dr) < have_rk_num and have_media = '1' else '0';
 
 -- regular bus interface : handle register contents and dependent logic
 
