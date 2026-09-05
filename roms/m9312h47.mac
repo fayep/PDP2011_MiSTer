@@ -55,6 +55,11 @@ bprtascz:
 ; touches r3).
 ;
 boot:
+         mov   #100.,r0        ; settle: the ARM/HPS-side mount handshake (file
+1$:      clr   r1              ; open + SDINFO/SDSTAT over SPI for every VDNUM
+2$:      sob   r1,2$           ; slot) takes real milliseconds -- give it time
+         sob   r0,1$           ; before the one-shot ready-bit probes below run,
+                                ; so a device's status isn't sampled mid-race
          mov   #1000,sp
          clr   @#6
          mov   #nomt,@#4

@@ -478,7 +478,11 @@ begin
             end if;
 
             if have_rk = 1 then
-               rkclock <= rkclock + 1;
+               if rkclock = 4095 then
+                  rkclock <= 0;
+               else
+                  rkclock <= rkclock + 1;
+               end if;
                if rkclock = 0 then
                   if rkds_sc(3 downto 0) = "1011" then
                      rkds_sc <= "0000";
