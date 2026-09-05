@@ -39,54 +39,110 @@ L        =bit0                ; lowerbyte multiplier
 bprtascz:
          jmp   @#prtascz      ; 173010
 ;
-; boot: boot from first controller that exists in the system out of rk,rl,rh
+; boot: boot from first controller that exists AND ready in the system out
+; of mt,rk,rl,rh. Each probe is a single bit-test instruction doing double
+; duty: it's a genuine bus read (NXM-traps to the next device if nothing
+; answers at all), and its condition codes test the device's own ready bit
+; (bit 0 for mt: TUR: EK-11-HTMAA-D-D 4.2.1; bit 7 for rk: RKDS DRY:
+; EK-RK11D-OP-001 p.3-2; bit 0 for rl: RLCS DRDY, EK-RL011-TM-PS3; bit 7
+; for rh: RMDS DRY, same bit position as rk's, EK-RP056-MM-01 -- read off
+; RMDS at csr+012, not RMCS1) -- all four controllers are now static
+; build-time constants rather than a bus-presence hack keyed on mount
+; state, so RMCS1/RLCS would always answer regardless of media; testing
+; the real ready bit is what makes present-but-medialess fall through
+; exactly like not-present. gofound: is a shared tail (r3 carries the
+; go-routine address across the bprtascz banner call, which never
+; touches r3).
 ;
 boot:
+         mov   #100.,r0        ; settle: the ARM/HPS-side mount handshake (file
+1$:      clr   r1              ; open + SDINFO/SDSTAT over SPI for every VDNUM
+2$:      sob   r1,2$           ; slot) takes real milliseconds -- give it time
+         sob   r0,1$           ; before the one-shot ready-bit probes below run,
+                                ; so a device's status isn't sampled mid-race
+         mov   #1000,sp
+         clr   @#6
+         mov   #nomt,@#4
+         bit   #1,@#172520     ; mt: NXM probe + TUR (bit 00)
+         beq   nomt
+         mov   #bootmt,r2
+         mov   #mtgo,r3
+         br    docall
+;
+nomt:
          mov   #1000,sp
          clr   @#6
          mov   #nork,@#4
-         tst   @#177400       ; NXM probe -- traps to nork if RK isn't present at all
-         bit   #200,@#177400  ; RKDS bit 07 (DRY) -- present but no pack loaded?
-         beq   nork           ; not ready -- fall through, same as not present
+         bit   #200,@#177400   ; rk: NXM probe + DRY (bit 07)
+         beq   nork
          mov   #bootrk,r2
-         mov   pc,r1
-         br    bprtascz
-         clr   @#4
-         clr   @#6
-         clr   r0
-         br    rkgo
+         mov   #rkgo,r3
+         br    docall
 ;
 nork:
          mov   #1000,sp
          clr   @#6
          mov   #norl,@#4
-         tst   @#174400
+         bit   #1,@#174400     ; rl: NXM probe + DRDY (bit 00)
+         beq   norl
          mov   #bootrl,r2
-         mov   pc,r1
-         br    bprtascz
-         clr   @#4
-         clr   @#6
-         clr   r0
-         br    rlgo
+         mov   #rlgo,r3
+         br    docall
 ;
 norl:
          mov   #1000,sp
          clr   @#6
          mov   #norp,@#4
-         tst   @#176700
+         bit   #200,@#176712   ; rh: NXM probe + RMDS DRY (bit 07)
+         beq   norp
          mov   #bootrp,r2
-         mov   pc,r1
+         mov   #rpgo,r3
+;
+docall:  mov   pc,r1
          br    bprtascz
-         clr   @#4
-         clr   @#6
-         clr   r0
-         br    rpgo
+         br    gofound
 ;
 norp:
          mov   #nodev,r2
          mov   pc,r1
          br    bprtascz
          halt
+;
+gofound: clr   @#4
+         clr   @#6
+         clr   r0
+         jmp   (r3)
+
+; --------------------------------------------------
+; mt  (TM11 / TU10)
+; --------------------------------------------------
+;
+; modelled on SIMH pdp11_tm.c boot2_rom, verified in SIMH to boot the
+; RSTS/E V10.1 install tape: skip record 0 (a label record) with a space
+; forward, then read record 1 (the 512-byte primary bootstrap) to address
+; 0 and jump there.  MTBRC = -1 lets the read take the whole record.
+
+mtcsr    =172520              ; std TM11 magtape csrbase, +6 = mtcma, +4 = mtbrc, +2 = mtc
+;
+; unit is always 0 here (boot: clears r0 before br mtgo), so the mtc
+; command words are used bare -- no swab-unit-into-8:10 dance.  r1 walks
+; down mtcma -> mtbrc -> mtc via autodecrement, which keeps every later
+; access a bare (r1) and fits the routine inside the 256-word hi rom.
+
+mtgo:    mov   #mtcsr+6,r1    ; -> mtcma
+         clr   (r1)           ; load to address zero
+         mov   #-1,-(r1)      ; mtbrc = -1 (read whole record), r1 -> mtbrc
+         mov   #060011,-(r1)  ; space forward + GO, r1 -> mtc: skip record 0
+1$:      tstb  (r1)           ; test for ready
+         bpl   1$             ; wait
+         mov   #060003,(r1)   ; read + GO: record 1 -> address 0
+2$:      tstb  (r1)           ; test for ready
+         bpl   2$             ; wait
+         tst   (r1)           ; test for error
+         bpl   3$             ; br if ok
+         reset                ; ERROR - reset the world
+         br    mtgo           ; retry
+3$:      clr   pc             ; jump to bootstrap at zero
 
 ; --------------------------------------------------
 ; rl
@@ -275,18 +331,16 @@ prtoct:  mov   #<'0/bit1>,r2  ; ascii 0 right 1b
 ;
 ;
 ;
+bootmt:  .ascii <15><12>
+         .asciz /mt/
 bootrk:  .ascii <15><12>
-         .ascii /boot from rk:/
-         .asciz <15><12>
+         .asciz /rk/
 bootrl:  .ascii <15><12>
-         .ascii /boot from rl:/
-         .asciz <15><12>
+         .asciz /rl/
 bootrp:  .ascii <15><12>
-         .ascii /boot from rp:/
-         .asciz <15><12>
+         .asciz /rp/
 nodev:   .ascii <15><12>
-         .ascii /boot: no dev/
-         .asciz <15><12>
+         .asciz /?/
          .even
 
    .end
