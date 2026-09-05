@@ -438,11 +438,14 @@ int have_rk;
 int have_rl;
 int have_rh;
 int have_tm;
+int tm_img_mounted;
 
 assign have_rk = vsd_sel_rk ? 1 : 0;
 assign have_rl = vsd_sel_rl ? 1 : 0;
 assign have_rh = 1;
-assign have_tm = vsd_sel_tm ? 1 : 0;
+assign have_tm = 1;  // controller presence is a build-time choice, not tied to
+                      // mount state -- see tm11's img_mounted for "no tape"
+assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 
 //
 wire rk_sclk;
@@ -553,6 +556,7 @@ mister_top mister_top
    .rh_sdcard_debug(rh_sddebug),
 
    .have_tm (have_tm),
+   .tm_img_mounted (tm_img_mounted),
    .tm_media_change (tape_mount_tgl),
    .tm_sdcard_cs   (tm_cs),
    .tm_sdcard_miso (tm_miso),

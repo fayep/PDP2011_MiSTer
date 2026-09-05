@@ -73,6 +73,12 @@ entity tm11 is
 
       have_tm : in integer range 0 to 1;
       media_change : in std_logic := '0';                       -- toggles when a .tap is (un)mounted -> re-home to BOT
+      img_mounted : in integer range 0 to 1 := 1;               -- is a tape image actually mounted; a real TM11
+                                                                 -- always has the controller present (that's
+                                                                 -- have_tm, a build-time choice) but reports "no
+                                                                 -- tape" via MTS SELR/TUR (bits 06/00 per the TM11
+                                                                 -- manual, DEC-11-HTMAA-D-D pp.4-2,4-5-4-6), not by
+                                                                 -- vanishing from the bus
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -157,6 +163,7 @@ signal mts_eot : std_logic;                               -- bit 10 end of tape
 signal mts_rle : std_logic;                               -- bit 9 record length error
 signal mts_bad : std_logic;                               -- bit 8 bad tape error
 signal mts_nxm : std_logic;                               -- bit 7 non-existent memory
+signal have_media : std_logic;                            -- img_mounted, as a std_logic
 signal mts_onl : std_logic;                               -- bit 6 online
 signal mts_bot : std_logic;                               -- bit 5 beginning of tape
 signal mts_7tk : std_logic;                               -- bit 4 7-track (0 = 9-track)
@@ -255,6 +262,8 @@ signal sp_count : std_logic_vector(15 downto 0);          -- space fwd/rev recor
 
 begin
 
+   have_media <= '1' when img_mounted = 1 else '0';
+
    sd1: sdspi port map(
       sdcard_cs => sdcard_cs,
       sdcard_mosi => sdcard_mosi,
@@ -295,7 +304,7 @@ begin
    mtc_err <= mts_ill or mts_crc or mts_par or mts_dlt or mts_eot or mts_rle or mts_bad or mts_nxm;
    mtc <= mtc_err & mtc_den & '0' & mtc_lpar & mtc_unit & mtc_rdy & mtc_ie & mtc_ema & mtc_fnc & mtc_go;
    mts <= mts_ill & mts_eof & mts_crc & mts_par & mts_dlt & mts_eot & mts_rle & mts_bad
-        & mts_nxm & mts_onl & mts_bot & mts_7tk & mts_sdn & mts_wlk & mts_rew & mts_tur;
+        & mts_nxm & (mts_onl and have_media) & mts_bot & mts_7tk & mts_sdn & mts_wlk & mts_rew & (mts_tur and have_media);
 
    sd_addr <= '0' & need_pos(31 downto 9);
    reclen_pad <= reclen when reclen(0) = '0' else reclen + 1;

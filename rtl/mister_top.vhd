@@ -34,6 +34,7 @@ entity mister_top is
 		have_rl        : in integer;
 		have_rh        : in integer;
 		have_tm        : in integer;
+		tm_img_mounted : in integer;
 		have_xu        : in integer;
 		
 		-- VT settings
@@ -159,6 +160,7 @@ component unibus is
 -- tm11 magtape controller
       have_tm : in integer range 0 to 1 := 0;
       tm_media_change : in std_logic := '0';
+      tm_img_mounted : in integer range 0 to 1 := 1;
       tm_sdcard_cs : out std_logic;
       tm_sdcard_mosi : out std_logic;
       tm_sdcard_sclk : out std_logic;
@@ -453,6 +455,17 @@ signal cpuclk : std_logic;
 signal cpureset : std_logic := '1';
 signal cpuresetlength : integer range 0 to 255 := 255;
 
+-- have_tm was wired straight through from pdp2011.sv's vsd_sel_tm
+-- "image mounted" flag (clk_100 domain) into unibus's have_tm generic
+-- with no synchronization at all -- a real 1-bit CDC into the cpuclk
+-- datapath, and (separately) the wrong layer: a real TM11 doesn't
+-- vanish from the bus when you eject the tape, it reports "no tape"
+-- via MTS SELR/TUR (see tm11.vhd's img_mounted port). have_tm is now a
+-- plain constant; tm_img_mounted carries the real mount state, 2-FF
+-- synced on cpuclk (not reset-frozen -- mounting a tape while the core
+-- runs should still take effect).
+signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 1;
+
 signal ifetch: std_logic;
 signal iwait: std_logic;
 
@@ -554,6 +567,12 @@ signal dram_fsm : dram_fsm_type := dram_init;
 
 begin
 
+   process(cpuclk)
+   begin
+      if cpuclk'event and cpuclk = '1' then
+         tm_img_mounted_meta <= tm_img_mounted;  tm_img_mounted_sync <= tm_img_mounted_meta;
+      end if;
+   end process;
 
 
    pdp11: unibus port map(
@@ -608,6 +627,7 @@ begin
       rh_sdcard_debug => rh_sdcard_debug,
 
       have_tm => have_tm,
+      tm_img_mounted => tm_img_mounted_sync,
       tm_media_change => tm_media_change,
       tm_sdcard_cs => tm_sdcard_cs,
       tm_sdcard_miso => tm_sdcard_miso,
