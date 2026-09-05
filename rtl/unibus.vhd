@@ -70,6 +70,7 @@ entity unibus is
 -- tm11 magtape controller
       have_tm : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       tm_media_change : in std_logic := '0';                         -- toggles on .tap (un)mount -> re-home to BOT
+      tm_img_mounted : in integer range 0 to 1 := 1;                 -- is a tape image actually mounted (see tm11's img_mounted)
       tm_sdcard_cs : out std_logic;
       tm_sdcard_mosi : out std_logic;
       tm_sdcard_sclk : out std_logic;
@@ -668,6 +669,7 @@ component tm11 is
 
       have_tm : in integer range 0 to 1;
       media_change : in std_logic := '0';
+      img_mounted : in integer range 0 to 1 := 1;
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -1924,6 +1926,7 @@ begin
 
       have_tm => have_tm,
       media_change => tm_media_change,
+      img_mounted => tm_img_mounted,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       nclk => nclk,

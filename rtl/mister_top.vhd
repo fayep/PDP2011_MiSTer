@@ -36,6 +36,7 @@ entity mister_top is
 		have_rh        : in integer;
 		rh_img_mounted : in integer;
 		have_tm        : in integer;
+		tm_img_mounted : in integer;
 		have_xu        : in integer;
 		
 		-- VT settings
@@ -188,6 +189,7 @@ component unibus is
 
 -- tm11 magtape controller
       have_tm : in integer range 0 to 1 := 0;
+      tm_img_mounted : in integer range 0 to 1 := 1;
       tm_media_change : in std_logic := '0';
       tm_sdcard_cs : out std_logic;
       tm_sdcard_mosi : out std_logic;
@@ -493,29 +495,33 @@ signal cpuresetlength : integer range 0 to 255 := 255;
 -- intended "OSD CPU model takes effect on reset" behavior.
 signal modelcode_meta, modelcode_sync : integer range 0 to 255 := 0;
 signal have_xu_meta, have_xu_sync : integer range 0 to 1 := 0;
--- have_rl/have_tm come from pdp2011.sv's vsd_sel_* "image mounted"
--- flags in the clk_100 domain and feed combinationally into each
--- controller's bus_addr_match and the MMU dati mux -- i.e. straight
--- into the cpuclk datapath (confirmed via report_timing: the worst
--- divclk->cpuclk setup path through rh0 was vsd_sel_rl ->
--- cpu0|rbus_cpu_mode/rbus_ix/state, all fixed by this sync). Quasi-
--- static (only change on mount/unmount) but a real 1-bit CDC. Plain
--- 2-FF sync on cpuclk -- NOT reset-frozen like modelcode, so mounting
--- an image while the core runs still takes effect. Flagged as a
--- pre-existing issue (same bus-presence-hack class as have_rh/have_rk
--- below) but not yet fixed -- see notes/rsts-v10-rh70-hang.md.
+-- have_rl comes from pdp2011.sv's vsd_sel_rl "image mounted" flag in
+-- the clk_100 domain and feeds combinationally into rl11's
+-- bus_addr_match and the MMU dati mux -- i.e. straight into the cpuclk
+-- datapath (confirmed via report_timing: the worst divclk->cpuclk
+-- setup path through rh0 was vsd_sel_rl -> cpu0|rbus_cpu_mode/rbus_ix/
+-- state, all fixed by this sync). Quasi-static (only changes on mount/
+-- unmount) but a real 1-bit CDC. Plain 2-FF sync on cpuclk -- NOT
+-- reset-frozen, so mounting an image while the core runs still takes
+-- effect. Flagged as a pre-existing issue (same bus-presence-hack
+-- class as have_rh/have_rk/have_tm below) but not yet fixed -- see
+-- notes/rsts-v10-rh70-hang.md.
 --
--- have_rk/have_rh are NOT part of this anymore -- controller presence
--- is a build-time choice (a real RK11/RP06 doesn't vanish from the bus
--- when you eject the pack), so both are back to plain constants. What
--- DOES need the same 2-FF treatment is rk_img_mounted/rh_img_mounted,
--- which now flow into rk11's/rh11's own img_mounted port and surface
--- as a real "no medium" DS/DRY condition instead of a bus-presence
--- hack -- see rk11.vhd/rh11.vhd.
+-- have_rk/have_rh/have_tm are NOT part of this anymore -- controller
+-- presence is a build-time choice (a real RK11/RP06/TM11 doesn't
+-- vanish from the bus when you eject the medium), so all three are
+-- back to plain constants. What DOES need the same 2-FF treatment is
+-- rk_img_mounted/rh_img_mounted/tm_img_mounted, which now flow into
+-- each controller's own img_mounted port and surface as a real
+-- "no medium" DS/DRY/MTS condition instead of a bus-presence hack --
+-- see rk11.vhd/rh11.vhd/tm11.vhd. Fallthrough in the automatic M9312
+-- boot probe (roms/m9312h47.mac) for a present-but-medialess rk/mt is
+-- handled at the ROM + rk11/tm11 command-enforcement level instead of
+-- by hiding the controller -- see notes/rsts-v10-rh70-hang.md.
 signal have_rl_meta, have_rl_sync : integer range 0 to 1 := 0;
-signal have_tm_meta, have_tm_sync : integer range 0 to 1 := 0;
 signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 1;
 signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 1;
+signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 1;
 
 signal ifetch: std_logic;
 signal iwait: std_logic;
@@ -644,7 +650,7 @@ begin
          rk_img_mounted_meta <= rk_img_mounted;  rk_img_mounted_sync <= rk_img_mounted_meta;
          have_rl_meta <= have_rl;  have_rl_sync <= have_rl_meta;
          rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
-         have_tm_meta <= have_tm;  have_tm_sync <= have_tm_meta;
+         tm_img_mounted_meta <= tm_img_mounted;  tm_img_mounted_sync <= tm_img_mounted_meta;
       end if;
    end process;
 
@@ -701,7 +707,8 @@ begin
       rh_sdcard_sclk => rh_sdcard_sclk,
       rh_sdcard_debug => rh_sdcard_debug,
 
-      have_tm => have_tm_sync,
+      have_tm => have_tm,
+      tm_img_mounted => tm_img_mounted_sync,
       tm_media_change => tm_media_change,
       tm_sdcard_cs => tm_sdcard_cs,
       tm_sdcard_miso => tm_sdcard_miso,

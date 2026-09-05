@@ -39,36 +39,38 @@ L        =bit0                ; lowerbyte multiplier
 bprtascz:
          jmp   @#prtascz      ; 173010
 ;
-; boot: boot from first controller that exists in the system out of mt,rk,rl,rh
-;
-; mt is probed first: the tm11 csr at 172520 only responds when a tape is
-; mounted (have_tm), so with no tape the tst nxm-traps straight to nomt.
+; boot: boot from first controller that exists AND ready in the system out
+; of mt,rk,rl,rh. Each probe is a single bit-test instruction doing double
+; duty: it's a genuine bus read (NXM-traps to the next device if nothing
+; answers at all), and its condition codes test the device's own ready bit
+; (bit 0 for mt: TUR: EK-11-HTMAA-D-D 4.2.1; bit 7 for rk: RKDS DRY:
+; EK-RK11D-OP-001 p.3-2) -- present-but-medialess falls through exactly
+; like not-present. gofound: is a shared tail (r3 carries the go-routine
+; address across the bprtascz banner call, which never touches r3).
 ;
 boot:
          mov   #1000,sp
          clr   @#6
          mov   #nomt,@#4
-         tst   @#172520
+         bit   #1,@#172520     ; mt: NXM probe + TUR (bit 00)
+         beq   nomt
          mov   #bootmt,r2
+         mov   #mtgo,r3
          mov   pc,r1
          br    bprtascz
-         clr   @#4
-         clr   @#6
-         clr   r0
-         br    mtgo
+         br    gofound
 ;
 nomt:
          mov   #1000,sp
          clr   @#6
          mov   #nork,@#4
-         tst   @#177400
+         bit   #200,@#177400   ; rk: NXM probe + DRY (bit 07)
+         beq   nork
          mov   #bootrk,r2
+         mov   #rkgo,r3
          mov   pc,r1
          br    bprtascz
-         clr   @#4
-         clr   @#6
-         clr   r0
-         br    rkgo
+         br    gofound
 ;
 nork:
          mov   #1000,sp
@@ -76,12 +78,10 @@ nork:
          mov   #norl,@#4
          tst   @#174400
          mov   #bootrl,r2
+         mov   #rlgo,r3
          mov   pc,r1
          br    bprtascz
-         clr   @#4
-         clr   @#6
-         clr   r0
-         br    rlgo
+         br    gofound
 ;
 norl:
          mov   #1000,sp
@@ -89,18 +89,21 @@ norl:
          mov   #norp,@#4
          tst   @#176700
          mov   #bootrp,r2
+         mov   #rpgo,r3
          mov   pc,r1
          br    bprtascz
-         clr   @#4
-         clr   @#6
-         clr   r0
-         br    rpgo
+         br    gofound
 ;
 norp:
          mov   #nodev,r2
          mov   pc,r1
          br    bprtascz
          halt
+;
+gofound: clr   @#4
+         clr   @#6
+         clr   r0
+         jmp   (r3)
 
 ; --------------------------------------------------
 ; mt  (TM11 / TU10)
