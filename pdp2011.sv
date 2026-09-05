@@ -461,7 +461,7 @@ int have_tm;
 
 assign have_rk = vsd_sel_rk ? 1 : 0;
 assign have_rl = vsd_sel_rl ? 1 : 0;
-assign have_rh = 1;
+assign have_rh = vsd_sel_rh ? 1 : 0;
 assign have_tm = vsd_sel_tm ? 1 : 0;
 
 //

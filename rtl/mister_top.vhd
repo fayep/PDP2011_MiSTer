@@ -489,6 +489,19 @@ signal cpuresetlength : integer range 0 to 255 := 255;
 -- intended "OSD CPU model takes effect on reset" behavior.
 signal modelcode_meta, modelcode_sync : integer range 0 to 255 := 0;
 signal have_xu_meta, have_xu_sync : integer range 0 to 1 := 0;
+-- have_rk/rl/rh/tm come from pdp2011.sv's vsd_sel_* "image mounted"
+-- flags in the clk_100 domain and feed combinationally into each
+-- controller's bus_addr_match and the MMU dati mux -- i.e. straight
+-- into the cpuclk datapath (confirmed via report_timing: the worst
+-- divclk->cpuclk setup path through rh0 was vsd_sel_rl ->
+-- cpu0|rbus_cpu_mode/rbus_ix/state, all fixed by this sync). Quasi-
+-- static (only change on mount/unmount) but a real 1-bit CDC. Plain
+-- 2-FF sync on cpuclk -- NOT reset-frozen like modelcode, so mounting
+-- an image while the core runs still takes effect.
+signal have_rk_meta, have_rk_sync : integer range 0 to 1 := 0;
+signal have_rl_meta, have_rl_sync : integer range 0 to 1 := 0;
+signal have_rh_meta, have_rh_sync : integer range 0 to 1 := 0;
+signal have_tm_meta, have_tm_sync : integer range 0 to 1 := 0;
 
 signal ifetch: std_logic;
 signal iwait: std_logic;
@@ -614,6 +627,10 @@ begin
             have_xu_meta <= have_xu;
             have_xu_sync <= have_xu_meta;
          end if;
+         have_rk_meta <= have_rk;  have_rk_sync <= have_rk_meta;
+         have_rl_meta <= have_rl;  have_rl_sync <= have_rl_meta;
+         have_rh_meta <= have_rh;  have_rh_sync <= have_rh_meta;
+         have_tm_meta <= have_tm;  have_tm_sync <= have_tm_meta;
       end if;
    end process;
 
@@ -647,28 +664,28 @@ begin
 		kl3_bps => 9600,
 		kl3_force7bit => 0,
 		
-      have_rl => have_rl,
+      have_rl => have_rl_sync,
       rl_sdcard_cs    => rl_sdcard_cs,
       rl_sdcard_miso  => rl_sdcard_miso,
       rl_sdcard_mosi  => rl_sdcard_mosi,
       rl_sdcard_sclk  => rl_sdcard_sclk,
       rl_sdcard_debug => rl_sdcard_debug,
 
-		have_rk => have_rk,
+		have_rk => have_rk_sync,
 		rk_sdcard_cs    => rk_sdcard_cs,
       rk_sdcard_mosi  => rk_sdcard_mosi,
       rk_sdcard_sclk  => rk_sdcard_sclk,
       rk_sdcard_miso  => rk_sdcard_miso,
       rk_sdcard_debug => rk_sdcard_debug,
 
-      have_rh => have_rh,
+      have_rh => have_rh_sync,
       rh_sdcard_cs => rh_sdcard_cs,
       rh_sdcard_miso => rh_sdcard_miso,
       rh_sdcard_mosi => rh_sdcard_mosi,
       rh_sdcard_sclk => rh_sdcard_sclk,
       rh_sdcard_debug => rh_sdcard_debug,
 
-      have_tm => have_tm,
+      have_tm => have_tm_sync,
       tm_media_change => tm_media_change,
       tm_sdcard_cs => tm_sdcard_cs,
       tm_sdcard_miso => tm_sdcard_miso,

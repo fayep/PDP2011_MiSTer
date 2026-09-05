@@ -111,6 +111,12 @@ end component;
 
 signal base_addr_match : std_logic;
 signal interrupt_trigger : std_logic := '0';
+signal int_owed : std_logic := '0';        -- latched interrupt-pending: set by a
+                                            -- completion (rdyset/ataset) or by IE being
+                                            -- armed on an already-ready controller; gated
+                                            -- by IE, cleared only when the interrupt is
+                                            -- granted. Survives IE enabled after completion.
+signal rmcs1_ie_d : std_logic := '0';       -- IE delayed one cycle, for edge detect
 type interrupt_state_type is (
    i_idle,
    i_req,
@@ -379,7 +385,7 @@ begin
 
 -- specific logic for the device
 
-   rmcs1_sc <= '1' when rmcs1_tre = '1' or rmcs1_mcpe = '1'-- FIXME, others?
+   rmcs1_sc <= '1' when rmcs1_tre = '1' or rmcs1_mcpe = '1' or rmds_ata = '1'   -- SC = TRE | MCPE | any-drive-ATA (RH11/RH70)
       else '0';
    rmcs1_tre <= '1' when rmcs2_dlt = '1' or rmcs2_wce = '1' or rmcs2_pe = '1' or rmcs2_ned = '1'
       or rmcs2_nem = '1' or rmcs2_mxf = '1' or rmcs2_pge = '1' or rmcs2_mdpe = '1'
@@ -412,6 +418,8 @@ begin
 
             br <= '0';
             interrupt_trigger <= '0';
+            int_owed <= '0';
+            rmcs1_ie_d <= '0';
             interrupt_state <= i_idle;
 
             rmcs2_clr <= '1';
@@ -432,7 +440,7 @@ begin
                   when i_idle =>
 
                      br <= '0';
-                     if rmcs1_ie = '1' and (rmcs1_rdyset = '1' or rmds_ataset = '1') then
+                     if rmcs1_ie = '1' and int_owed = '1' then
                         if interrupt_trigger = '0' then
                            interrupt_state <= i_req;
                            br <= '1';
@@ -456,13 +464,24 @@ begin
                   when i_wait =>
                      if bg = '0' then
                         interrupt_state <= i_idle;
-                        rmcs1_ie <= '0';                                      -- automatically reset ie when interrupt recognized
+                        int_owed <= '0';                                      -- interrupt granted: clear the pending latch
                      end if;
 
                   when others =>
                      interrupt_state <= i_idle;
 
                end case;
+
+               -- Latch an interrupt request into int_owed: on a completion (RDY 0->1 or
+               -- attention) even if IE is currently off, or on IE being armed while the
+               -- controller is already ready (the "enable interrupts on a ready
+               -- controller" probe).  After the case so a completion coincident with a
+               -- grant is kept.
+               rmcs1_ie_d <= rmcs1_ie;
+               if rmcs1_rdyset = '1' or rmds_ataset = '1'
+                  or (rmcs1_ie = '1' and rmcs1_ie_d = '0' and (rmcs1_rdy = '1' or rmds_ata = '1')) then
+                  int_owed <= '1';
+               end if;
             else
                br <= '0';
             end if;
@@ -607,7 +626,9 @@ begin
                               rmcs1_fnc <= bus_dato(5 downto 1);
                               if rmcs1_sc = '0' then
                                  rmcs1_go <= bus_dato(0);
-                                 if rmds_err = '0' then
+                                 -- ATA is cleared only when a new command is
+                                 -- actually started (GO), not on every CS1 poke
+                                 if rmds_err = '0' and bus_dato(0) = '1' then
                                     rmds_ata <= '0';
                                  end if;
                               end if;
@@ -647,7 +668,9 @@ begin
 
 -- rmas  17 776 716                                             -- attention summary
                            when "00111" =>
-                              rmds_ata <= '0';                   -- FIXME, not correct@!
+                              if bus_dato(0) = '1' then          -- write-1-to-clear per drive bit
+                                 rmds_ata <= '0';
+                              end if;
 
 -- rmmr1  17 776 724                                            -- maintenance register
                            when "01010" =>
@@ -726,7 +749,7 @@ begin
 
 -- rmas  17 776 716                                             -- attention summary
                            when "00111" =>
-                              rmds_ata <= '0';
+                              null;                              -- ATA cleared by bit 0 in the low-byte handler (write-1-to-clear)
 
 -- rmof  17 776 732                                             -- offset
                            when "01101" =>
@@ -780,7 +803,7 @@ begin
 
                end if;
 
-               rmclock <= rmclock + 1;
+               if rmclock = 4095 then rmclock <= 0; else rmclock <= rmclock + 1; end if;  -- 12-bit free-running counter; explicit wrap for strict simulators
                if rmclock = 0 then
                   if rmla_sc = "11111" then
                      rmla_sc <= "00000";
@@ -1372,13 +1395,13 @@ begin
                         bus_master_dato <= sdcard_xfer_out;
                         bus_master_control_dato <= '0';
                      end if;
-                     sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                     sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
 
 
                   when busmaster_read =>
                      if sectorcounter /= "000000000" then
                         work_bar <= work_bar + 1;
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
                         sectorcounter <= sectorcounter - 1;
 
                         if have_rh70 = 1 then

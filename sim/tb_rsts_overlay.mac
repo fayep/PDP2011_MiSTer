@@ -1,0 +1,160 @@
+	.title	tb_rsts_overlay - polled RH70 read with BAE=1, under the clock
+
+;  Phase 5.  The real hang's DMA target was BAE=1|BA=131000 (physical
+;  bit 16 set) - the one literal difference from phases 1-2 (which used
+;  BAE=0).  Polled multi-sector read again, MMU on as at the hang, but
+;  now into a BAE=1 buffer, plus a data check (kernel D PAR6 temporarily
+;  points at the buffer) so this also confirms the DMA data itself
+;  lands correctly with BAE=1 - tb_rh11_dma only checked BAE=0.
+;
+;  result(500):  1  = every sector's poll completed AND the data check
+;                      on the BAE=1 buffer passed                (PASS)
+;               77  = RH raised SC/error
+;               60  = DMA landed wrong data at the BAE=1 target    (BUG)
+;               66  = memory-management trap
+;                0  = poll never saw RDY                          (HANG)
+
+RHCS1	= 176700
+RHWC	= 176702
+RHBA	= 176704
+RHDA	= 176706
+RHDC	= 176734
+RHBAE	= 176750
+KWCSR	= 177546
+PSW	= 177776
+MMR0	= 177572
+MMR2	= 177576
+MMR3	= 172516
+KIPAR0	= 172340
+KIPDR0	= 172300
+KDPAR0	= 172360
+KDPAR6	= 172374
+KDPDR0	= 172320
+
+NSECT	= 4.
+DMABA	= 40000			; byte offset within BAE=1
+DMAPAR	= 2400			; (BAE=1|DMABA) physical block number, kD PAR6 -> the buffer
+DMAWIN	= 140000		; kernel virtual window (APR 6)
+
+	.asect
+
+	.=100
+	.word	clkisr
+	.word	4340
+	.=250
+	.word	mmtrap
+	.word	340
+
+	.=500
+result:	.word	0
+count:	.word	0
+ticks:	.word	0
+last:	.word	0
+mmr0v:	.word	0
+mmr2v:	.word	0
+
+	.=1000
+start:
+	mov	#4000,sp
+
+	mov	#KIPAR0,r0
+	clr	r1
+	mov	#8.,r2
+1$:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,1$
+	mov	#177600,@#172356
+
+	mov	#KDPAR0,r0
+	clr	r1
+	mov	#8.,r2
+2$:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,2$
+	mov	#177600,@#172376
+
+	mov	#KIPDR0,r0
+	mov	#8.,r2
+3$:	mov	#77406,(r0)+
+	sob	r2,3$
+	mov	#KDPDR0,r0
+	mov	#8.,r2
+4$:	mov	#77406,(r0)+
+	sob	r2,4$
+
+	mov	#65,@#MMR3
+	mov	#1,@#MMR0
+	mov	#4240,@#PSW		; register set 1, priority 5
+
+	clr	@#result
+	clr	@#count
+	clr	@#ticks
+	mov	#100,@#KWCSR
+	clr	r4
+
+loop:
+	mov	#1,@#RHBAE		; the real hang's DMA target had BAE=1
+	mov	#DMABA,@#RHBA
+	clr	@#RHDC
+	mov	r4,@#RHDA
+	mov	#-400,@#RHWC
+	mov	#471,@#RHCS1		; fnc=read data+GO, bit8=BAE(0) (CS1 write also loads rmbae(1:0) from bits 9:8)
+
+poll:
+	mov	@#RHCS1,r0
+	mov	r0,@#last
+	bit	#100000,r0
+	bne	fail
+	bit	#200,r0
+	beq	poll
+
+; ---- verify the data actually landed at BAE=1: word 0 of sector r4
+;      must be (r4+1)*4000 (the mock sdspi's per-block pattern) ----
+	mov	#DMAPAR,@#KDPAR6	; kD PAR6 -> the BAE=1 buffer
+	mov	@#DMAWIN,r1		; word 0 of this sector's data
+	mov	#1400,@#KDPAR6		; restore identity mapping over page 6
+
+	mov	r4,r2
+	inc	r2
+	asl	r2
+	asl	r2
+	asl	r2
+	asl	r2
+	asl	r2
+	asl	r2
+	asl	r2
+	asl	r2
+	asl	r2
+	asl	r2
+	asl	r2			; r2 = (sector+1) << 11 = (sector+1)*4000(8)
+	cmp	r1,r2
+	bne	baderr
+
+	inc	r4
+	inc	@#count
+	cmp	r4,#NSECT
+	blt	loop
+
+	mov	#1,@#result
+done:	br	done
+
+fail:	mov	#77,@#result
+	br	done
+baderr:	mov	#60,@#result
+	br	done
+
+clkisr:
+	inc	@#ticks
+	mov	#40,-(sp)
+1$:	dec	(sp)
+	bne	1$
+	tst	(sp)+
+	rti
+
+mmtrap:
+	mov	@#MMR0,@#mmr0v
+	mov	@#MMR2,@#mmr2v
+	mov	#66,@#result
+	halt
+
+	.end	start
