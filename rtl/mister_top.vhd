@@ -33,6 +33,7 @@ entity mister_top is
 		have_rk        : in integer;
 		rk_img_mounted : in integer;
 		have_rl        : in integer;
+		rl_img_mounted : in integer;
 		have_rh        : in integer;
 		rh_img_mounted : in integer;
 		have_xu        : in integer;
@@ -126,6 +127,7 @@ component unibus is
 
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
+      rl_img_mounted : in integer range 0 to 1 := 1;
       rl_sdcard_cs : out std_logic;
       rl_sdcard_mosi : out std_logic;
       rl_sdcard_sclk : out std_logic;
@@ -440,23 +442,20 @@ signal cpuclk : std_logic;
 signal cpureset : std_logic := '1';
 signal cpuresetlength : integer range 0 to 255 := 255;
 
--- have_rl comes from pdp2011.sv's vsd_sel_rl "image mounted" flag in
--- the clk_100 domain and feeds combinationally into rl11's
--- bus_addr_match and the MMU dati mux -- i.e. straight into the cpuclk
--- datapath. Quasi-static (only changes on mount/unmount) but a real
--- 1-bit CDC. Plain 2-FF sync on cpuclk -- not reset-frozen, so mounting
--- an image while the core runs still takes effect. Flagged as a
--- pre-existing issue (same bus-presence-hack class as have_rh/have_rk
--- below) but not yet fixed -- see notes/rsts-v10-rh70-hang.md.
---
--- have_rk/have_rh are NOT part of this anymore -- controller presence
--- is a build-time choice (a real RK11/RP06 doesn't vanish from the bus
--- when you eject the pack), so both are back to plain constants. What
--- DOES need the same 2-FF treatment is rk_img_mounted/rh_img_mounted,
--- which now flow into rk11's/rh11's own img_mounted port and surface
+-- have_rk/have_rl/have_rh are all plain constants -- controller
+-- presence is a build-time choice (a real RK11/RL11/RP06 doesn't
+-- vanish from the bus when you eject the medium). What DOES need 2-FF
+-- sync into cpuclk is rk_img_mounted/rl_img_mounted/rh_img_mounted,
+-- which flow into each controller's own img_mounted port and surface
 -- as a real "no medium" DS/DRY condition instead of a bus-presence
--- hack -- see rk11.vhd/rh11.vhd.
-signal have_rl_meta, have_rl_sync : integer range 0 to 1 := 0;
+-- hack -- see rk11.vhd/rl11.vhd/rh11.vhd. Quasi-static (only changes
+-- on mount/unmount) but a real 1-bit CDC. Plain 2-FF sync on cpuclk --
+-- NOT reset-frozen, so mounting an image while the core runs still
+-- takes effect. Fallthrough in the automatic M9312 boot probe
+-- (roms/m9312h47.mac) for a present-but-medialess drive is handled at
+-- the ROM + controller command-enforcement level instead of by hiding
+-- the controller -- see notes/rsts-v10-rh70-hang.md.
+signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 1;
 signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 1;
 signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 1;
 
@@ -565,7 +564,7 @@ begin
    begin
       if cpuclk'event and cpuclk = '1' then
          rk_img_mounted_meta <= rk_img_mounted;  rk_img_mounted_sync <= rk_img_mounted_meta;
-         have_rl_meta <= have_rl;  have_rl_sync <= have_rl_meta;
+         rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
          rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
       end if;
    end process;
@@ -600,7 +599,8 @@ begin
 		kl3_bps => 9600,
 		kl3_force7bit => 0,
 		
-      have_rl => have_rl_sync,
+      have_rl => have_rl,
+      rl_img_mounted => rl_img_mounted_sync,
       rl_sdcard_cs    => rl_sdcard_cs,
       rl_sdcard_miso  => rl_sdcard_miso,
       rl_sdcard_mosi  => rl_sdcard_mosi,
