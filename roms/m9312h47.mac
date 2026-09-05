@@ -44,9 +44,13 @@ bprtascz:
 ; duty: it's a genuine bus read (NXM-traps to the next device if nothing
 ; answers at all), and its condition codes test the device's own ready bit
 ; (bit 0 for mt: TUR: EK-11-HTMAA-D-D 4.2.1; bit 7 for rk: RKDS DRY:
-; EK-RK11D-OP-001 p.3-2) -- present-but-medialess falls through exactly
-; like not-present. gofound: is a shared tail (r3 carries the go-routine
-; address across the bprtascz banner call, which never touches r3).
+; EK-RK11D-OP-001 p.3-2; bit 7 for rh: RMDS DRY, same bit position as rk's,
+; EK-RP056-MM-01 -- read off RMDS at csr+012, not RMCS1, since RMCS1 always
+; answers now that have_rh is a static build-time constant rather than a
+; bus-presence hack keyed on mount state) -- present-but-medialess falls
+; through exactly like not-present. gofound: is a shared tail (r3 carries
+; the go-routine address across the bprtascz banner call, which never
+; touches r3).
 ;
 boot:
          mov   #1000,sp
@@ -87,7 +91,8 @@ norl:
          mov   #1000,sp
          clr   @#6
          mov   #norp,@#4
-         tst   @#176700
+         bit   #200,@#176712   ; rh: NXM probe + RMDS DRY (bit 07)
+         beq   norp
          mov   #bootrp,r2
          mov   #rpgo,r3
          mov   pc,r1
