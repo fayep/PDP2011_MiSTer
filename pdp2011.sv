@@ -457,6 +457,7 @@ sd_card #(.WIDE(1)) sd_card_tm
 int have_rk;
 int rk_img_mounted;
 int have_rl;
+int rl_img_mounted;
 int have_rh;
 int have_tm;
 int rh_img_mounted;
@@ -465,7 +466,9 @@ int tm_img_mounted;
 assign have_rk = 1;  // controller presence is a build-time choice, not tied to
                       // mount state -- see rk11's img_mounted for "no medium"
 assign rk_img_mounted = vsd_sel_rk ? 1 : 0;
-assign have_rl = vsd_sel_rl ? 1 : 0;
+assign have_rl = 1;  // controller presence is a build-time choice, not tied to
+                      // mount state -- see rl11's img_mounted for "no medium"
+assign rl_img_mounted = vsd_sel_rl ? 1 : 0;
 assign have_rh = 1;  // controller presence is a build-time choice, not tied to
                       // mount state -- see rh11's img_mounted for "no medium"
 assign rh_img_mounted = vsd_sel_rh ? 1 : 0;
@@ -561,6 +564,7 @@ mister_top mister_top
 	.xu_miso  (xu_miso),
 	
    .have_rl (have_rl),
+   .rl_img_mounted (rl_img_mounted),
    .rl_sdcard_cs    (rl_cs),
    .rl_sdcard_miso  (rl_miso),
    .rl_sdcard_mosi  (rl_mosi),

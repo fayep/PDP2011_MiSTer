@@ -53,6 +53,10 @@ entity rl11 is
       sdcard_debug : out std_logic_vector(3 downto 0);
 
       have_rl : in integer range 0 to 1;
+      img_mounted : in integer range 0 to 1 := 1;                    -- is a disk image actually mounted; a real RL01/RL02
+                                                                      -- drive always exists once the controller is wired up,
+                                                                      -- so "no medium" is reported via csr_drdy (RLCS DRDY,
+                                                                      -- bit 00) instead of hiding the controller itself
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -124,6 +128,7 @@ signal csr_ie : std_logic;
 signal csr_ba : std_logic_vector(17 downto 16);
 signal csr_fc : std_logic_vector(2 downto 0);
 signal csr_drdy : std_logic;
+signal have_media : std_logic;                                        -- img_mounted, as a std_logic
 
 signal bar : std_logic_vector(15 downto 1);
 
@@ -237,10 +242,11 @@ begin
    base_addr_match <= '1' when base_addr(17 downto 3) = bus_addr(17 downto 3) and have_rl = 1 else '0';
    bus_addr_match <= base_addr_match;
 
+   have_media <= '1' when img_mounted = 1 else '0';
 
 -- specific logic for the device
 
-   csr_drdy <= '1';                    -- the drive is always ready
+   csr_drdy <= have_media;             -- drive ready reflects whether a disk is actually mounted
    csr_de <= '0';                      -- the drive has no errors
 
    csr_err <= '0' when csr_e = "000" and csr_nxm = '0' and csr_de = '0' else '1';
@@ -428,7 +434,13 @@ begin
                end if;
 
                if csr_crdy = '0' and start = '0' then
-                  start <= '1';
+                  if have_media = '1' or csr_fc = "000" then          -- no-op always allowed, like
+                                                                       -- RH11's RIP/RK11's control-reset exemption
+                     start <= '1';
+                  else
+                     csr_e <= "001";                                  -- operation incomplete: no medium
+                     csr_crdy <= '1';
+                  end if;
                end if;
 
                if start = '1' then

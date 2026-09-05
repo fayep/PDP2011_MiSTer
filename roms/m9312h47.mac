@@ -44,12 +44,14 @@ bprtascz:
 ; duty: it's a genuine bus read (NXM-traps to the next device if nothing
 ; answers at all), and its condition codes test the device's own ready bit
 ; (bit 0 for mt: TUR: EK-11-HTMAA-D-D 4.2.1; bit 7 for rk: RKDS DRY:
-; EK-RK11D-OP-001 p.3-2; bit 7 for rh: RMDS DRY, same bit position as rk's,
-; EK-RP056-MM-01 -- read off RMDS at csr+012, not RMCS1, since RMCS1 always
-; answers now that have_rh is a static build-time constant rather than a
-; bus-presence hack keyed on mount state) -- present-but-medialess falls
-; through exactly like not-present. gofound: is a shared tail (r3 carries
-; the go-routine address across the bprtascz banner call, which never
+; EK-RK11D-OP-001 p.3-2; bit 0 for rl: RLCS DRDY, EK-RL011-TM-PS3; bit 7
+; for rh: RMDS DRY, same bit position as rk's, EK-RP056-MM-01 -- read off
+; RMDS at csr+012, not RMCS1) -- all four controllers are now static
+; build-time constants rather than a bus-presence hack keyed on mount
+; state, so RMCS1/RLCS would always answer regardless of media; testing
+; the real ready bit is what makes present-but-medialess fall through
+; exactly like not-present. gofound: is a shared tail (r3 carries the
+; go-routine address across the bprtascz banner call, which never
 ; touches r3).
 ;
 boot:
@@ -60,9 +62,7 @@ boot:
          beq   nomt
          mov   #bootmt,r2
          mov   #mtgo,r3
-         mov   pc,r1
-         br    bprtascz
-         br    gofound
+         br    docall
 ;
 nomt:
          mov   #1000,sp
@@ -72,20 +72,17 @@ nomt:
          beq   nork
          mov   #bootrk,r2
          mov   #rkgo,r3
-         mov   pc,r1
-         br    bprtascz
-         br    gofound
+         br    docall
 ;
 nork:
          mov   #1000,sp
          clr   @#6
          mov   #norl,@#4
-         tst   @#174400
+         bit   #1,@#174400     ; rl: NXM probe + DRDY (bit 00)
+         beq   norl
          mov   #bootrl,r2
          mov   #rlgo,r3
-         mov   pc,r1
-         br    bprtascz
-         br    gofound
+         br    docall
 ;
 norl:
          mov   #1000,sp
@@ -95,7 +92,8 @@ norl:
          beq   norp
          mov   #bootrp,r2
          mov   #rpgo,r3
-         mov   pc,r1
+;
+docall:  mov   pc,r1
          br    bprtascz
          br    gofound
 ;

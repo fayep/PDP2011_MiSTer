@@ -40,6 +40,7 @@ entity unibus is
 
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
+      rl_img_mounted : in integer range 0 to 1 := 1;                 -- is a disk image actually mounted (see rl11's img_mounted)
       rl_sdcard_cs : out std_logic;
       rl_sdcard_mosi : out std_logic;
       rl_sdcard_sclk : out std_logic;
@@ -627,6 +628,7 @@ component rl11 is
       sdcard_debug : out std_logic_vector(3 downto 0);
 
       have_rl : in integer range 0 to 1;
+      img_mounted : in integer range 0 to 1 := 1;
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -1886,6 +1888,7 @@ begin
       sdcard_debug => rl_sdcard_debug,
 
       have_rl => have_rl,
+      img_mounted => rl_img_mounted,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       nclk => nclk,
