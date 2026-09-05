@@ -161,6 +161,8 @@ signal update_mpr : std_logic;
 signal hs_offset : std_logic_vector(17 downto 0);
 signal ca_offset : std_logic_vector(17 downto 0);
 signal dn_offset : std_logic_vector(17 downto 0);
+signal sd_index : unsigned(17 downto 0);        -- linear real-sector number
+signal sd_half : std_logic;                     -- which 128-word half of the SD block this real sector lives in
 signal sd_addr : std_logic_vector(17 downto 0);
 
 signal work_bar : std_logic_vector(17 downto 1);
@@ -283,6 +285,13 @@ begin
                dnca(conv_integer(0)) <= (others => '0');
 
                start <= '0';
+
+               write_start <= '0';
+               sdcard_read_start <= '0';       -- was never reset -- 'U' in sim (blocks the
+                                                -- idle/read-start guard forever); real hardware
+                                                -- apparently gets away with it only by luck of
+                                                -- Cyclone V's LUT-FF power-up-to-0 convention
+                                                -- (same bug found and fixed in rk11.vhd)
 
                gs_vc <= '1';
                update_mpr <= '0';
@@ -617,7 +626,20 @@ begin
    ca_offset <= ("00000" & dnca(conv_integer(csr_ds)) & "0000") + ("000" & dnca(conv_integer(csr_ds)) & "000000");     -- cyl#  * 2 * 40
    dn_offset <= (('0' & csr_ds & "0000000000000") + ('0' & csr_ds & "000000000000000"));                               -- disk * 512 * 2 * 40
 
-   sd_addr <= (dn_offset + hs_offset) + (ca_offset + ("000000000000" & dar(5 downto 0)));
+   -- real RL02 sectors are 128 (16-bit) words -- RL02 Technical
+   -- Description ("16 bit words per sector: 128"; "this track contains
+   -- 40 sectors of 128 words each") -- half of a 512-byte SD block.
+   -- sd_index is the linear real-sector number (dn/hs/ca_offset's
+   -- strides are all even and 40 sectors/track is even, so a pair
+   -- never straddles a drive/head/cylinder boundary); sd_addr packs
+   -- two real sectors per SD block (index>>1), sd_half picks which
+   -- half of that block this real sector's data lives in -- see
+   -- sdcard_xfer_addr's read-side init below. rk11.vhd had (and
+   -- reverted) the same pattern for RK05, which turned out to
+   -- genuinely be 256 words/sector, not 128 -- see exp/badrk256b.
+   sd_index <= unsigned(dn_offset + hs_offset + ca_offset + ("000000000000" & dar(5 downto 0)));
+   sd_addr <= '0' & std_logic_vector(sd_index(17 downto 1));
+   sd_half <= sd_index(0);
 
 -- busmaster
 
@@ -664,7 +686,11 @@ begin
                               sectorcounter <= '0' & wcp(7 downto 0);
                            end if;
 
-                           sdcard_xfer_addr <= 0;
+                           if sd_half = '0' then                      -- which real-sector half of the SD block
+                              sdcard_xfer_addr <= 0;
+                           else
+                              sdcard_xfer_addr <= 128;
+                           end if;
                            sdcard_xfer_read <= '1';
                         end if;
                      end if;
@@ -680,7 +706,12 @@ begin
                   when busmaster_read =>
                      if sectorcounter /= "000000000" then
                         work_bar <= work_bar + 1;
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr /= 255 then      -- this state machine always runs one
+                           sdcard_xfer_addr <= sdcard_xfer_addr + 1;   -- increment past the last real
+                        end if;                              -- word transferred -- harmless starting
+                                                               -- from address 0 (max reached is 129),
+                                                               -- but a real overflow risk starting
+                                                               -- from 128 (an odd real sector)
                         sectorcounter <= sectorcounter - 1;
 
                         bus_master_control_dati <= '0';
