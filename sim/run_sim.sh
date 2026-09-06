@@ -20,7 +20,7 @@
 
 set -e
 TOP="$1"; shift || true
-GHDL_FLAGS="--std=08 -fexplicit -fsynopsys"
+GHDL_FLAGS="--std=08 -fexplicit -fsynopsys -frelaxed"
 
 cd "$(dirname "$0")"
 
