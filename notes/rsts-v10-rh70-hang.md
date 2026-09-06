@@ -394,3 +394,28 @@ Next once the build lands: reload, drive to the hang, let the watchdog
 auto-halt, and read the *undisturbed* state - both register sets, PSW,
 MMR0-3, RH70 registers - directly, instead of the noisy manually-timed
 snapshots this session relied on.
+
+## 2026-09-05 - rk11/rl11 sd-related bugs checked against rh11: clean
+
+Two bugs found while adding rk11.vhd/rl11.vhd's packed-sector
+addressing (see those commits) turned out to be pre-existing and
+independent of the packing work itself:
+
+  - sdcard_read_start/write_start were never reset in rk11.vhd/
+    rl11.vhd (reads as 'U' in GHDL sim, permanently blocking the
+    idle/read-start guard; real hardware apparently gets away with it
+    only by luck of Cyclone V's LUT-FF power-up-to-0 convention). Fixed
+    in both.
+  - the busmaster_read loop's sdcard_xfer_addr increment overflows
+    past the valid 0-255 range on a full-width transfer (rk11: any
+    plain 256-word sector read, even before packing; rl11: an odd
+    packed sector starting at address 128). Fixed in both with an
+    `/= 255` guard.
+
+Checked rh11.vhd for the same two bugs: both already correct.
+sdcard_read_start/write_start are reset properly (rh11.vhd:437-438).
+The xfer-address increment already uses `(sdcard_xfer_addr + 1) mod
+256` (lines 1405, 1411) instead of a bare +1, avoiding the overflow
+from the start - makes sense given RH70/RP06 genuinely needs
+multi-block DMA spanning many sectors, so this was presumably built
+correctly for that case originally. No fix needed on RH11.

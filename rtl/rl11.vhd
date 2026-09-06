@@ -744,7 +744,27 @@ begin
 
                   when busmaster_write1 =>
                      sdcard_xfer_write <= '0';
-                     sdcard_xfer_addr <= 255;
+                     -- packed addressing: an odd real sector (sd_half='1')
+                     -- lives in words 128-255 of the SD block, not 0-127.
+                     -- Start one below the real target so busmaster_write's
+                     -- first increment lands there -- mirrors the read
+                     -- path's sd_half branch above. Before this fix, every
+                     -- write here unconditionally started at 255 (wrapping
+                     -- to 0), so writing an odd real sector corrupted the
+                     -- EVEN sector sharing its SD block instead of the
+                     -- intended odd one, leaving the real target with
+                     -- stale data -- this is what corrupted RSTS/E pack
+                     -- labels (e.g. LBN 1, an odd real sector) on real
+                     -- hardware even though the source disk image was
+                     -- verified correct. Writes are capped at 128
+                     -- words/burst (see the sectorcounter setup above), so
+                     -- starting at 127 can reach at most 255, never
+                     -- overflowing.
+                     if sd_half = '0' then
+                        sdcard_xfer_addr <= 255;
+                     else
+                        sdcard_xfer_addr <= 127;
+                     end if;
                      if sectorcounter /= "000000000" then
                         bus_master_addr <= work_bar(17 downto 1) & '0';
                         bus_master_control_dati <= '1';
