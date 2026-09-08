@@ -60,7 +60,24 @@ entity rl11 is
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
-      clk : in std_logic
+      clk : in std_logic;
+
+      -- Passive event tap for tracecap.vhd (Faye: "I think you'll need
+      -- to use READ+GO as the trigger" -- matches pdp11dis/rldma.py's
+      -- own philosophy of replaying the real hardware trigger rather
+      -- than snooping completion: RLDA/RLBA(+ext)/RLMP are already
+      -- loaded and stable the instant GO+READ commits, since software
+      -- always writes them first, so no latching through the multi-
+      -- cycle busmaster state machine is needed at all). Pulses once
+      -- when sdcard_read_start actually commits (rl11.vhd's own
+      -- "when "110"|"001"" READ/WCHK branch), not on every RLCS write --
+      -- e.g. SEEK/GET STATUS never pulse this.
+      trace_disk_valid : out std_logic;
+      trace_disk_dar   : out std_logic_vector(15 downto 0);  -- raw RLDA -- convert with the
+                                                              -- same GET_DA formula rldma.py uses
+      trace_disk_dest  : out std_logic_vector(17 downto 0);  -- csr_ba & bar & '0', the untouched
+                                                              -- starting destination address
+      trace_disk_wc    : out std_logic_vector(12 downto 0)   -- wcp, already-positive word count
    );
 end rl11;
 
@@ -306,6 +323,9 @@ begin
             end if;
          else
 
+            trace_disk_valid <= '0';  -- one-cycle pulse default; the READ/WCHK
+                                       -- branch below overrides it for its cycle
+
             if have_rl = 1 then
 
                case interrupt_state is
@@ -504,6 +524,10 @@ begin
                                  start <= '0';
                               else
                                  sdcard_read_start <= '1';
+                                 trace_disk_valid <= '1';
+                                 trace_disk_dar  <= dar;
+                                 trace_disk_dest <= csr_ba & bar & '0';
+                                 trace_disk_wc   <= wcp;
                               end if;
                            elsif sdcard_read_ack = '1' and sdcard_read_done = '0' and sdcard_read_start = '1' then
                               sdcard_read_start <= '0';

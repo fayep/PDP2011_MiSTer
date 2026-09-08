@@ -26,8 +26,12 @@ wire        io_enable = EXT_BUS[34];
 
 reg  [15:0] io_dout;
 reg         claimed;
-assign EXT_BUS[15:0] = io_dout;
-assign EXT_BUS[32]   = io_enable & claimed;
+// Tri-state when not claimed, so a second EXT_BUS claimer (e.g.
+// tracecap_dbg.sv, command 0x51) can share the same wire safely --
+// EXT_BUS[32] is hps_io.sv's own claim-select bit (hps_io.sv:189), so
+// exactly one claimer may drive real values at a time.
+assign EXT_BUS[15:0] = claimed ? io_dout : 16'bz;
+assign EXT_BUS[32]   = claimed ? (io_enable & claimed) : 1'bz;
 
 localparam [15:0] CMD = 16'h0050;
 

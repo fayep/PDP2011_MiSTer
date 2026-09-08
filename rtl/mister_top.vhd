@@ -134,6 +134,23 @@ entity mister_top is
       dbg_addr       : out std_logic_vector(15 downto 0);  -- consoleaddr[15:0]
       dbg_nxm        : out std_logic;
 
+      -- passive event-trace taps for tracecap.vhd/tracecap_dbg.sv
+      -- (EXT_BUS command 0x51) -- see rtl/tracecap_pkg.vhd
+      trace_rl_valid : out std_logic;
+      trace_rl_dar   : out std_logic_vector(15 downto 0);
+      trace_rl_dest  : out std_logic_vector(17 downto 0);
+      trace_rl_wc    : out std_logic_vector(12 downto 0);
+
+      trace_rh_valid : out std_logic;
+      trace_rh_dar   : out std_logic_vector(15 downto 0);
+      trace_rh_dest  : out std_logic_vector(21 downto 0);
+      trace_rh_wc    : out std_logic_vector(15 downto 0);
+
+      trace_par_valid : out std_logic;
+      trace_par_space : out std_logic_vector(1 downto 0);
+      trace_par_index : out std_logic_vector(3 downto 0);
+      trace_par_data  : out std_logic_vector(15 downto 0);
+
       -- board peripherals
       greenled       : out std_logic
   );
@@ -383,7 +400,23 @@ component unibus is
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
-      reset : in std_logic                                           -- active '1' synchronous reset
+      reset : in std_logic;                                          -- active '1' synchronous reset
+
+-- passive event-trace taps, pass-through to tracecap.vhd (see rtl/tracecap_pkg.vhd)
+      trace_rl_valid : out std_logic;
+      trace_rl_dar   : out std_logic_vector(15 downto 0);
+      trace_rl_dest  : out std_logic_vector(17 downto 0);
+      trace_rl_wc    : out std_logic_vector(12 downto 0);
+
+      trace_rh_valid : out std_logic;
+      trace_rh_dar   : out std_logic_vector(15 downto 0);
+      trace_rh_dest  : out std_logic_vector(21 downto 0);
+      trace_rh_wc    : out std_logic_vector(15 downto 0);
+
+      trace_par_valid : out std_logic;
+      trace_par_space : out std_logic_vector(1 downto 0);
+      trace_par_index : out std_logic_vector(3 downto 0);
+      trace_par_data  : out std_logic_vector(15 downto 0)
    );
 end component;
 
@@ -774,7 +807,22 @@ begin
       ifetch => ifetch,
       reset => cpureset,
       clk50mhz => clk_50,
-      clk => cpuclk
+      clk => cpuclk,
+
+      trace_rl_valid => trace_rl_valid,
+      trace_rl_dar => trace_rl_dar,
+      trace_rl_dest => trace_rl_dest,
+      trace_rl_wc => trace_rl_wc,
+
+      trace_rh_valid => trace_rh_valid,
+      trace_rh_dar => trace_rh_dar,
+      trace_rh_dest => trace_rh_dest,
+      trace_rh_wc => trace_rh_wc,
+
+      trace_par_valid => trace_par_valid,
+      trace_par_space => trace_par_space,
+      trace_par_index => trace_par_index,
+      trace_par_data => trace_par_data
    );
 
 	  vt0: vt port map(

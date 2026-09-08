@@ -274,6 +274,20 @@ wire  [7:0] uart_mode;
 
 wire [35:0] ext_bus;
 wire [15:0] dbg_r7, dbg_ir, dbg_psw, dbg_data, dbg_addr;
+
+// tracecap.vhd/tracecap_dbg.sv event-trace taps -- see rtl/tracecap_pkg.vhd
+wire        trace_rl_valid;
+wire [15:0] trace_rl_dar;
+wire [17:0] trace_rl_dest;
+wire [12:0] trace_rl_wc;
+wire        trace_rh_valid;
+wire [15:0] trace_rh_dar;
+wire [21:0] trace_rh_dest;
+wire [15:0] trace_rh_wc;
+wire        trace_par_valid;
+wire [1:0]  trace_par_space;
+wire [3:0]  trace_par_index;
+wire [15:0] trace_par_data;
 wire        dbg_run, dbg_nxm;
 
 hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(4),.PS2DIV(3125)) hps_io
@@ -642,7 +656,20 @@ mister_top mister_top
    .dbg_run  (dbg_run),
    .dbg_data (dbg_data),
    .dbg_addr (dbg_addr),
-   .dbg_nxm  (dbg_nxm)
+   .dbg_nxm  (dbg_nxm),
+
+   .trace_rl_valid (trace_rl_valid),
+   .trace_rl_dar   (trace_rl_dar),
+   .trace_rl_dest  (trace_rl_dest),
+   .trace_rl_wc    (trace_rl_wc),
+   .trace_rh_valid (trace_rh_valid),
+   .trace_rh_dar   (trace_rh_dar),
+   .trace_rh_dest  (trace_rh_dest),
+   .trace_rh_wc    (trace_rh_wc),
+   .trace_par_valid(trace_par_valid),
+   .trace_par_space(trace_par_space),
+   .trace_par_index(trace_par_index),
+   .trace_par_data (trace_par_data)
 );
 
 panel_dbg panel_dbg
@@ -656,6 +683,70 @@ panel_dbg panel_dbg
 	.data    (dbg_data),
 	.addr    (dbg_addr),
 	.nxm     (dbg_nxm)
+);
+
+// Generic event-trace capture (Faye: "I kinda want to make the same
+// class of artifact from the FPGA now" -- mirrors pdp11dis/diskmem.py,
+// captured directly in hardware instead of parsed from a SIMH log).
+// Source index: 0=RL0 disk (READ+GO trigger), 1=RH0 disk (same),
+// 2=MMU PAR write (any of kernel/super/user), 3=reserved/unused.
+// kind: 0001=disk (tracecap_pkg.TRACE_KIND_DISK), 0010=PAR write
+// (tracecap_pkg.TRACE_KIND_PARW).
+wire        trace_overflowed;
+wire [13:0] trace_wr_ptr;    // must match tracecap.vhd's DEPTH_LOG2 (14)
+wire [13:0] trace_rd_addr;
+wire [3:0]  trace_rd_kind;
+wire [3:0]  trace_rd_id;
+wire [21:0] trace_rd_a;
+wire [21:0] trace_rd_b;
+wire [15:0] trace_rd_c;
+
+tracecap tracecap
+(
+	.clk   (clk_100mhz),
+	.reset (reset),
+
+	.src_valid  ({1'b0, trace_par_valid, trace_rh_valid, trace_rl_valid}),
+	.src_kind_v ({4'b0000, 4'b0010, 4'b0001, 4'b0001}),
+	.src_id_v   ({4'd0, 4'd2, 4'd1, 4'd0}),
+	.src_a_v    ({22'd0,
+	              {16'd0, trace_par_space, trace_par_index},
+	              {6'd0, trace_rh_dar},
+	              {6'd0, trace_rl_dar}}),
+	.src_b_v    ({22'd0,
+	              {6'd0, trace_par_data},
+	              trace_rh_dest,
+	              {4'd0, trace_rl_dest}}),
+	.src_c_v    ({16'd0,
+	              16'd0,
+	              trace_rh_wc,
+	              {3'd0, trace_rl_wc}}),
+
+	.overflowed (trace_overflowed),
+
+	.rd_addr (trace_rd_addr),
+	.rd_kind (trace_rd_kind),
+	.rd_id   (trace_rd_id),
+	.rd_a    (trace_rd_a),
+	.rd_b    (trace_rd_b),
+	.rd_c    (trace_rd_c),
+	.wr_ptr  (trace_wr_ptr)
+);
+
+tracecap_dbg tracecap_dbg
+(
+	.clk_sys (clk_100mhz),
+	.EXT_BUS (ext_bus),
+
+	.overflowed (trace_overflowed),
+	.wr_ptr     (trace_wr_ptr),
+
+	.rd_addr (trace_rd_addr),
+	.rd_kind (trace_rd_kind),
+	.rd_id   (trace_rd_id),
+	.rd_a    (trace_rd_a),
+	.rd_b    (trace_rd_b),
+	.rd_c    (trace_rd_c)
 );
 
 

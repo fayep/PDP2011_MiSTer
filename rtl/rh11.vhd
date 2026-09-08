@@ -71,7 +71,17 @@ entity rh11 is
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
-      clk : in std_logic
+      clk : in std_logic;
+
+      -- Passive event tap for tracecap.vhd -- same READ+GO trigger
+      -- philosophy as rl11.vhd's matching ports (Faye: "I think you'll
+      -- need to use READ+GO as the trigger"). Pulses once when
+      -- sdcard_read_start actually commits from the read/write-check
+      -- function branch.
+      trace_disk_valid : out std_logic;
+      trace_disk_dar   : out std_logic_vector(15 downto 0);  -- rmda_ta & rmda_sa
+      trace_disk_dest  : out std_logic_vector(21 downto 0);  -- rmbae & rmba(15 downto 1) & '0'
+      trace_disk_wc    : out std_logic_vector(15 downto 0)   -- wcp
    );
 end rh11;
 
@@ -440,6 +450,9 @@ begin
             rmcs1_rdyset <= '0';
 
          else
+
+            trace_disk_valid <= '0';  -- one-cycle pulse default; the read/write-check
+                                       -- function branch below overrides it for its cycle
 
             if have_rh = 1 then
                case interrupt_state is
@@ -1062,6 +1075,10 @@ begin
                                  rmds_ataset <= '1';
                               else
                                  sdcard_read_start <= '1';
+                                 trace_disk_valid <= '1';
+                                 trace_disk_dar  <= rmda_ta & rmda_sa;
+                                 trace_disk_dest <= rmbae & rmba(15 downto 1) & '0';
+                                 trace_disk_wc   <= wcp;
                                  if rmcs1_fnc(0) = '1' and unsigned(wcp) >= unsigned'("0000000000000010") then
                                     wcp <= wcp - 2;
                                  end if;

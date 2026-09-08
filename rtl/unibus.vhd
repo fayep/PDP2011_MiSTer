@@ -262,7 +262,23 @@ entity unibus is
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
-      reset : in std_logic                                           -- active '1' synchronous reset
+      reset : in std_logic;                                          -- active '1' synchronous reset
+
+-- passive event-trace taps, pass-through to tracecap.vhd (see rtl/tracecap_pkg.vhd)
+      trace_rl_valid : out std_logic;
+      trace_rl_dar   : out std_logic_vector(15 downto 0);
+      trace_rl_dest  : out std_logic_vector(17 downto 0);
+      trace_rl_wc    : out std_logic_vector(12 downto 0);
+
+      trace_rh_valid : out std_logic;
+      trace_rh_dar   : out std_logic_vector(15 downto 0);
+      trace_rh_dest  : out std_logic_vector(21 downto 0);
+      trace_rh_wc    : out std_logic_vector(15 downto 0);
+
+      trace_par_valid : out std_logic;
+      trace_par_space : out std_logic_vector(1 downto 0);
+      trace_par_index : out std_logic_vector(3 downto 0);
+      trace_par_data  : out std_logic_vector(15 downto 0)
    );
 end unibus;
 
@@ -431,7 +447,12 @@ component mmu is
       psw : in std_logic_vector(15 downto 0);
       id : in std_logic;
       reset : in std_logic;
-      clk : in std_logic
+      clk : in std_logic;
+
+      trace_par_valid : out std_logic;
+      trace_par_space : out std_logic_vector(1 downto 0);
+      trace_par_index : out std_logic_vector(3 downto 0);
+      trace_par_data  : out std_logic_vector(15 downto 0)
    );
 end component;
 
@@ -632,7 +653,12 @@ component rl11 is
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
-      clk : in std_logic
+      clk : in std_logic;
+
+      trace_disk_valid : out std_logic;
+      trace_disk_dar   : out std_logic_vector(15 downto 0);
+      trace_disk_dest  : out std_logic_vector(17 downto 0);
+      trace_disk_wc    : out std_logic_vector(12 downto 0)
    );
 end component;
 
@@ -771,7 +797,12 @@ component rh11 is
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
-      clk : in std_logic
+      clk : in std_logic;
+
+      trace_disk_valid : out std_logic;
+      trace_disk_dar   : out std_logic_vector(15 downto 0);
+      trace_disk_dest  : out std_logic_vector(21 downto 0);
+      trace_disk_wc    : out std_logic_vector(15 downto 0)
    );
 end component;
 
@@ -1606,7 +1637,12 @@ begin
       psw => cpu_psw,
       id => cpu_id,
       reset => cpu_init,
-      clk => nclk
+      clk => nclk,
+
+      trace_par_valid => trace_par_valid,
+      trace_par_space => trace_par_space,
+      trace_par_index => trace_par_index,
+      trace_par_data => trace_par_data
    );
 
    cr0: cr port map(
@@ -1892,7 +1928,12 @@ begin
       reset => cpu_init,
       clk50mhz => clk50mhz,
       nclk => nclk,
-      clk => clk
+      clk => clk,
+
+      trace_disk_valid => trace_rl_valid,
+      trace_disk_dar => trace_rl_dar,
+      trace_disk_dest => trace_rl_dest,
+      trace_disk_wc => trace_rl_wc
    );
 
    tm0: tm11 port map(
@@ -2026,7 +2067,12 @@ begin
       reset => cpu_init,
       clk50mhz => clk50mhz,
       nclk => nclk,
-      clk => clk
+      clk => clk,
+
+      trace_disk_valid => trace_rh_valid,
+      trace_disk_dar => trace_rh_dar,
+      trace_disk_dest => trace_rh_dest,
+      trace_disk_wc => trace_rh_wc
    );
 
    xu0: xu port map(
