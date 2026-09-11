@@ -680,6 +680,7 @@ type dram_fsm_type is (
    dram_c12,
    dram_c13,
    dram_c14,
+   dram_c15,     -- EXPERIMENT: extra pass-through, stretches cpuclk 140->150ns
    dram_idle
 );
 signal dram_fsm : dram_fsm_type := dram_init;
@@ -1300,6 +1301,14 @@ begin
                   dram_fsm <= dram_c14;
 
                when dram_c14 =>
+                  dram_fsm <= dram_c15;
+
+               when dram_c15 =>
+                  -- EXPERIMENT: cpuclk stays low here; extends the c9..c1
+                  -- settle window so the MMU PAR-array -> mux -> adder ->
+                  -- priority-mux path meets timing on write-then-fetch/use
+                  -- (RSTS/E overlay-remap-then-dereference pattern, seen on
+                  -- both RH70 (V10.1) and RL (V9.6)). cpuclk 140 -> 150ns.
                   dram_fsm <= dram_c1;
 
                when others =>
