@@ -1,0 +1,20 @@
+#!/usr/bin/expect -f
+set timeout 90
+log_user 1
+spawn /Users/faye/Source/simh/BIN/pdp11 /tmp/shcleanE.ini
+expect "sim>"
+send "break -w 126164\r"; expect "sim>"
+send "set cpu history=262144\r"; expect "sim>"
+send "boot rl\r"
+expect "Today's date?"; send "6-SEP-95\r"
+expect "Current time?"; send "12:00 AM\r"
+expect "Start timesharing?"; send "\r"
+for {set i 0} {$i < 2} {incr i} {
+  expect "Breakpoint"
+  expect "sim>"
+  send "cont\r"
+}
+expect "Breakpoint"
+expect "sim>"
+send "show cpu history=262144\r"; expect "sim>"
+send "quit\r"; expect eof
