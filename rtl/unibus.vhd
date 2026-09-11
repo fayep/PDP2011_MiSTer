@@ -259,6 +259,15 @@ entity unibus is
       cons_map18 : out std_logic;                                    -- '1' if 18-bit mapping
       cons_map22 : out std_logic;                                    -- '1' if 22-bit mapping
 
+-- PC-compare breakpoint (see rtl/brk_compare.vhd): halts the CPU
+-- exactly like a manual halt (ANDed into cons_ena before reaching
+-- cpu0, clearable by the SAME cons_cont pulse a normal "cont"/"run"
+-- uses) once its PC reaches brk_cfg_addr, if brk_cfg_enabled. Defaults
+-- keep every existing instantiation/testbench that doesn't know about
+-- this a no-op.
+      brk_cfg_addr    : in std_logic_vector(15 downto 0) := (others => '0');
+      brk_cfg_enabled : in std_logic := '0';
+
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
@@ -269,16 +278,19 @@ entity unibus is
       trace_rl_dar   : out std_logic_vector(15 downto 0);
       trace_rl_dest  : out std_logic_vector(17 downto 0);
       trace_rl_wc    : out std_logic_vector(12 downto 0);
+      trace_rl_par5  : out std_logic_vector(15 downto 0);
+      trace_rl_par6  : out std_logic_vector(15 downto 0);
+      trace_rl_kipar5  : out std_logic_vector(15 downto 0);
+      trace_rl_kipar6  : out std_logic_vector(15 downto 0);
 
       trace_rh_valid : out std_logic;
       trace_rh_dar   : out std_logic_vector(15 downto 0);
       trace_rh_dest  : out std_logic_vector(21 downto 0);
       trace_rh_wc    : out std_logic_vector(15 downto 0);
-
-      trace_par_valid : out std_logic;
-      trace_par_space : out std_logic_vector(1 downto 0);
-      trace_par_index : out std_logic_vector(3 downto 0);
-      trace_par_data  : out std_logic_vector(15 downto 0)
+      trace_rh_par5  : out std_logic_vector(15 downto 0);
+      trace_rh_par6  : out std_logic_vector(15 downto 0);
+      trace_rh_kipar5  : out std_logic_vector(15 downto 0);
+      trace_rh_kipar6  : out std_logic_vector(15 downto 0)
    );
 end unibus;
 
@@ -447,12 +459,7 @@ component mmu is
       psw : in std_logic_vector(15 downto 0);
       id : in std_logic;
       reset : in std_logic;
-      clk : in std_logic;
-
-      trace_par_valid : out std_logic;
-      trace_par_space : out std_logic_vector(1 downto 0);
-      trace_par_index : out std_logic_vector(3 downto 0);
-      trace_par_data  : out std_logic_vector(15 downto 0)
+      clk : in std_logic
    );
 end component;
 
@@ -658,7 +665,16 @@ component rl11 is
       trace_disk_valid : out std_logic;
       trace_disk_dar   : out std_logic_vector(15 downto 0);
       trace_disk_dest  : out std_logic_vector(17 downto 0);
-      trace_disk_wc    : out std_logic_vector(12 downto 0)
+      trace_disk_wc    : out std_logic_vector(12 downto 0);
+
+      trace_kdpar5     : in  std_logic_vector(15 downto 0);
+      trace_kdpar6     : in  std_logic_vector(15 downto 0);
+      trace_disk_par5  : out std_logic_vector(15 downto 0);
+      trace_disk_par6  : out std_logic_vector(15 downto 0);
+      trace_kipar5       : in  std_logic_vector(15 downto 0);
+      trace_kipar6       : in  std_logic_vector(15 downto 0);
+      trace_disk_kipar5  : out std_logic_vector(15 downto 0);
+      trace_disk_kipar6  : out std_logic_vector(15 downto 0)
    );
 end component;
 
@@ -802,7 +818,16 @@ component rh11 is
       trace_disk_valid : out std_logic;
       trace_disk_dar   : out std_logic_vector(15 downto 0);
       trace_disk_dest  : out std_logic_vector(21 downto 0);
-      trace_disk_wc    : out std_logic_vector(15 downto 0)
+      trace_disk_wc    : out std_logic_vector(15 downto 0);
+
+      trace_kdpar5     : in  std_logic_vector(15 downto 0);
+      trace_kdpar6     : in  std_logic_vector(15 downto 0);
+      trace_disk_par5  : out std_logic_vector(15 downto 0);
+      trace_disk_par6  : out std_logic_vector(15 downto 0);
+      trace_kipar5       : in  std_logic_vector(15 downto 0);
+      trace_kipar6       : in  std_logic_vector(15 downto 0);
+      trace_disk_kipar5  : out std_logic_vector(15 downto 0);
+      trace_disk_kipar6  : out std_logic_vector(15 downto 0)
    );
 end component;
 
@@ -1056,6 +1081,58 @@ component mncdo is
    );
 end component;
 
+-- Live KERNEL D-space/I-space PAR5/PAR6 copies, purely internal to
+-- this entity -- consumed by rl0/rh0 below, never exposed further up.
+-- Produced by mmu_trace_watch0 (see rtl/mmu_trace_watch.vhd), which
+-- watches cpu_addr/cpu_dataout/cpu_wr/cpu_dw8 from OUTSIDE mmu.vhd --
+-- mmu.vhd itself has zero ports or logic for this. A build without
+-- tracing simply doesn't instantiate mmu_trace_watch0, and mmu.vhd is
+-- untouched either way.
+signal mmu_trace_kdpar5 : std_logic_vector(15 downto 0);
+signal mmu_trace_kdpar6 : std_logic_vector(15 downto 0);
+signal mmu_trace_kipar5 : std_logic_vector(15 downto 0);
+signal mmu_trace_kipar6 : std_logic_vector(15 downto 0);
+
+component mmu_trace_watch is
+   port(
+      clk   : in std_logic;
+      reset : in std_logic;
+      cpu_addr    : in std_logic_vector(15 downto 0);
+      cpu_dataout : in std_logic_vector(15 downto 0);
+      cpu_wr      : in std_logic;
+      cpu_dw8     : in std_logic;
+      trace_kdpar5 : out std_logic_vector(15 downto 0);
+      trace_kdpar6 : out std_logic_vector(15 downto 0);
+      trace_kipar5 : out std_logic_vector(15 downto 0);
+      trace_kipar6 : out std_logic_vector(15 downto 0)
+   );
+end component;
+
+component brk_compare is
+   port(
+      clk   : in std_logic;
+      reset : in std_logic;
+      cfg_addr    : in std_logic_vector(15 downto 0);
+      cfg_enabled : in std_logic;
+      pc : in std_logic_vector(15 downto 0);
+      cons_cont : in std_logic;
+      brk_halt : out std_logic
+   );
+end component;
+
+-- brk_compare0's output, ANDed into cons_ena before reaching cpu0 --
+-- see rtl/brk_compare.vhd's header comment for why this mirrors a
+-- normal halt rather than being a separate unclearable mechanism.
+signal brk_halt : std_logic;
+signal cons_ena_eff : std_logic;
+
+-- Internal mirror of cpu0's dbg_r7 output: this entity's OWN dbg_r7 is
+-- an out port, and VHDL (enforced by Quartus, though GHDL let it slide)
+-- does not allow reading an out-mode port from inside its own
+-- architecture -- brk0 needs to read it, so cpu0 drives this signal
+-- instead, and dbg_r7 (the entity port) is assigned from it below.
+signal cpu_dbg_r7 : std_logic_vector(15 downto 0);
+
 signal cpu_addr : std_logic_vector(15 downto 0);
 signal cpu_datain : std_logic_vector(15 downto 0);
 signal cpu_dataout : std_logic_vector(15 downto 0);
@@ -1116,21 +1193,6 @@ signal bus_dato : std_logic_vector(15 downto 0);
 signal bus_control_dati : std_logic;
 signal bus_control_dato : std_logic;
 signal bus_control_datob : std_logic;
-
--- RH70-idle watchdog (debug aid for the RSTS/E V10.1 boot wedge): if no
--- write pokes RH CS1 GO for WD_THRESHOLD cpuclk cycles (~90s at the
--- nominal ~10MHz cpuclk), auto-halt the cpu so the exact wedged state
--- can be examined over the ODT console instead of guessing when to
--- halt by hand.  The real hang is confirmed to sit idle for 200s+, so
--- there's no cost to a generous margin here - and it has to clear
--- comfortably past the RSTS INIT date/time prompts, which sit idle on
--- the disk for as long as it takes a human (or an SSH-scripted
--- keystroke-by-keystroke drive) to answer them.  See
--- notes/rsts-v10-rh70-hang.md.
-constant WD_THRESHOLD : unsigned(29 downto 0) := conv_unsigned(900000000, 30);
-signal wd_cnt : unsigned(29 downto 0) := (others => '0');
-signal wd_trig : std_logic := '0';
-signal cons_ena_eff : std_logic;
 
 signal busmaster_nxmabort : std_logic;
 
@@ -1473,27 +1535,20 @@ signal have_oddabort : integer range 0 to 255;   -- width matches mmu's have_odd
 
 begin
 
-   -- RH70-idle watchdog: see the constant/signal declarations above.
-   cons_ena_eff <= cons_ena and not wd_trig;
-
-   process(clk)
-   begin
-      if clk = '1' and clk'event then
-         if reset = '1' then
-            wd_cnt <= (others => '0');
-            wd_trig <= '0';
-         elsif bus_control_dato = '1' and bus_addr(21 downto 18) = "1111"
-               and bus_addr(17 downto 0) = o"776700" and bus_dato(0) = '1' then
-            wd_cnt <= (others => '0');           -- RH CS1 GO written: disk is active again
-         elsif wd_trig = '0' then
-            if wd_cnt >= WD_THRESHOLD then
-               wd_trig <= '1';                    -- latch: stays halted till the next reset
-            else
-               wd_cnt <= wd_cnt + 1;
-            end if;
-         end if;
-      end if;
-   end process;
+   -- PC-compare breakpoint (see rtl/brk_compare.vhd). cpu_dbg_r7 mirrors
+   -- cpu0's PC output (both are in this entity's own cpuclk domain --
+   -- cpu0's clk => clk below, same as this).
+   brk0: brk_compare port map(
+      clk => clk,
+      reset => cpu_init,
+      cfg_addr => brk_cfg_addr,
+      cfg_enabled => brk_cfg_enabled,
+      pc => cpu_dbg_r7,
+      cons_cont => cons_cont,
+      brk_halt => brk_halt
+   );
+   cons_ena_eff <= cons_ena and not brk_halt;
+   dbg_r7 <= cpu_dbg_r7;
 
    cpu0: cpu port map(
       addr_v => cpu_addr,
@@ -1566,7 +1621,7 @@ begin
       cons_kernel => cons_kernel,
       cons_super => cons_super,
       cons_user => cons_user,
-      dbg_r7 => dbg_r7,
+      dbg_r7 => cpu_dbg_r7,
       dbg_ir => dbg_ir,
       clk => clk,
       reset => reset
@@ -1637,12 +1692,25 @@ begin
       psw => cpu_psw,
       id => cpu_id,
       reset => cpu_init,
-      clk => nclk,
+      clk => nclk
+   );
 
-      trace_par_valid => trace_par_valid,
-      trace_par_space => trace_par_space,
-      trace_par_index => trace_par_index,
-      trace_par_data => trace_par_data
+   -- Isolated bus-watching PAR5/6 tracer -- see rtl/mmu_trace_watch.vhd
+   -- for why this lives here instead of as ports on mmu.vhd itself.
+   -- Same nclk domain mmu.vhd itself uses, watching the exact same
+   -- cpu_addr/cpu_dataout/cpu_wr/cpu_dw8 signals already fed to mmu0
+   -- above.
+   mmu_trace_watch0: mmu_trace_watch port map(
+      clk => nclk,
+      reset => cpu_init,
+      cpu_addr => cpu_addr,
+      cpu_dataout => cpu_dataout,
+      cpu_wr => cpu_wr,
+      cpu_dw8 => cpu_dw8,
+      trace_kdpar5 => mmu_trace_kdpar5,
+      trace_kdpar6 => mmu_trace_kdpar6,
+      trace_kipar5 => mmu_trace_kipar5,
+      trace_kipar6 => mmu_trace_kipar6
    );
 
    cr0: cr port map(
@@ -1933,7 +2001,16 @@ begin
       trace_disk_valid => trace_rl_valid,
       trace_disk_dar => trace_rl_dar,
       trace_disk_dest => trace_rl_dest,
-      trace_disk_wc => trace_rl_wc
+      trace_disk_wc => trace_rl_wc,
+
+      trace_kdpar5 => mmu_trace_kdpar5,
+      trace_kdpar6 => mmu_trace_kdpar6,
+      trace_disk_par5 => trace_rl_par5,
+      trace_disk_par6 => trace_rl_par6,
+      trace_kipar5 => mmu_trace_kipar5,
+      trace_kipar6 => mmu_trace_kipar6,
+      trace_disk_kipar5 => trace_rl_kipar5,
+      trace_disk_kipar6 => trace_rl_kipar6
    );
 
    tm0: tm11 port map(
@@ -2072,7 +2149,16 @@ begin
       trace_disk_valid => trace_rh_valid,
       trace_disk_dar => trace_rh_dar,
       trace_disk_dest => trace_rh_dest,
-      trace_disk_wc => trace_rh_wc
+      trace_disk_wc => trace_rh_wc,
+
+      trace_kdpar5 => mmu_trace_kdpar5,
+      trace_kdpar6 => mmu_trace_kdpar6,
+      trace_disk_par5 => trace_rh_par5,
+      trace_disk_par6 => trace_rh_par6,
+      trace_kipar5 => mmu_trace_kipar5,
+      trace_kipar6 => mmu_trace_kipar6,
+      trace_disk_kipar5 => trace_rh_kipar5,
+      trace_disk_kipar6 => trace_rh_kipar6
    );
 
    xu0: xu port map(

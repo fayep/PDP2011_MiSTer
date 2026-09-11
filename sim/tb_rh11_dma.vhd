@@ -200,6 +200,10 @@ begin
          sdcard_cs=>sd_cs, sdcard_mosi=>sd_mosi, sdcard_sclk=>sd_sclk,
          sdcard_miso=>'0', sdcard_debug=>sd_dbg,
          have_rh=>1, have_rh70=>1, rh_type=>6,
+         -- walking/alternating-bit pattern, not zero -- see tb_rl11_dma.vhd's
+         -- comment on the same tie-off.
+         trace_kdpar5=>x"AAAA", trace_kdpar6=>x"5555",
+         trace_kipar5=>x"3333", trace_kipar6=>x"CCCC",
          reset=>reset, clk50mhz=>clk50, nclk=>nclk, clk=>clk
       );
 

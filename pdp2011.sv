@@ -280,15 +280,19 @@ wire        trace_rl_valid;
 wire [15:0] trace_rl_dar;
 wire [17:0] trace_rl_dest;
 wire [12:0] trace_rl_wc;
+wire [15:0] trace_rl_par5, trace_rl_par6;
+wire [15:0] trace_rl_kipar5, trace_rl_kipar6;
 wire        trace_rh_valid;
 wire [15:0] trace_rh_dar;
 wire [21:0] trace_rh_dest;
 wire [15:0] trace_rh_wc;
-wire        trace_par_valid;
-wire [1:0]  trace_par_space;
-wire [3:0]  trace_par_index;
-wire [15:0] trace_par_data;
+wire [15:0] trace_rh_par5, trace_rh_par6;
+wire [15:0] trace_rh_kipar5, trace_rh_kipar6;
 wire        dbg_run, dbg_nxm;
+
+// PC-compare breakpoint (see rtl/brk_compare.vhd / rtl/brk_dbg.sv)
+wire [15:0] brk_cfg_addr;
+wire        brk_cfg_enabled;
 
 hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(4),.PS2DIV(3125)) hps_io
 (
@@ -662,14 +666,21 @@ mister_top mister_top
    .trace_rl_dar   (trace_rl_dar),
    .trace_rl_dest  (trace_rl_dest),
    .trace_rl_wc    (trace_rl_wc),
+   .trace_rl_par5  (trace_rl_par5),
+   .trace_rl_par6  (trace_rl_par6),
+   .trace_rl_kipar5 (trace_rl_kipar5),
+   .trace_rl_kipar6 (trace_rl_kipar6),
    .trace_rh_valid (trace_rh_valid),
    .trace_rh_dar   (trace_rh_dar),
    .trace_rh_dest  (trace_rh_dest),
    .trace_rh_wc    (trace_rh_wc),
-   .trace_par_valid(trace_par_valid),
-   .trace_par_space(trace_par_space),
-   .trace_par_index(trace_par_index),
-   .trace_par_data (trace_par_data)
+   .trace_rh_par5  (trace_rh_par5),
+   .trace_rh_par6  (trace_rh_par6),
+   .trace_rh_kipar5 (trace_rh_kipar5),
+   .trace_rh_kipar6 (trace_rh_kipar6),
+
+   .brk_cfg_addr    (brk_cfg_addr),
+   .brk_cfg_enabled (brk_cfg_enabled)
 );
 
 panel_dbg panel_dbg
@@ -689,9 +700,17 @@ panel_dbg panel_dbg
 // class of artifact from the FPGA now" -- mirrors pdp11dis/diskmem.py,
 // captured directly in hardware instead of parsed from a SIMH log).
 // Source index: 0=RL0 disk (READ+GO trigger), 1=RH0 disk (same),
-// 2=MMU PAR write (any of kernel/super/user), 3=reserved/unused.
-// kind: 0001=disk (tracecap_pkg.TRACE_KIND_DISK), 0010=PAR write
-// (tracecap_pkg.TRACE_KIND_PARW).
+// 2/3=reserved/unused. kind: 0001=disk (tracecap_pkg.TRACE_KIND_DISK).
+//
+// No standalone PAR-write event kind: PAR5/6 change far too often, even
+// scoped to just those two kernel D-space registers with real dedup, to
+// log as their own events without drowning every disk event (confirmed
+// on real hardware: 16222 of 16384 entries were PAR-write events, zero
+// disk events survived). Instead, rl11.vhd/rh11.vhd sample mmu.vhd's
+// live KERNEL D-space PAR5/PAR6 copies and stamp them onto their OWN
+// disk event's `d` field at the same READ+GO trigger moment as
+// dar/dest/wc -- no separate event, no filtering, every disk event just
+// gets whatever those two registers currently hold.
 wire        trace_overflowed;
 wire [13:0] trace_wr_ptr;    // must match tracecap.vhd's DEPTH_LOG2 (14)
 wire [13:0] trace_rd_addr;
@@ -700,27 +719,32 @@ wire [3:0]  trace_rd_id;
 wire [21:0] trace_rd_a;
 wire [21:0] trace_rd_b;
 wire [15:0] trace_rd_c;
+wire [63:0] trace_rd_d;
 
 tracecap tracecap
 (
 	.clk   (clk_100mhz),
 	.reset (reset),
 
-	.src_valid  ({1'b0, trace_par_valid, trace_rh_valid, trace_rl_valid}),
-	.src_kind_v ({4'b0000, 4'b0010, 4'b0001, 4'b0001}),
-	.src_id_v   ({4'd0, 4'd2, 4'd1, 4'd0}),
+	.src_valid  ({1'b0, 1'b0, trace_rh_valid, trace_rl_valid}),
+	.src_kind_v ({4'b0000, 4'b0000, 4'b0001, 4'b0001}),
+	.src_id_v   ({4'd0, 4'd0, 4'd1, 4'd0}),
 	.src_a_v    ({22'd0,
-	              {16'd0, trace_par_space, trace_par_index},
+	              22'd0,
 	              {6'd0, trace_rh_dar},
 	              {6'd0, trace_rl_dar}}),
 	.src_b_v    ({22'd0,
-	              {6'd0, trace_par_data},
+	              22'd0,
 	              trace_rh_dest,
 	              {4'd0, trace_rl_dest}}),
 	.src_c_v    ({16'd0,
 	              16'd0,
 	              trace_rh_wc,
 	              {3'd0, trace_rl_wc}}),
+	.src_d_v    ({64'd0,
+	              64'd0,
+	              {trace_rh_par5, trace_rh_par6, trace_rh_kipar5, trace_rh_kipar6},
+	              {trace_rl_par5, trace_rl_par6, trace_rl_kipar5, trace_rl_kipar6}}),
 
 	.overflowed (trace_overflowed),
 
@@ -730,6 +754,7 @@ tracecap tracecap
 	.rd_a    (trace_rd_a),
 	.rd_b    (trace_rd_b),
 	.rd_c    (trace_rd_c),
+	.rd_d    (trace_rd_d),
 	.wr_ptr  (trace_wr_ptr)
 );
 
@@ -746,7 +771,17 @@ tracecap_dbg tracecap_dbg
 	.rd_id   (trace_rd_id),
 	.rd_a    (trace_rd_a),
 	.rd_b    (trace_rd_b),
-	.rd_c    (trace_rd_c)
+	.rd_c    (trace_rd_c),
+	.rd_d    (trace_rd_d)
+);
+
+brk_dbg brk_dbg
+(
+	.clk_sys (clk_100mhz),
+	.EXT_BUS (ext_bus),
+
+	.brk_cfg_addr    (brk_cfg_addr),
+	.brk_cfg_enabled (brk_cfg_enabled)
 );
 
 

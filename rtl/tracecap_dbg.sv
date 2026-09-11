@@ -14,13 +14,18 @@
 //           buffer is full and every one of DEPTH entries is valid,
 //           oldest-first starting at this same wr_ptr position)
 //   word 2: reserved (always 0)
-//   word 3+: one event per 6 words, in order:
+//   word 3+: one event per 12 words, in order:
 //     w+0: {kind[3:0], id[3:0], 8'd0}
 //     w+1: {10'd0, a[21:16]}       (a's high bits)
 //     w+2: a[15:0]                 (a's low word)
 //     w+3: {10'd0, b[21:16]}       (b's high bits)
 //     w+4: b[15:0]                 (b's low word)
 //     w+5: c[15:0]
+//     w+6: d[63:48]                (disk events: KDPAR5, held-stable transaction snapshot)
+//     w+7: d[47:32]                (disk events: KDPAR6, held-stable transaction snapshot)
+//     w+8: d[31:16]                (disk events: KIPAR5 -- the pair RSTS's real overlay
+//                                   mechanism actually uses, see tracecap_pkg.vhd)
+//     w+9: d[15:0]                 (disk events: KIPAR6)
 // Reading past wr_ptr entries (when not overflowed) returns whatever
 // stale/undefined content is in that ring slot -- the ARM-side drain
 // script's job is to stop at wr_ptr, not this module's.
@@ -37,7 +42,8 @@ module tracecap_dbg
 	input      [3:0]  rd_id,
 	input      [21:0] rd_a,
 	input      [21:0] rd_b,
-	input      [15:0] rd_c
+	input      [15:0] rd_c,
+	input      [63:0] rd_d
 );
 
 wire [15:0] io_din    = EXT_BUS[31:16];
@@ -54,9 +60,9 @@ assign EXT_BUS[32]   = claimed ? (io_enable & claimed) : 1'bz;
 
 localparam [15:0] CMD = 16'h0051;
 
-// 3 header words + DEPTH(16384)*6 words/event = 98307 max -> needs 17 bits
-reg [16:0] cnt;
-reg [2:0]  word_in_event;
+// 3 header words + DEPTH(16384)*12 words/event = 196611 max -> needs 18 bits
+reg [17:0] cnt;
+reg [3:0]  word_in_event;
 
 wire [15:0] flags = {14'd0, overflowed, 1'b1};
 
@@ -80,19 +86,22 @@ always @(posedge clk_sys) begin
 		end
 		else if (claimed) begin
 			case (cnt)
-				17'd1: io_dout <= {2'd0, wr_ptr};
-				17'd2: io_dout <= 16'd0;
+				18'd1: io_dout <= {2'd0, wr_ptr};
+				18'd2: io_dout <= 16'd0;
 				default: begin
 					case (word_in_event)
-						3'd0: io_dout <= {rd_kind, rd_id, 8'd0};
-						3'd1: io_dout <= {10'd0, rd_a[21:16]};
-						3'd2: io_dout <= rd_a[15:0];
-						3'd3: io_dout <= {10'd0, rd_b[21:16]};
-						3'd4: io_dout <= rd_b[15:0];
-						3'd5: io_dout <= rd_c;
-						default: io_dout <= 16'd0;
+						4'd0: io_dout <= {rd_kind, rd_id, 8'd0};
+						4'd1: io_dout <= {10'd0, rd_a[21:16]};
+						4'd2: io_dout <= rd_a[15:0];
+						4'd3: io_dout <= {10'd0, rd_b[21:16]};
+						4'd4: io_dout <= rd_b[15:0];
+						4'd5: io_dout <= rd_c;
+						4'd6: io_dout <= rd_d[63:48];
+						4'd7: io_dout <= rd_d[47:32];
+						4'd8: io_dout <= rd_d[31:16];
+						4'd9: io_dout <= rd_d[15:0];
 					endcase
-					if (word_in_event == 3'd5) begin
+					if (word_in_event == 4'd9) begin
 						word_in_event <= 0;
 						rd_addr <= rd_addr + 1'd1;
 					end

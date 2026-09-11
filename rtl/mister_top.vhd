@@ -140,16 +140,23 @@ entity mister_top is
       trace_rl_dar   : out std_logic_vector(15 downto 0);
       trace_rl_dest  : out std_logic_vector(17 downto 0);
       trace_rl_wc    : out std_logic_vector(12 downto 0);
+      trace_rl_par5  : out std_logic_vector(15 downto 0);
+      trace_rl_par6  : out std_logic_vector(15 downto 0);
+      trace_rl_kipar5  : out std_logic_vector(15 downto 0);
+      trace_rl_kipar6  : out std_logic_vector(15 downto 0);
 
       trace_rh_valid : out std_logic;
       trace_rh_dar   : out std_logic_vector(15 downto 0);
       trace_rh_dest  : out std_logic_vector(21 downto 0);
       trace_rh_wc    : out std_logic_vector(15 downto 0);
+      trace_rh_par5  : out std_logic_vector(15 downto 0);
+      trace_rh_par6  : out std_logic_vector(15 downto 0);
+      trace_rh_kipar5  : out std_logic_vector(15 downto 0);
+      trace_rh_kipar6  : out std_logic_vector(15 downto 0);
 
-      trace_par_valid : out std_logic;
-      trace_par_space : out std_logic_vector(1 downto 0);
-      trace_par_index : out std_logic_vector(3 downto 0);
-      trace_par_data  : out std_logic_vector(15 downto 0);
+      -- PC-compare breakpoint config, ARM-set (see rtl/brk_compare.vhd)
+      brk_cfg_addr    : in std_logic_vector(15 downto 0) := (others => '0');
+      brk_cfg_enabled : in std_logic := '0';
 
       -- board peripherals
       greenled       : out std_logic
@@ -407,16 +414,22 @@ component unibus is
       trace_rl_dar   : out std_logic_vector(15 downto 0);
       trace_rl_dest  : out std_logic_vector(17 downto 0);
       trace_rl_wc    : out std_logic_vector(12 downto 0);
+      trace_rl_par5  : out std_logic_vector(15 downto 0);
+      trace_rl_par6  : out std_logic_vector(15 downto 0);
+      trace_rl_kipar5  : out std_logic_vector(15 downto 0);
+      trace_rl_kipar6  : out std_logic_vector(15 downto 0);
 
       trace_rh_valid : out std_logic;
       trace_rh_dar   : out std_logic_vector(15 downto 0);
       trace_rh_dest  : out std_logic_vector(21 downto 0);
       trace_rh_wc    : out std_logic_vector(15 downto 0);
+      trace_rh_par5  : out std_logic_vector(15 downto 0);
+      trace_rh_par6  : out std_logic_vector(15 downto 0);
+      trace_rh_kipar5  : out std_logic_vector(15 downto 0);
+      trace_rh_kipar6  : out std_logic_vector(15 downto 0);
 
-      trace_par_valid : out std_logic;
-      trace_par_space : out std_logic_vector(1 downto 0);
-      trace_par_index : out std_logic_vector(3 downto 0);
-      trace_par_data  : out std_logic_vector(15 downto 0)
+      brk_cfg_addr    : in std_logic_vector(15 downto 0) := (others => '0');
+      brk_cfg_enabled : in std_logic := '0'
    );
 end component;
 
@@ -813,16 +826,22 @@ begin
       trace_rl_dar => trace_rl_dar,
       trace_rl_dest => trace_rl_dest,
       trace_rl_wc => trace_rl_wc,
+      trace_rl_par5 => trace_rl_par5,
+      trace_rl_par6 => trace_rl_par6,
+      trace_rl_kipar5 => trace_rl_kipar5,
+      trace_rl_kipar6 => trace_rl_kipar6,
 
       trace_rh_valid => trace_rh_valid,
       trace_rh_dar => trace_rh_dar,
       trace_rh_dest => trace_rh_dest,
       trace_rh_wc => trace_rh_wc,
+      trace_rh_par5 => trace_rh_par5,
+      trace_rh_par6 => trace_rh_par6,
+      trace_rh_kipar5 => trace_rh_kipar5,
+      trace_rh_kipar6 => trace_rh_kipar6,
 
-      trace_par_valid => trace_par_valid,
-      trace_par_space => trace_par_space,
-      trace_par_index => trace_par_index,
-      trace_par_data => trace_par_data
+      brk_cfg_addr => brk_cfg_addr,
+      brk_cfg_enabled => brk_cfg_enabled
    );
 
 	  vt0: vt port map(

@@ -18,3 +18,14 @@ tools/fontconvert
 tools/genblkram
 tools/macro11
 tools/sdfmt
+
+# session-local rollback bitstreams / binaries (keep out of the tree)
+local_rollback/
+
+# GHDL analyze artifacts left in sim/
+sim/*.lst
+sim/*.mem
+sim/*.obj
+
+# built harness binary
+tools/pdp_harness/pdp_harness

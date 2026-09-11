@@ -89,22 +89,7 @@ entity mmu is
       psw : in std_logic_vector(15 downto 0);
       id : in std_logic;
       reset : in std_logic;
-      clk : in std_logic;
-
-      -- Passive event tap for tracecap.vhd (see notes/rsts-init-disasm.md,
-      -- Faye: "I kinda want to make the same class of artifact from the
-      -- FPGA"). Pulses one clk cycle whenever a KERNEL/SUPER/USER I/D PAR
-      -- register is written -- NOT PDR, only PAR, since PAR is what
-      -- selects a physical bank (matches the SIMH-side "MAPCOPY_PARAM
-      -- writes KIPAR5/6" pattern this mirrors, but generalized to catch
-      -- ANY PAR write, in ANY mode, from ANY code -- not just the 3
-      -- software call sites the SIMH-based investigation happened to set
-      -- breakpoints on). Purely additive: driven from signals this
-      -- entity already computes, cannot affect any existing behavior.
-      trace_par_valid : out std_logic;
-      trace_par_space : out std_logic_vector(1 downto 0);  -- 00=kernel,01=super,10=user
-      trace_par_index : out std_logic_vector(3 downto 0);  -- which PAR, 0-7
-      trace_par_data  : out std_logic_vector(15 downto 0)  -- raw mmu_dato at the write
+      clk : in std_logic
    );
 end mmu;
 
@@ -1029,7 +1014,6 @@ sr0out_debug <= sr0;
             paro2valid <= '0';
             pdro2valid <= '0';
             ubmo2valid <= '0';
-            trace_par_valid <= '0';
 
             if cpu_rd = '1' then
                case addr_p24z5 is
@@ -1114,10 +1098,6 @@ sr0out_debug <= sr0;
                      if cpu_dw8 = '0' or cpu_addr_v(0) = '1' then   -- word write or odd address
                         par1_00(conv_integer(addr_p(4 downto 1))) <= mmu_dato(15 downto 8);
                      end if;
-                     trace_par_valid <= '1';
-                     trace_par_space <= "00";
-                     trace_par_index <= addr_p(4 downto 1);
-                     trace_par_data <= mmu_dato;
 
                   when o"17772240" =>
                      spdr_a(conv_integer(addr_p(4 downto 1))) <= '0';
@@ -1128,10 +1108,6 @@ sr0out_debug <= sr0;
                      if cpu_dw8 = '0' or cpu_addr_v(0) = '1' then   -- word write or odd address
                         par1_01(conv_integer(addr_p(4 downto 1))) <= mmu_dato(15 downto 8);
                      end if;
-                     trace_par_valid <= '1';
-                     trace_par_space <= "01";
-                     trace_par_index <= addr_p(4 downto 1);
-                     trace_par_data <= mmu_dato;
 
                   when o"17777640" =>
                      updr_a(conv_integer(addr_p(4 downto 1))) <= '0';
@@ -1142,10 +1118,6 @@ sr0out_debug <= sr0;
                      if cpu_dw8 = '0' or cpu_addr_v(0) = '1' then   -- word write or odd address
                         par1_11(conv_integer(addr_p(4 downto 1))) <= mmu_dato(15 downto 8);
                      end if;
-                     trace_par_valid <= '1';
-                     trace_par_space <= "10";
-                     trace_par_index <= addr_p(4 downto 1);
-                     trace_par_data <= mmu_dato;
 
                   when o"17772300" =>
                      kpdr_a(conv_integer(addr_p(4 downto 1))) <= '0';

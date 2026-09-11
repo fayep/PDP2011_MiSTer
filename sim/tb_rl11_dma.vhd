@@ -234,6 +234,14 @@ begin
          sdcard_cs=>sd_cs, sdcard_mosi=>sd_mosi, sdcard_sclk=>sd_sclk,
          sdcard_miso=>'0', sdcard_debug=>sd_dbg,
          have_rl=>1, img_mounted=>1,
+         -- Walking/alternating-bit pattern, not zero: this DMA test
+         -- never checks trace_disk_par5/6 itself, but tying the input
+         -- to zero would make a "stuck at zero" bug on that path
+         -- indistinguishable from correct behavior if this test is
+         -- ever extended to check it (see tb_mmu_rl11_par_stamp.vhd
+         -- for the real end-to-end check of that path).
+         trace_kdpar5=>x"AAAA", trace_kdpar6=>x"5555",
+         trace_kipar5=>x"3333", trace_kipar6=>x"CCCC",
          reset=>reset, clk50mhz=>clk50, nclk=>clk, clk=>clk
       );
 

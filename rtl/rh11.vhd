@@ -81,7 +81,20 @@ entity rh11 is
       trace_disk_valid : out std_logic;
       trace_disk_dar   : out std_logic_vector(15 downto 0);  -- rmda_ta & rmda_sa
       trace_disk_dest  : out std_logic_vector(21 downto 0);  -- rmbae & rmba(15 downto 1) & '0'
-      trace_disk_wc    : out std_logic_vector(15 downto 0)   -- wcp
+      trace_disk_wc    : out std_logic_vector(15 downto 0);  -- wcp
+
+      -- mmu.vhd's live KERNEL D-space AND I-space PAR5/PAR6 copies
+      -- (same nclk domain). Sampled onto trace_disk_par5/6 /
+      -- trace_disk_kipar5/6 at the SAME trigger moment as dar/dest/wc
+      -- -- see rl11.vhd's matching port comment.
+      trace_kdpar5     : in  std_logic_vector(15 downto 0);
+      trace_kdpar6     : in  std_logic_vector(15 downto 0);
+      trace_disk_par5  : out std_logic_vector(15 downto 0);
+      trace_disk_par6  : out std_logic_vector(15 downto 0);
+      trace_kipar5       : in  std_logic_vector(15 downto 0);
+      trace_kipar6       : in  std_logic_vector(15 downto 0);
+      trace_disk_kipar5  : out std_logic_vector(15 downto 0);
+      trace_disk_kipar6  : out std_logic_vector(15 downto 0)
    );
 end rh11;
 
@@ -1079,6 +1092,10 @@ begin
                                  trace_disk_dar  <= rmda_ta & rmda_sa;
                                  trace_disk_dest <= rmbae & rmba(15 downto 1) & '0';
                                  trace_disk_wc   <= wcp;
+                                 trace_disk_par5 <= trace_kdpar5;
+                                 trace_disk_par6 <= trace_kdpar6;
+                                 trace_disk_kipar5 <= trace_kipar5;
+                                 trace_disk_kipar6 <= trace_kipar6;
                                  if rmcs1_fnc(0) = '1' and unsigned(wcp) >= unsigned'("0000000000000010") then
                                     wcp <= wcp - 2;
                                  end if;

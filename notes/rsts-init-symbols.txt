@@ -1,0 +1,113 @@
+# Known INIT.SYS (RSTS V9.6) routine/data addresses.
+# Format: <addr-octal> <name> [; <description>]
+# Load with: disasm.py -x <file> ... -symfile notes/rsts-init-symbols.txt
+# Addresses are file-offset = address (valid only under 64KB -- see
+# notes/rsts-init-disasm.md's methodology section).
+
+021042 ERRDSP ; shared error/dispatch handler, referenced from two
+              ; adjacent device-table slots found at physical 041212/041216
+              ; via a live-traced block-copy; JMPs through a patchable
+              ; vector cell at 001720 whose real target is set by the
+              ; specific caller about to dispatch an error (not itself
+              ; part of the always-taken path)
+
+056012 DEVCHK ; per-drive-type detection / device-present flag update:
+              ; masks RLCS's drive-type field, compares against two type
+              ; codes, sets/clears flag bytes at 027626/027631 accordingly
+
+057230 DEVCHK_CONT ; continuation after DEVCHK -- sets PS=034340 (priority
+                    ; 7, interrupts masked), a fresh SP, calls @#014674,
+                    ; then dispatches on a #000777-masked flags word
+                    ; against several bit patterns (045000/071000/102000/
+                    ; 051000) -- looks like a compiled-in device/feature
+                    ; bitmask, worth revisiting for the "N devices
+                    ; disabled" count specifically
+
+120576 SZRATIO ; size/ratio computation: shift-based software divide
+               ; (ASR/ROR pair) then MUL #1000 / CMP #020000 clamp;
+               ; reached repeatedly during the device-table walk below
+
+121600 DEVWALK ; device-table iteration loop: masks/shifts a device
+               ; number into a byte offset, looks up a per-device handler
+               ; pointer via 045762(r2), dispatches through it via
+               ; JSR PC,123764
+
+123226 DEVWALK_ENTRY ; entry into DEVWALK from elsewhere (masks r0's low
+                      ; nibble, branches to 121600 if nonzero)
+
+023256 KIRESET ; defensive utility: saves r0/r1/SR0, temporarily disables
+               ; the MMU, resets ALL of Kernel I-space PAR0-7 to a clean
+               ; identity map (PDR=077406 full-access default, PAR
+               ; incrementing by 0200 = one page per register) with the
+               ; standard 177600 I/O-page-passthrough value in the last
+               ; slot, then restores r0/r1/SR0 exactly as they were --
+               ; called as the first step of the PAGE5/6 map-and-copy
+               ; primitives below, presumably to guarantee a known-good
+               ; state outside the two pages being manipulated
+
+025006 MAPCOPY_PARAM ; PARAMETERIZED page-5/6 map+copy primitive: after
+                      ; calling KIRESET (023256, which preserves r0/r1),
+                      ; sets KIPAR5=r0, KIPAR6=r1 (caller-supplied, NOT
+                      ; constants -- the strongest lead so far toward a
+                      ; real generalized overlay mechanism), enables the
+                      ; MMU, then block-copies between the two mapped
+                      ; windows (direction chosen by comparing r0/r1) via
+                      ; 024766/025100, disables the MMU, returns. WHO
+                      ; calls this and what they compute for r0/r1 is
+                      ; the open thread -- likely where a segment/overlay
+                      ; NUMBER gets turned into an actual PAR value.
+
+025120 MAPCOPY_FIXED6 ; sibling of MAPCOPY_PARAM: same KIRESET preamble,
+                       ; but KIPAR6 is a FIXED immediate (002200), only
+                       ; page 5 (if any) is caller-supplied
+
+025204 MAPCOPY_PICK6 ; sibling: KIRESET preamble, then picks KIPAR6
+                      ; between two fixed values (002600 or 002400) based
+                      ; on comparing a stack parameter against #020000,
+                      ; and adjusts that same stack parameter by adding
+                      ; 140000 or 160000 depending on which branch taken
+
+025262 MAPCALL_1600_2000 ; the generic "save PAR5/PAR6/SR0, map FIXED
+                         ; 001600/002000, call through a stack-passed
+                         ; entry point, restore" wrapper -- structurally
+                         ; identical to 020102 (see below) but a
+                         ; different fixed bank pair
+
+020102 MAPCALL_4000_4200 ; the FIRST-FOUND instance of this wrapper
+                          ; pattern (live-confirmed via repeated single-
+                          ; stepping -- this is the "character print
+                          ; loop" call site): save PAR5/PAR6/SR0, map
+                          ; FIXED 004000/004200, call through a stack-
+                          ; passed entry point (JSR PC,@(SP)+), restore.
+                          ; Part of a larger dispatcher based near 020076/
+                          ; 020370 (guarded by "CMP (R5),#6 / BNE 020210"
+                          ; -- this is case 6; other cases go elsewhere,
+                          ; not yet mapped)
+
+154266 MMUPROBE ; major find: full MMU-state save + hardware probe.
+                ; Saves Supervisor-I PDR0-7 (172300-172316, resetting
+                ; each to 077406 as it saves it), Kernel-I PAR0-7
+                ; (172340-172356), User-I PAR0-7 (177640-177656), and
+                ; Kernel-D PAR0-7 (172360-172376) into a fixed buffer at
+                ; 143602-143676. Installs a TEMPORARY bus-error trap
+                ; vector (address 4) before touching anything risky --
+                ; classic "probe memory/hardware, catch the fault
+                ; harmlessly" technique. Also temporarily clears SR3 bit
+                ; 2 around the Kernel-D portion. Almost certainly RSTS's
+                ; memory-size or device-presence detection, run once
+                ; during INIT startup. VERY plausibly upstream of the
+                ; "N devices disabled" count, though the exact connection
+                ; is not yet traced.
+
+154550 MMUPROBE_STUB1 ; minimal bus-error handler body #1 (CMP (SP)+,(SP)+)
+                       ; installed at 154306 as vector PC, restored at 025176-ish
+154534 MMUPROBE_STUB2 ; minimal bus-error handler body #2, installed at
+                       ; 154436 for the riskier Kernel-D-space portion
+
+051012 RLCS_PTR1 ; pointer-to-RLCS data cell (value 174400), used by
+                  ; DEVCHK (056026: MOV 051012,R0) -- same convention as
+                  ; the boot block's own "157016" cell
+072474 RLCS_PTR2 ; second pointer-to-RLCS cell; referencing code not yet
+                  ; identified this session
+077330 RLCS_PTR3 ; third pointer-to-RLCS cell; referencing code not yet
+                  ; identified this session

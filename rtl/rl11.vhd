@@ -77,7 +77,25 @@ entity rl11 is
                                                               -- same GET_DA formula rldma.py uses
       trace_disk_dest  : out std_logic_vector(17 downto 0);  -- csr_ba & bar & '0', the untouched
                                                               -- starting destination address
-      trace_disk_wc    : out std_logic_vector(12 downto 0)   -- wcp, already-positive word count
+      trace_disk_wc    : out std_logic_vector(12 downto 0);  -- wcp, already-positive word count
+
+      -- mmu.vhd's live KERNEL D-space AND I-space PAR5/PAR6 copies
+      -- (same nclk domain as this entity). Sampled and stamped onto
+      -- trace_disk_par5/6 / trace_disk_kipar5/6 at the SAME trigger
+      -- moment as dar/dest/wc -- becomes part of the SAME held-stable
+      -- transaction snapshot, so it crosses into tracecap's clock
+      -- domain the same safe way dar/dest/wc already do. No event, no
+      -- filtering: every disk event just gets whatever these currently
+      -- hold. trace_kipar5/6 are the pair that actually matters for
+      -- RSTS's real overlay mechanism -- see mmu.vhd's port comment.
+      trace_kdpar5     : in  std_logic_vector(15 downto 0);
+      trace_kdpar6     : in  std_logic_vector(15 downto 0);
+      trace_disk_par5  : out std_logic_vector(15 downto 0);
+      trace_disk_par6  : out std_logic_vector(15 downto 0);
+      trace_kipar5       : in  std_logic_vector(15 downto 0);
+      trace_kipar6       : in  std_logic_vector(15 downto 0);
+      trace_disk_kipar5  : out std_logic_vector(15 downto 0);
+      trace_disk_kipar6  : out std_logic_vector(15 downto 0)
    );
 end rl11;
 
@@ -528,6 +546,10 @@ begin
                                  trace_disk_dar  <= dar;
                                  trace_disk_dest <= csr_ba & bar & '0';
                                  trace_disk_wc   <= wcp;
+                                 trace_disk_par5 <= trace_kdpar5;
+                                 trace_disk_par6 <= trace_kdpar6;
+                                 trace_disk_kipar5 <= trace_kipar5;
+                                 trace_disk_kipar6 <= trace_kipar6;
                               end if;
                            elsif sdcard_read_ack = '1' and sdcard_read_done = '0' and sdcard_read_start = '1' then
                               sdcard_read_start <= '0';

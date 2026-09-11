@@ -61,6 +61,7 @@ architecture sim of tb_tracecap is
    signal src_a_v    : std_logic_vector(TRACE_NUM_SOURCES*TRACE_A_WIDTH-1 downto 0) := (others => '0');
    signal src_b_v    : std_logic_vector(TRACE_NUM_SOURCES*TRACE_B_WIDTH-1 downto 0) := (others => '0');
    signal src_c_v    : std_logic_vector(TRACE_NUM_SOURCES*TRACE_C_WIDTH-1 downto 0) := (others => '0');
+   signal src_d_v    : std_logic_vector(TRACE_NUM_SOURCES*TRACE_D_WIDTH-1 downto 0) := (others => '0');
 
    signal overflowed : std_logic;
    signal wr_ptr     : std_logic_vector(DEPTH_LOG2-1 downto 0);
@@ -71,6 +72,7 @@ architecture sim of tb_tracecap is
    signal rd_a    : trace_a_t;
    signal rd_b    : trace_b_t;
    signal rd_c    : trace_c_t;
+   signal rd_d    : trace_d_t;
 
    signal fail_count : integer := 0;
 
@@ -85,12 +87,14 @@ architecture sim of tb_tracecap is
       a     : trace_a_t;
       b     : trace_b_t;
       c     : trace_c_t;
+      d     : trace_d_t;
       signal sv : out std_logic_vector;
       signal kv : out std_logic_vector;
       signal iv : out std_logic_vector;
       signal av : out std_logic_vector;
       signal bv : out std_logic_vector;
-      signal cv : out std_logic_vector
+      signal cv : out std_logic_vector;
+      signal dv : out std_logic_vector
    ) is
    begin
       sv(i) <= valid;
@@ -99,6 +103,7 @@ architecture sim of tb_tracecap is
       av((i+1)*TRACE_A_WIDTH-1 downto i*TRACE_A_WIDTH) <= a;
       bv((i+1)*TRACE_B_WIDTH-1 downto i*TRACE_B_WIDTH) <= b;
       cv((i+1)*TRACE_C_WIDTH-1 downto i*TRACE_C_WIDTH) <= c;
+      dv((i+1)*TRACE_D_WIDTH-1 downto i*TRACE_D_WIDTH) <= d;
    end procedure;
 
 begin
@@ -119,6 +124,7 @@ begin
          src_a_v => src_a_v,
          src_b_v => src_b_v,
          src_c_v => src_c_v,
+         src_d_v => src_d_v,
 
          overflowed => overflowed,
 
@@ -128,6 +134,7 @@ begin
          rd_a => rd_a,
          rd_b => rd_b,
          rd_c => rd_c,
+         rd_d => rd_d,
          wr_ptr => wr_ptr
       );
 
@@ -178,11 +185,12 @@ begin
          id   : trace_src_t;
          a    : trace_a_t;
          b    : trace_b_t;
-         c    : trace_c_t
+         c    : trace_c_t;
+         d    : trace_d_t := (trace_d_t'range => '0')
       ) is
       begin
-         set_source(i, '1', kind, id, a, b, c,
-                    src_valid, src_kind_v, src_id_v, src_a_v, src_b_v, src_c_v);
+         set_source(i, '1', kind, id, a, b, c, d,
+                    src_valid, src_kind_v, src_id_v, src_a_v, src_b_v, src_c_v, src_d_v);
          clk_edges(hold_cycles);
          clear_sources;
          clk_edges(6);  -- settle_after_event, see header comment
@@ -207,7 +215,8 @@ begin
       fire_event(0, 1, TRACE_KIND_DISK, "0000",
                  conv_std_logic_vector(16#0004#, TRACE_A_WIDTH),
                  conv_std_logic_vector(16#1000#, TRACE_B_WIDTH),
-                 conv_std_logic_vector(16#0200#, TRACE_C_WIDTH));
+                 conv_std_logic_vector(16#0200#, TRACE_C_WIDTH),
+                 conv_std_logic_vector(16#06D4EC01#, TRACE_D_WIDTH));
 
       chk16("event0 wr_ptr advanced to 1", wr_ptr, conv_std_logic_vector(1, DEPTH_LOG2));
       rd_addr <= conv_std_logic_vector(0, DEPTH_LOG2);
@@ -217,6 +226,7 @@ begin
       chk16("event0 a (LBN)", rd_a, conv_std_logic_vector(16#0004#, TRACE_A_WIDTH));
       chk16("event0 b (dest)", rd_b, conv_std_logic_vector(16#1000#, TRACE_B_WIDTH));
       chk16("event0 c (wc)", rd_c, conv_std_logic_vector(16#0200#, TRACE_C_WIDTH));
+      chk16("event0 d (KDPAR5/6 snapshot)", rd_d, conv_std_logic_vector(16#06D4EC01#, TRACE_D_WIDTH));
 
       ------------------------------------------------------------------
       -- THE REAL BUG: a source held for MANY cycles (simulating the
@@ -244,12 +254,14 @@ begin
                  conv_std_logic_vector(16#0010#, TRACE_A_WIDTH),
                  conv_std_logic_vector(16#2000#, TRACE_B_WIDTH),
                  conv_std_logic_vector(16#0040#, TRACE_C_WIDTH),
-                 src_valid, src_kind_v, src_id_v, src_a_v, src_b_v, src_c_v);
+                 conv_std_logic_vector(0, TRACE_D_WIDTH),
+                 src_valid, src_kind_v, src_id_v, src_a_v, src_b_v, src_c_v, src_d_v);
       set_source(2, '1', TRACE_KIND_PARW, "0010",
                  conv_std_logic_vector(16#0005#, TRACE_A_WIDTH),
                  conv_std_logic_vector(16#0510#, TRACE_B_WIDTH),
                  conv_std_logic_vector(16#0000#, TRACE_C_WIDTH),
-                 src_valid, src_kind_v, src_id_v, src_a_v, src_b_v, src_c_v);
+                 conv_std_logic_vector(0, TRACE_D_WIDTH),
+                 src_valid, src_kind_v, src_id_v, src_a_v, src_b_v, src_c_v, src_d_v);
       clk_edges(1);
       clear_sources;
       clk_edges(6);

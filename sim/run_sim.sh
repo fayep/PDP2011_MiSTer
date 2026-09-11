@@ -24,6 +24,24 @@ GHDL_FLAGS="--std=08 -fexplicit -fsynopsys -frelaxed"
 
 cd "$(dirname "$0")"
 
+# Regenerate any .mem memory-image from its .mac source if missing or
+# stale (macro11 -> mac2mem.py -> .mem, see e.g. tb_rsts_overlay.vhd's
+# own header comment for this pipeline). .mem/.obj/.lst are build
+# artifacts, not checked into git -- without this, a testbench with a
+# .mac companion silently fails with "cannot open X.mem" the first time
+# it's run in a fresh environment, or after the source changes, with no
+# hint that a build step was needed. Cheap no-op when already current.
+for mac in *.mac; do
+	[ -f "$mac" ] || continue
+	mem="${mac%.mac}.mem"
+	if [ ! -f "$mem" ] || [ "$mac" -nt "$mem" ]; then
+		obj="${mac%.mac}.obj"
+		lst="${mac%.mac}.lst"
+		../tools/macro11 "$mac" -o "$obj" -l "$lst"
+		python3 mac2mem.py "$obj" "$mem"
+	fi
+done
+
 # Compiled artifacts (work library, .o, executable) live in build/, which
 # is gitignored -- keeps arm64 junk out of git and out of any rsync of
 # the tree into an x86 build container.

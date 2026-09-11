@@ -1,0 +1,43 @@
+# Known MACRO-11 macro-expansion templates for RSTS V9.6's INIT.SYS.
+# Load with: disasm.py -x <file> ... -macrolib notes/rsts-init-macros.mlib
+#
+# Template lines are the EXACT normalized form macrodetect.py's
+# normalize_instruction() produces -- every immediate/absolute VALUE
+# replaced with NNNNNN, mnemonic column padding preserved. Confirmed
+# against real disasm.py -x -findmacros output, not hand-derived.
+
+.MACRO OVLRESTORE
+mov    (sp)+,@#NNNNNN
+mov    (sp)+,@#NNNNNN
+mov    (sp)+,@#NNNNNN
+rts    pc
+.ENDM
+
+# Found at 026110/026200 (real instances compare against #000030 octal --
+# looks like "call, then check a device/table-size variable against a
+# fixed limit, branch on mismatch, else jump to the success path").
+.MACRO CALLCHECK30
+jsr    pc,@#NNNNNN
+cmp    NNNNNN,#NNNNNN
+bne    NNNNNN
+jmp    NNNNNN
+.ENDM
+
+# Found at 026162/026250: two-stage call ending in a hard failure if
+# control ever falls through to here.
+.MACRO CALLHALT2
+jsr    pc,NNNNNN
+jsr    r5,@NNNNNN
+halt
+.ENDM
+
+# Found at 017652/020046: the classic JSR R5 linkage convention (see
+# this session's own discussion) with ONE inline argument word,
+# immediately followed by a HALT -- the halt is the "this should never
+# execute" fallback if the callee doesn't consume its argument and
+# return properly past it.
+.MACRO ARGHALT
+jsr    r5,@#NNNNNN
+.word  NNNNNN
+halt
+.ENDM

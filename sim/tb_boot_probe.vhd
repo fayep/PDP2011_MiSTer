@@ -1,4 +1,4 @@
--- deps: cpuregs.vhd fpuregs.vhd cpu.vhd mmu.vhd cr.vhd csdr.vhd xubm.vhd xubl.vhd xubrt45.vhd xu.vhd m9312h47.vhd m9312l47.vhd kl11.vhd kw11l.vhd sdspi.vhd rh11.vhd rk11.vhd rl11.vhd tm11.vhd dr11c.vhd mncad.vhd mnckw.vhd mncaa.vhd mncdi.vhd mncdo.vhd unibus.vhd
+-- deps: cpuregs.vhd fpuregs.vhd cpu.vhd mmu.vhd mmu_trace_watch.vhd cr.vhd csdr.vhd xubm.vhd xubl.vhd xubrt45.vhd xu.vhd m9312h47.vhd m9312l47.vhd kl11.vhd kw11l.vhd sdspi.vhd rh11.vhd rk11.vhd rl11.vhd tm11.vhd dr11c.vhd mncad.vhd mnckw.vhd mncaa.vhd mncdi.vhd mncdo.vhd brk_compare.vhd unibus.vhd
 --
 -- tb_boot_probe.vhd -- does the REAL M9312 boot ROM actually reach rpgo
 -- when RH70 is the only controller with media mounted (RK/RL/TM present

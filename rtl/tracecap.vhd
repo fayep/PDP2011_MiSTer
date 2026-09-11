@@ -71,6 +71,10 @@ entity tracecap is
       src_a_v     : in std_logic_vector(TRACE_NUM_SOURCES*TRACE_A_WIDTH-1 downto 0);
       src_b_v     : in std_logic_vector(TRACE_NUM_SOURCES*TRACE_B_WIDTH-1 downto 0);
       src_c_v     : in std_logic_vector(TRACE_NUM_SOURCES*TRACE_C_WIDTH-1 downto 0);
+      -- Held-stable per-transaction value, same CDC-safety contract as
+      -- a/b/c (set once, unchanging for the whole transaction) -- see
+      -- tracecap_pkg's TRACE_D_WIDTH comment.
+      src_d_v     : in std_logic_vector(TRACE_NUM_SOURCES*TRACE_D_WIDTH-1 downto 0);
 
       overflowed : out std_logic;  -- sticky: the ring buffer has wrapped at least once
 
@@ -82,6 +86,7 @@ entity tracecap is
       rd_a    : out trace_a_t;
       rd_b    : out trace_b_t;
       rd_c    : out trace_c_t;
+      rd_d    : out trace_d_t;
       wr_ptr  : out std_logic_vector(DEPTH_LOG2-1 downto 0)
    );
 end entity tracecap;
@@ -94,25 +99,28 @@ architecture rtl of tracecap is
    type mem_a_t    is array (0 to DEPTH-1) of trace_a_t;
    type mem_b_t    is array (0 to DEPTH-1) of trace_b_t;
    type mem_c_t    is array (0 to DEPTH-1) of trace_c_t;
+   type mem_d_t    is array (0 to DEPTH-1) of trace_d_t;
 
    signal mem_kind : mem_kind_t;
    signal mem_id   : mem_id_t;
    signal mem_a    : mem_a_t;
    signal mem_b    : mem_b_t;
    signal mem_c    : mem_c_t;
+   signal mem_d    : mem_d_t;
 
    signal src_kind : trace_kind_array;
    signal src_id   : trace_src_array;
    signal src_a    : trace_a_array;
    signal src_b    : trace_b_array;
    signal src_c    : trace_c_array;
+   signal src_d    : trace_d_array;
 
    signal wptr    : std_logic_vector(DEPTH_LOG2-1 downto 0) := (others => '0');
    signal wrapped : std_logic := '0';
    signal filled_once : std_logic := '0';  -- true once every slot has been written at least once
 
-   -- Real event pulses (trace_disk_valid/trace_par_valid) are generated
-   -- in rl11.vhd/rh11.vhd/mmu.vhd's OWN clock domain (nclk, the
+   -- Real event pulses (trace_disk_valid) are generated in rl11.vhd/
+   -- rh11.vhd's OWN clock domain (nclk, the
    -- throttled CPU instruction clock), not this module's `clk`
    -- (clk_100mhz). nclk is far slower, so a single nclk-wide pulse
    -- holds '1' across MANY clk cycles -- sampling src_valid directly,
@@ -156,6 +164,7 @@ begin
       src_a(i)    <= src_a_v((i+1)*TRACE_A_WIDTH-1 downto i*TRACE_A_WIDTH);
       src_b(i)    <= src_b_v((i+1)*TRACE_B_WIDTH-1 downto i*TRACE_B_WIDTH);
       src_c(i)    <= src_c_v((i+1)*TRACE_C_WIDTH-1 downto i*TRACE_C_WIDTH);
+      src_d(i)    <= src_d_v((i+1)*TRACE_D_WIDTH-1 downto i*TRACE_D_WIDTH);
    end generate;
 
    sel <= first_set(valid_pulse);
@@ -183,6 +192,7 @@ begin
                mem_a(conv_integer(wptr))    <= src_a(sel);
                mem_b(conv_integer(wptr))    <= src_b(sel);
                mem_c(conv_integer(wptr))    <= src_c(sel);
+               mem_d(conv_integer(wptr))    <= src_d(sel);
                -- `wrapped` means "some earlier event's slot has genuinely
                -- been overwritten", which is only true once the ring was
                -- ALREADY full (filled_once) before THIS write -- setting
@@ -209,5 +219,6 @@ begin
    rd_a    <= mem_a(conv_integer(rd_addr));
    rd_b    <= mem_b(conv_integer(rd_addr));
    rd_c    <= mem_c(conv_integer(rd_addr));
+   rd_d    <= mem_d(conv_integer(rd_addr));
 
 end architecture rtl;
