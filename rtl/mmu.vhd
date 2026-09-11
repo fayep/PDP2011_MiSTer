@@ -766,7 +766,18 @@ begin
    bus_addr <= ubmmaddr when sr3(5) = '1' and unibus_busmaster_control_npg = '1' and have_ubm = 1
    else "0000" & unibus_busmaster_addr when unibus_busmaster_control_npg = '1'
    else ubmmaddr when sr3(5) = '1' and sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and have_ubm = 1
-   else "0000" & addr_p(17 downto 0) when addr_p(21 downto 18) = "1111" and have_mmu22 = 1 and have_1920 = 1
+-- was: else "0000" & addr_p(17 downto 0) when addr_p(21 downto 18) = "1111" and have_mmu22 = 1 and have_1920 = 1
+-- That branch aliased the whole top 256 KW window (0o17000000-0o17777777)
+-- down to physical 0..0o777777. On a real 1920 KW 11/70 that range is
+-- UNIBUS address space, not memory: with nothing on the Unibus it must
+-- NXM. The alias made RSTS/E INIT's XBUF-placement probe read back valid
+-- (mirrored low) data above 1920 KW, conclude memory reaches 2044 KW,
+-- and skip trimming the SIL default table -> "Adjusting memory table" ->
+-- monitor shrink -> boot hang. Dropping the branch: an unmapped "1111"
+-- CPU access falls through to addr_p, misses dram_match (mister_top
+-- only matches addr(21:18) /= "1111") and all device matches, and
+-- unibus.vhd's cer_ioabort (addr_match='0' + bus_unibus_mapped='1')
+-- raises nxmabort -- i.e. a proper NXM trap, like the hardware.
    else addr_p;
 
    bus_dato <= mmu_dato when unibus_busmaster_control_npg = '0'
