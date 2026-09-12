@@ -39,6 +39,24 @@ entity kw11l is
       have_kw11l : in integer range 0 to 1;
       kw11l_hz : in integer range 50 to 800;
 
+      -- debug-only: freeze the line clock's own free-running counter
+      -- while '1'. Wired (unibus.vhd) to `not cpu_cons_run` -- i.e. ANY
+      -- reason the CPU isn't currently executing, manual halt included,
+      -- not just a PC-compare debug breakpoint. This deliberately
+      -- diverges from real 11/70 hardware (a real line clock, AC mains
+      -- driven, keeps ticking through a front-panel halt) -- chosen
+      -- specifically so MiSTer's behavior while paused matches SIMH's
+      -- own uniform semantics (sim_timer.c: rtime = sim_is_running ?
+      -- sim_os_msec() : sim_stop_time -- ANY non-running state freezes
+      -- elapsed time, not just one specific halt reason), making the
+      -- two platforms directly comparable during interactive
+      -- investigation regardless of which halt mechanism is used. Only
+      -- matters while this debug wiring is connected; defaults to '0'
+      -- (unconnected callers, i.e. normal/production builds that never
+      -- reference this port, see zero behavioral change and keep the
+      -- real, AC-mains-accurate behavior).
+      debug_freeze : in std_logic := '0';
+
       reset : in std_logic;
       clk50mhz : in std_logic;
       clk : in std_logic
@@ -161,7 +179,7 @@ begin
          if reset = '1' then
             counter <= 0;
             lineclk <= '0';
-         else
+         elsif debug_freeze = '0' then
             counter <= counter + 1;
             if counter >= limit then
                lineclk <= not lineclk;

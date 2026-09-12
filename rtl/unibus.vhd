@@ -616,6 +616,8 @@ component kw11l is
       have_kw11l : in integer range 0 to 1;
       kw11l_hz : in integer range 50 to 800;
 
+      debug_freeze : in std_logic := '0';
+
       reset : in std_logic;
       clk50mhz : in std_logic;
       clk : in std_logic
@@ -1806,6 +1808,7 @@ begin
 
       have_kw11l => have_kw11l,
       kw11l_hz => kw11l_hz,
+      debug_freeze => not cpu_cons_run,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       clk => nclk
