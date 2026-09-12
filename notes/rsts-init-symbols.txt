@@ -71,7 +71,25 @@
                          ; 001600/002000, call through a stack-passed
                          ; entry point, restore" wrapper -- structurally
                          ; identical to 020102 (see below) but a
-                         ; different fixed bank pair
+                         ; different fixed bank pair. Confirmed (live
+                         ; full-boot capture) NOT overlay-load-specific:
+                         ; hit thousands of times throughout the WHOLE
+                         ; boot, long after the 22 SYSGEN-phase overlay
+                         ; loads finish -- a generic call-through
+                         ; primitive used pervasively. Directly
+                         ; implicated as the real proximate caller for
+                         ; the "N devices disabled" boot message: hit in
+                         ; a tight repeating loop right before that text
+                         ; prints, r1 constant at 041020 (a runtime-
+                         ; built, all-zero-on-disk scratch table --
+                         ; plausibly the device-status/disabled-flags
+                         ; table), r0 cycling through small per-call
+                         ; codes (000110/000075/000100/000103/000104)
+                         ; -- see notes/rsts-init-disasm.md's Open
+                         ; Questions #1 for the full writeup. 025262's
+                         ; OWN internals were never disassembled this
+                         ; session (unlike 025006/025120/025204 above)
+                         ; -- natural next step.
 
 020102 MAPCALL_4000_4200 ; the FIRST-FOUND instance of this wrapper
                           ; pattern (live-confirmed via repeated single-
@@ -111,3 +129,73 @@
                   ; identified this session
 077330 RLCS_PTR3 ; third pointer-to-RLCS cell; referencing code not yet
                   ; identified this session
+
+115216 BUFSHRINK_TABLE_WALK ; CONFIRMED LIVE (SIMH, this session, single
+                  ; execute-breakpoint at 115264 -- see method note below):
+                  ; loop 115222-115260 walks a table from #043042 to
+                  ; #043242 (0o200 bytes), comparing R0/R1 (loaded at
+                  ; 115162 from a caller-supplied (R5)+ pair, bounds-
+                  ; checked against @#102176/@#102200 -- the SAME memory-
+                  ; size-bound cells the [[rsts-v96-hang-kipar5-nonidentity]]
+                  ; memory entry's shrink-decision writeup already
+                  ; extensively traces) against each table entry; a match
+                  ; falls through to 115270/115274.
+115274 BUFSHRINK_MSG_CALL ; `JSR R5,@#004610` right after a table match --
+                  ; the same inline-parameter idiom used throughout this
+                  ; codebase. Strong candidate for the ACTUAL call that
+                  ; produces "Cannot use extra 12K of buffers."/"Reduced
+                  ; to 11K." (this whole 115216-115274 block's virtual
+                  ; range is KIPAR4's page; confirmed via the METHOD note
+                  ; below to be reached from this exact live boot).
+004610 MSGDISP_ENTRY ; `MOV R0,-(SP)` / `MOV (R5)+,R0` / `JSR PC,@#004624`
+                  ; -- reads an inline word via the JSR R5 idiom into R0
+                  ; (almost certainly a message-number/code, not a raw
+                  ; string address) then dispatches through the vector
+                  ; cell at 004624. This is a GENERIC low, always-resident
+                  ; (page0, <64K, no overlay ambiguity) message-print
+                  ; entry point -- everything below 64K in this immediate
+                  ; area decoded consistently with the static file, unlike
+                  ; 115216-115274 above.
+004624 MSGDISP_VECTOR ; patchable vector cell dispatched through by
+                  ; MSGDISP_ENTRY -- same pattern as the already-known
+                  ; 001720 vector ERRDSP jumps through. Not yet resolved
+                  ; to its live target this session.
+
+METHOD NOTE (this session): 115216-115274 sits in KIPAR4's virtual page
+                  (100000-117777), which -- like page 1 and pages 5/6 --
+                  is NOT reliably `file-offset == address` even under
+                  64K: the static init.sys bytes at file offset 115264
+                  are all-zero, but a live SIMH breakpoint at 115264
+                  (single `break -e 115264`, no other breakpoints --
+                  multiple simultaneous breakpoints on this exact boot
+                  phase measurably perturb timing and change which
+                  overlay/config path gets taken, confirmed the hard way
+                  this session) shows real code there, with SR0=000044
+                  (MMU DISABLED, flat physical addressing) at that exact
+                  PC. Resolved the REAL backing content by directly
+                  correlating a `set rl debug` (bare -- `SET RL
+                  DEBUG=OPS;RWR`'s selective-flag syntax is NOT wired up
+                  in this build's pdp11_rl.c despite matching a working
+                  prior-session recipe; only the bare `SET RL DEBUG` form
+                  works here) transaction log's destination-address+
+                  length pairs against the target address, rather than
+                  guessing via KIPAR-value arithmetic (which also failed:
+                  KIPAR4=000456 at this same breakpoint, but
+                  file-offset(KIPAR4*0o100 + page-relative-offset) is
+                  ALSO all-zero in the static file -- physical memory
+                  here is populated by an actual disk DMA that doesn't
+                  correspond to any fixed file offset, exactly the
+                  already-documented "overlay banks aren't loaded via
+                  simple file-offset math" finding, just now confirmed to
+                  also apply to ordinary low-memory code reuse, not only
+                  the page5/6 overlay mechanism). The matching read:
+                  16 sectors (4096 bytes) starting LBN 928 (RLDA 002710,
+                  cyl 11 sect 8), landing at staging address 0o110000 --
+                  byte offset 2740 into that transfer = disk LBN 938,
+                  byte 180 -- verified byte-for-byte identical to the
+                  live-captured instruction window. Extracted that exact
+                  16-sector block and re-disassembled it with
+                  `disasm.py -x <block> 0o110000 0o115264 -scan`, which
+                  is what decoded the 115216-115274 sequence above
+                  correctly (unlike the flat whole-file scan, which
+                  mis-decodes this address as HALT padding).

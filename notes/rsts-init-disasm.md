@@ -868,6 +868,66 @@ re-deriving these names from scratch each session.
    next concrete step is a live dump of `0o460000` right after this
    pair's calls, compared byte-for-byte against this transfer's
    content at the corresponding offset.
+
+   **UPDATE (this session, `11orcam` disassembler tooling used to drive
+   a live catch): the `0o460000` overlay-bank theory above is now
+   believed WRONG for the live print itself.** Caught live with a
+   Ctrl-E break the instant the console showed "disabled" (disposable
+   copy `/tmp/tsclean7.dsk`, same one used throughout this
+   investigation): at that moment SR0 (`177572`) reads `000044` --
+   bit 0 (MMU enable) is CLEAR, i.e. the MMU is OFF when this text
+   actually appears, which makes a >64K physical bank like `0o460000`
+   unreachable at the moment of the print (real/flat 16-bit addressing
+   only). The exact three string fragments (`" device"`, `"s"`,
+   `" disabled"`, confirmed at file offset `0o735242` in `init.sys`
+   directly, matching disk LBN 958 exactly in `/tmp/tsclean7.dsk`) do
+   NOT have a duplicate resident copy anywhere under 64K in the file,
+   so the live text is most likely assembled character-by-character
+   through a print primitive fed some other way (possibly still via a
+   brief MMU-on/off bracket around the actual character-emit call, the
+   same pattern `MAPCALL_1600_2000`/`MAPCALL_4000_4200` already use
+   elsewhere) rather than referenced as a static string constant at
+   the moment we sampled state -- a plain PC/SR0 snapshot after the
+   fact can't distinguish these, since by the time an external Ctrl-E
+   lands, the relevant call has already returned.
+
+   A second, full-boot capture (breakpoints on `025006`/`025120`/
+   `025204`/`025262`, auto `ex r0; ex r1; cont`, console log
+   interleaved with the breakpoint transcript so order is exact)
+   confirms `025262` (`MAPCALL_1600_2000`) is NOT overlay-loading-
+   specific at all -- it's hit thousands of times throughout the WHOLE
+   boot, well past "Adjusting memory table", with wildly different
+   `r0`/`r1` pairs -- it's a generic call-through-a-mapped-page
+   primitive used pervasively, not something reserved for the 22
+   SYSGEN-phase overlay loads. Immediately before "13 devices
+   disabled" prints, `025262` is hit in a tight repeating loop with
+   **r1 constant at `041020`** (the same value across ~30 consecutive
+   hits) while **r0 cycles through a small set of values**
+   (`000110`, `000075`, `000100`, `000103`, `000104`, alternating and
+   repeating, not monotonic) -- consistent with once-per-device-slot
+   dispatch through a small per-device driver bank, matching
+   `notes/rsts-init-symbols.txt`'s `DEVWALK`/`DEVCHK` device-table-
+   iteration description. `041020` itself is confirmed, directly from
+   the on-disk file, to be all-zero at rest -- i.e. a RUNTIME-BUILT
+   scratch table (very plausibly the device-status/disabled-flags
+   table itself), not a static string or code address; the small `r0`
+   values are NOT ASCII text when decoded (tried; no readable string
+   falls out) and don't fit a bank-physical-address pattern either
+   (too small/inconsistent for a `PAR*0o100` staging address) --
+   most likely per-device small integer codes.
+
+   NOT yet confirmed: the exact meaning of the small r0 codes, what
+   `025262`'s own r0 parameter is really used for structurally (its
+   own disassembly was never pulled the way `025006`/`025120`/`025204`
+   were above), or the actual counting/print call itself (still not
+   caught mid-execution -- only ever sampled just after it returns).
+   The natural next step, now that `025262` is confirmed as the real
+   proximate caller for this specific message, is disassembling
+   `025262` itself in full (parallel to the `023256`/`025006` listing
+   above) and setting the live breakpoint AT `025262` with a filter on
+   `r1==041020` (SIMH breakpoint action can conditionally re-`cont`
+   only when NOT matching, stepping into the routine on the real hits)
+   rather than intercepting after the fact via Ctrl-E.
 2. **How overlay banks actually get their content**: RESOLVED for 4 of
    the 6 known bank pairs with genuine file content -- see "Physical
    memory layout" above for the exact staging LBNs behind
