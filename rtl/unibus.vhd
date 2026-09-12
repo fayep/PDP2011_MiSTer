@@ -59,11 +59,16 @@ entity unibus is
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rh_sdcard_cs : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic := '0';
-      rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      -- native hps_io block-transfer protocol (see rh11.vhd's own port
+      -- comment) -- replaces rh_sdcard_cs/mosi/sclk/miso/debug
+      rh_sd_lba : out std_logic_vector(31 downto 0);
+      rh_sd_rd : out std_logic;
+      rh_sd_wr : out std_logic;
+      rh_sd_ack : in std_logic := '0';
+      rh_sd_buff_addr : in std_logic_vector(8 downto 0) := (others => '0');
+      rh_sd_buff_dout : in std_logic_vector(15 downto 0) := (others => '0');
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
+      rh_sd_buff_wr : in std_logic := '0';
       rh_type : in integer range 1 to 7 := 6;                        -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
       rh_noofcyl : in integer range 128 to 8192 := 1024;             -- for RM06 and RP2G: how many cylinders are available
       rh_img_mounted : in integer range 0 to 1 := 1;                 -- is a disk image actually mounted (see rh11's img_mounted)
@@ -271,6 +276,7 @@ entity unibus is
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
+      clk_100mhz : in std_logic := '0';                              -- hps_io/native sd_* domain (rh11's bridge; := '0' keeps existing testbenches/instantiations that predate this a no-op)
       reset : in std_logic;                                          -- active '1' synchronous reset
 
 -- passive event-trace taps, pass-through to tracecap.vhd (see rtl/tracecap_pkg.vhd)
@@ -800,11 +806,15 @@ component rh11 is
       rh70_bus_master_control_dato : out std_logic;
       rh70_bus_master_nxm : in std_logic := '0';
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(8 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_100mhz : in std_logic;
 
       have_rh : in integer range 0 to 1 := 0;
       have_rh70 : in integer range 0 to 1 := 0;
@@ -2132,11 +2142,15 @@ begin
       rh70_bus_master_control_dato => rh70_bus_master_control_dato,
       rh70_bus_master_nxm => rh70_bus_master_nxm,
 
-      sdcard_cs => rh_sdcard_cs,
-      sdcard_mosi => rh_sdcard_mosi,
-      sdcard_sclk => rh_sdcard_sclk,
-      sdcard_miso => rh_sdcard_miso,
-      sdcard_debug => rh_sdcard_debug,
+      sd_lba => rh_sd_lba,
+      sd_rd => rh_sd_rd,
+      sd_wr => rh_sd_wr,
+      sd_ack => rh_sd_ack,
+      sd_buff_addr => rh_sd_buff_addr,
+      sd_buff_dout => rh_sd_buff_dout,
+      sd_buff_din => rh_sd_buff_din,
+      sd_buff_wr => rh_sd_buff_wr,
+      clk_100mhz => clk_100mhz,
 
       rh_type => rh_type,
       rh_noofcyl => rh_noofcyl,

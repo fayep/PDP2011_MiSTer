@@ -28,6 +28,7 @@ architecture sim of tb_rh11_attn is
    signal clk      : std_logic := '0';
    signal nclk     : std_logic;
    signal clk50    : std_logic := '0';
+   signal clk_100  : std_logic := '0';
    signal reset    : std_logic := '1';
    signal sim_done : boolean := false;
 
@@ -49,8 +50,9 @@ architecture sim of tb_rh11_attn is
    signal rh70_bm_dato : std_logic_vector(15 downto 0);
    signal rh70_bm_cdati, rh70_bm_cdato : std_logic;
 
-   signal sd_cs, sd_mosi, sd_sclk : std_logic;
-   signal sd_dbg : std_logic_vector(3 downto 0);
+   signal sd_lba : std_logic_vector(31 downto 0);
+   signal sd_rd, sd_wr : std_logic;
+   signal sd_buff_din : std_logic_vector(15 downto 0);
 
    -- RP register offsets from base 776700 (bus_addr(5:1))
    constant A_CS1 : std_logic_vector(17 downto 0) := o"776700";
@@ -114,10 +116,11 @@ architecture sim of tb_rh11_attn is
 
 begin
 
-   clk   <= not clk   after 50 ns when not sim_done else '0';
-   nclk  <= not clk;
-   clk50 <= not clk50 after 10 ns when not sim_done else '0';
-   reset <= '1', '0' after 700 ns;
+   clk     <= not clk     after 50 ns when not sim_done else '0';
+   nclk    <= not clk;
+   clk50   <= not clk50   after 10 ns when not sim_done else '0';
+   clk_100 <= not clk_100 after 5 ns  when not sim_done else '0';
+   reset   <= '1', '0' after 700 ns;
 
    dut : entity work.rh11
       port map(
@@ -141,8 +144,10 @@ begin
          rh70_bus_master_dato => rh70_bm_dato,
          rh70_bus_master_control_dati => rh70_bm_cdati,
          rh70_bus_master_control_dato => rh70_bm_cdato,
-         sdcard_cs => sd_cs, sdcard_mosi => sd_mosi, sdcard_sclk => sd_sclk,
-         sdcard_miso => '0', sdcard_debug => sd_dbg,
+         sd_lba => sd_lba, sd_rd => sd_rd, sd_wr => sd_wr, sd_ack => '0',
+         sd_buff_addr => (others => '0'), sd_buff_dout => (others => '0'),
+         sd_buff_din => sd_buff_din, sd_buff_wr => '0',
+         clk_100mhz => clk_100,
          have_rh => 1, have_rh70 => 1, rh_type => 6,
          -- walking/alternating-bit pattern, not zero -- see tb_rl11_dma.vhd's
          -- comment on the same tie-off.

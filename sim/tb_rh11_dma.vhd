@@ -1,4 +1,4 @@
--- deps: sdspi.vhd rh11.vhd
+-- deps: rh11.vhd
 --
 -- tb_rh11_dma.vhd -- does an RH70 multi-sector READ DATA land the right
 -- words at the right memory addresses?
@@ -6,94 +6,22 @@
 -- RSTS/E V10.1 hangs polling for a disk read that "finished" (CS1 RDY set,
 -- WC=0, no error) but the data never arrived in memory (checked on hardware:
 -- the DMA target was all zeros).  This drives the real rh11.vhd (have_rh70=1,
--- RP06) with a behavioural sdspi that serves an identifiable pattern -
--- word K of RP block B = (B+1)*04000 + K - and a bus-master memory model
--- that records every rh70 DMA write.  After a 2-sector (512-word) READ:
+-- RP06) with a behavioural hps_io that serves an identifiable pattern -
+-- word K of RP block B = (B+1)*04000 + K - over rh11's real native sd_*
+-- ports (sd_rd/sd_ack/sd_buff_*, the interface that replaced sdspi.vhd in
+-- the timing/closure-2026-09-12 disk-transport rewrite) and a bus-master
+-- memory model that records every rh70 DMA write. After a 2-sector
+-- (512-word) READ:
 --   * every word BA+2*i must hold block/offset for logical word i
 --   * sector 2 must NOT overwrite sector 1 (work_bar must advance)
 --   * nothing outside [BA, BA+2*512) is written
---   * the block numbers rh11 asked sdspi for are N, N+1
+--   * the block numbers rh11 asked for (via sd_lba) are N, N+1
+--
+-- The hps_io mock runs on its own clk_100 clock (genuinely different from
+-- clk/cpuclk) specifically to exercise the real Gray-coded CDC bridge in
+-- rh11.vhd, not just its combinational logic on one shared clock.
 --
 -- Run:  sim/run_sim.sh tb_rh11_dma --stop-time=4ms
-
-------------------------------------------------------------------------
--- behavioural sdspi (bound in place of the real one: -- deps: analyses
--- sdspi.vhd first, this file last, so rh11's sd1 binds here)
-------------------------------------------------------------------------
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
-
-entity sdspi is
-   port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-      sdcard_addr : in std_logic_vector(23 downto 0);
-      sdcard_idle : out std_logic;
-      sdcard_read_start : in std_logic;
-      sdcard_read_ack : in std_logic;
-      sdcard_read_done : out std_logic;
-      sdcard_write_start : in std_logic;
-      sdcard_write_ack : in std_logic;
-      sdcard_write_done : out std_logic;
-      sdcard_error : out std_logic;
-      sdcard_xfer_addr : in integer range 0 to 255;
-      sdcard_xfer_read : in std_logic;
-      sdcard_xfer_out : out std_logic_vector(15 downto 0);
-      sdcard_xfer_write : in std_logic;
-      sdcard_xfer_in : in std_logic_vector(15 downto 0);
-      enable : in integer range 0 to 1 := 0;
-      controller_clk : in std_logic;
-      reset : in std_logic;
-      clk50mhz : in std_logic
-   );
-end sdspi;
-
-architecture mock of sdspi is
-   signal cur_block : integer := 0;
-   signal busy      : boolean := false;
-   signal cnt       : integer := 0;
-begin
-   sdcard_cs <= '1'; sdcard_mosi <= '0'; sdcard_sclk <= '0';
-   sdcard_debug <= "0000"; sdcard_error <= '0';
-   sdcard_write_done <= '0';
-   sdcard_idle <= '0' when busy else '1';
-
-   process(controller_clk)
-   begin
-      if rising_edge(controller_clk) then
-         -- real sdspi.vhd:155 registers xfer_out one controller_clk after
-         -- xfer_addr; the rh11 busmaster_read1 pipeline stage compensates
-         -- for exactly this latency, so the mock must match it.
-         sdcard_xfer_out <= std_logic_vector(to_unsigned(
-              ((cur_block + 1) * 8#4000#) + sdcard_xfer_addr, 16));
-         if reset = '1' then
-            busy <= false; cnt <= 0; sdcard_read_done <= '0';
-         else
-            if not busy then
-               sdcard_read_done <= '0';
-               if sdcard_read_start = '1' then
-                  cur_block <= to_integer(unsigned(sdcard_addr));
-                  report "sdspi: read block " & integer'image(to_integer(unsigned(sdcard_addr)));
-                  busy <= true; cnt <= 0;
-               end if;
-            else
-               cnt <= cnt + 1;
-               if cnt = 20 then
-                  sdcard_read_done <= '1';          -- data ready
-               end if;
-               if cnt >= 20 and sdcard_read_ack = '1' then
-                  sdcard_read_done <= '0';
-                  busy <= false;
-               end if;
-            end if;
-         end if;
-      end if;
-   end process;
-end mock;
 
 ------------------------------------------------------------------------
 -- the testbench proper
@@ -106,7 +34,7 @@ entity tb_rh11_dma is
 end tb_rh11_dma;
 
 architecture sim of tb_rh11_dma is
-   signal clk, nclk, clk50, reset : std_logic := '0';
+   signal clk, nclk, clk50, clk_100, reset : std_logic := '0';
    signal sim_done : boolean := false;
 
    signal bus_addr        : std_logic_vector(17 downto 0) := (others => '0');
@@ -128,8 +56,13 @@ architecture sim of tb_rh11_dma is
    signal rh70_dati : std_logic_vector(15 downto 0) := (others => '0');
    signal rh70_nxm : std_logic := '0';
 
-   signal sd_cs, sd_mosi, sd_sclk : std_logic;
-   signal sd_dbg : std_logic_vector(3 downto 0);
+   -- native hps_io sd_* interface (replaces sd_cs/mosi/sclk/dbg)
+   signal sd_lba : std_logic_vector(31 downto 0);
+   signal sd_rd, sd_wr, sd_ack : std_logic := '0';
+   signal sd_buff_addr : std_logic_vector(8 downto 0) := (others => '0');
+   signal sd_buff_dout : std_logic_vector(15 downto 0) := (others => '0');
+   signal sd_buff_din : std_logic_vector(15 downto 0);
+   signal sd_buff_wr : std_logic := '0';
 
    -- 128 KW memory model (22-bit word addr, we only use low range)
    type mem_t is array(0 to 262143) of integer;
@@ -176,10 +109,11 @@ architecture sim of tb_rh11_dma is
       wait until rising_edge(clk);
    end procedure;
 begin
-   clk   <= not clk   after 50 ns when not sim_done else '0';
-   nclk  <= not clk;
-   clk50 <= not clk50 after 10 ns when not sim_done else '0';
-   reset <= '1', '0' after 700 ns;
+   clk     <= not clk     after 50 ns when not sim_done else '0';
+   nclk    <= not clk;
+   clk50   <= not clk50   after 10 ns when not sim_done else '0';
+   clk_100 <= not clk_100 after 5 ns  when not sim_done else '0';
+   reset   <= '1', '0' after 700 ns;
 
    dut : entity work.rh11
       port map(
@@ -197,8 +131,10 @@ begin
          rh70_bus_master_control_dati=>rh70_cdati,
          rh70_bus_master_control_dato=>rh70_cdato,
          rh70_bus_master_nxm=>rh70_nxm,
-         sdcard_cs=>sd_cs, sdcard_mosi=>sd_mosi, sdcard_sclk=>sd_sclk,
-         sdcard_miso=>'0', sdcard_debug=>sd_dbg,
+         sd_lba=>sd_lba, sd_rd=>sd_rd, sd_wr=>sd_wr, sd_ack=>sd_ack,
+         sd_buff_addr=>sd_buff_addr, sd_buff_dout=>sd_buff_dout,
+         sd_buff_din=>sd_buff_din, sd_buff_wr=>sd_buff_wr,
+         clk_100mhz=>clk_100,
          have_rh=>1, have_rh70=>1, rh_type=>6,
          -- walking/alternating-bit pattern, not zero -- see tb_rl11_dma.vhd's
          -- comment on the same tie-off.
@@ -209,6 +145,69 @@ begin
 
    -- grant NPR immediately whenever requested
    npg <= npr;
+
+   -- behavioural hps_io: on sd_rd, ack after a short delay then stream
+   -- 256 words of the same identifiable pattern the old sdspi mock used,
+   -- via sd_buff_addr/sd_buff_dout/sd_buff_wr, all on clk_100 (genuinely
+   -- separate from rh11's own clk/cpuclk) to actually exercise the
+   -- Gray-coded CDC bridge rather than just its logic.
+   process(clk_100)
+      variable cur_block : integer := 0;
+      variable phase : integer := 0;  -- 0=idle, 1=acking, 2=streaming, 3=flush-wait
+      variable addr : integer := 0;
+      variable ack_delay : integer := 0;
+   begin
+      if rising_edge(clk_100) then
+         if reset = '1' then
+            phase := 0; sd_ack <= '0'; sd_buff_wr <= '0';
+         else
+            case phase is
+               when 0 =>
+                  sd_ack <= '0';
+                  if sd_rd = '1' then
+                     cur_block := to_integer(unsigned(sd_lba));
+                     report "hps_io mock: read block " & integer'image(cur_block);
+                     ack_delay := 5;
+                     phase := 1;
+                  end if;
+
+               when 1 =>
+                  if ack_delay > 0 then
+                     ack_delay := ack_delay - 1;
+                  else
+                     sd_ack <= '1';
+                     addr := 0;
+                     phase := 2;
+                  end if;
+
+               when 2 =>
+                  sd_buff_addr <= std_logic_vector(to_unsigned(addr, 9));
+                  sd_buff_dout <= std_logic_vector(to_unsigned(
+                     ((cur_block + 1) * 8#4000#) + addr, 16));
+                  sd_buff_wr <= '1';
+                  if addr = 255 then
+                     -- word 255's write (rsector(255) <= sd_buff_dout,
+                     -- registered) only commits on the NEXT clk_100 edge --
+                     -- do not drop sd_ack in the same cycle as the last
+                     -- sd_buff_wr pulse, or the write races the done signal
+                     -- and never lands (this is what tb_rh11_dma originally
+                     -- caught: a mock bug, not an rh11.vhd bug).
+                     phase := 3;
+                  else
+                     addr := addr + 1;
+                  end if;
+
+               when 3 =>
+                  sd_buff_wr <= '0';
+                  sd_ack <= '0';
+                  phase := 0;
+
+               when others =>
+                  phase := 0;
+            end case;
+         end if;
+      end if;
+   end process;
 
    -- bus-master memory: capture every rh70 DMA write
    process(clk)

@@ -67,11 +67,14 @@ entity mister_top is
       rl_sdcard_miso : in std_logic;
 		rl_sdcard_debug: out std_logic_vector (3 downto 0);
 
-      rh_sdcard_cs   : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic;
-		rh_sdcard_debug: out std_logic_vector (3 downto 0);
+      rh_sd_lba : out std_logic_vector(31 downto 0);
+      rh_sd_rd : out std_logic;
+      rh_sd_wr : out std_logic;
+      rh_sd_ack : in std_logic;
+      rh_sd_buff_addr : in std_logic_vector(8 downto 0);
+      rh_sd_buff_dout : in std_logic_vector(15 downto 0);
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
+      rh_sd_buff_wr : in std_logic;
 
       tm_media_change: in std_logic;
       tm_sdcard_cs   : out std_logic;
@@ -205,11 +208,14 @@ component unibus is
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rh_sdcard_cs : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic := '0';
-      rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rh_sd_lba : out std_logic_vector(31 downto 0);
+      rh_sd_rd : out std_logic;
+      rh_sd_wr : out std_logic;
+      rh_sd_ack : in std_logic := '0';
+      rh_sd_buff_addr : in std_logic_vector(8 downto 0) := (others => '0');
+      rh_sd_buff_dout : in std_logic_vector(15 downto 0) := (others => '0');
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
+      rh_sd_buff_wr : in std_logic := '0';
       rh_type : in integer range 1 to 7 := 6;
       rh_img_mounted : in integer range 0 to 1 := 1;
 
@@ -407,6 +413,7 @@ component unibus is
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
+      clk_100mhz : in std_logic := '0';                              -- hps_io/native sd_* domain (rh11's bridge)
       reset : in std_logic;                                          -- active '1' synchronous reset
 
 -- passive event-trace taps, pass-through to tracecap.vhd (see rtl/tracecap_pkg.vhd)
@@ -751,11 +758,14 @@ begin
 
       have_rh => have_rh,
       rh_img_mounted => rh_img_mounted_sync,
-      rh_sdcard_cs => rh_sdcard_cs,
-      rh_sdcard_miso => rh_sdcard_miso,
-      rh_sdcard_mosi => rh_sdcard_mosi,
-      rh_sdcard_sclk => rh_sdcard_sclk,
-      rh_sdcard_debug => rh_sdcard_debug,
+      rh_sd_lba => rh_sd_lba,
+      rh_sd_rd => rh_sd_rd,
+      rh_sd_wr => rh_sd_wr,
+      rh_sd_ack => rh_sd_ack,
+      rh_sd_buff_addr => rh_sd_buff_addr,
+      rh_sd_buff_dout => rh_sd_buff_dout,
+      rh_sd_buff_din => rh_sd_buff_din,
+      rh_sd_buff_wr => rh_sd_buff_wr,
 
       have_tm => have_tm,
       tm_img_mounted => tm_img_mounted_sync,
@@ -821,6 +831,7 @@ begin
       ifetch => ifetch,
       reset => cpureset,
       clk50mhz => clk_50,
+      clk_100mhz => clk_100,
       clk => cpuclk,
 
       trace_rl_valid => trace_rl_valid,

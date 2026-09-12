@@ -210,7 +210,6 @@ localparam CONF_STR = {
 	"O[7:5],PDP-11 Model,20,34,44,45,70,94;",
 	"-;",
 	"O[1],External Ethernet,No,Yes;",
-	"O[4:3],Real SD,RK,RL,RH;",
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -420,31 +419,11 @@ sd_card #(.WIDE(1)) sd_card_rl
 
 );
 
-sd_card #(.WIDE(1)) sd_card_rh
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[2]),
-	.sd_rd       (sd_rd[2]),
-	.sd_wr       (sd_wr[2]),
-	.sd_ack      (sd_ack[2]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[2]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (rh_sclk),
-	.ss          (rh_cs | ~vsd_sel_rh),
-	.mosi        (rh_mosi),
-	.miso        (rh_miso)
-
-);
+// RH11 talks hps_io's native sd_lba/sd_rd/sd_wr/sd_ack/sd_buff_* protocol
+// directly (see rh11.vhd/mister_top.vhd's rh_sd_* ports, wired straight to
+// sd_lba[2]/sd_rd[2]/sd_wr[2]/sd_ack[2]/sd_buff_*[2] in the mister_top
+// instantiation below) -- no sd_card SPI-emulation instance needed any
+// more, unlike rk/rl/tm below (not yet migrated).
 
 sd_card #(.WIDE(1)) sd_card_tm
 (
@@ -501,12 +480,6 @@ wire rk_mosi;
 wire rk_miso;
 wire [3:0]rk_sddebug;
 //
-wire rh_sclk;
-wire rh_cs;
-wire rh_mosi;
-wire rh_miso;
-wire [3:0]rh_sddebug;
-//
 wire rl_sclk;
 wire rl_cs;
 wire rl_mosi;
@@ -521,17 +494,12 @@ wire [3:0]tm_sddebug;
 //
 //
 
-///// REAL SD ///
-wire  sdcard_miso = vsd_sel_rh? rh_miso : SD_MISO;
-assign SD_CS   = rh_cs   |  vsd_sel_rh;
-assign SD_SCK  = rh_sclk & ~SD_CS;
-assign SD_MOSI = rh_mosi & ~SD_CS;
-
 /////////////////////////////// LEDS ////////////////////////////////////////
 wire greenled;
 wire[3:0] sddebug;
 
-assign sddebug     = rk_sddebug | rl_sddebug |rh_sddebug;
+// rh11 no longer has an sddebug nibble (no SPI bit-banging left to blink an LED for)
+assign sddebug     = rk_sddebug | rl_sddebug;
 assign LED_POWER={1'b1,greenled};
 assign LED_DISK=sddebug[0] | sddebug[2];
 assign LED_USER=sddebug[1] | sddebug[3];
@@ -599,11 +567,14 @@ mister_top mister_top
 	
    .have_rh (have_rh),
    .rh_img_mounted (rh_img_mounted),
-   .rh_sdcard_cs   (rh_cs),
-   .rh_sdcard_miso (rh_miso),
-   .rh_sdcard_mosi (rh_mosi),
-   .rh_sdcard_sclk (rh_sclk),
-   .rh_sdcard_debug(rh_sddebug),
+   .rh_sd_lba       (sd_lba[2]),
+   .rh_sd_rd        (sd_rd[2]),
+   .rh_sd_wr        (sd_wr[2]),
+   .rh_sd_ack       (sd_ack[2]),
+   .rh_sd_buff_addr (sd_buff_addr),
+   .rh_sd_buff_dout (sd_buff_dout),
+   .rh_sd_buff_din  (sd_buff_din[2]),
+   .rh_sd_buff_wr   (sd_buff_wr),
 
    .have_tm (have_tm),
    .tm_img_mounted (tm_img_mounted),
