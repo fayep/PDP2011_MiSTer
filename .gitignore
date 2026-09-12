@@ -1,0 +1,18 @@
+# Quartus
+db/
+incremental_db/
+output_files/
+build_id.v
+jtag.cdf
+*.qsf.bak
+
+# GHDL sim artifacts
+sim/build/
+
+# local tool builds (tools/)
+tools/*.o
+tools/dumpobj
+tools/fontconvert
+tools/genblkram
+tools/macro11
+tools/sdfmt
