@@ -759,7 +759,19 @@ begin
       else unsigned(ubmo) + unsigned(unibus_busmaster_addr(12 downto 0));
 
 -- memory interface
-   bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111"
+-- addr_p(21:18)="1111" covers the whole top 256 KW (0o17000000-0o17777777).
+-- Only 0o17000000-0o17757777 is the "maybe absent" extended Unibus window
+-- (legitimately NXM on a real 1920 KW /70 with nothing out there). The top
+-- 8 KW, 0o17760000-0o17777777 (addr_p(21:13)="111111111"), is the FIXED
+-- Unibus I/O page -- always physically present on real hardware, holding
+-- device CSRs, the MMU registers (172xxx, i.e. 17772xxx), and the CPU's
+-- own Internal Register block (17777700-17777717, decoded separately in
+-- cpu.vhd via consoleaddr(21:4)="111111111111111100"). b406979 NXM'd this
+-- whole 256 KW range uniformly, which incorrectly also NXMs the always-
+-- present I/O page for any address in it nothing else already answers for
+-- (e.g. the Internal Register block) -- narrow the Unibus-mapped/NXM-
+-- eligible condition to exclude the I/O page.
+   bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111" and addr_p(21 downto 13) /= "111111111"
 --      else '1' when unibus_busmaster_control_npg = '1'
       else '0';
 
