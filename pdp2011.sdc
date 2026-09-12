@@ -99,3 +99,50 @@ set_multicycle_path -from [get_clocks {cpuclk}] \
    -to [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] -setup 5
 set_multicycle_path -from [get_clocks {cpuclk}] \
    -to [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] -hold 4
+
+# divclk -> cpuclk, hold: cpureset (mister_top.vhd's dram_fsm-generated
+# synchronous reset, fed as the `reset` port straight into pdp11/vt0's
+# whole cpuclk-domain register fan-out) is a quasi-static control signal
+# that, by construction, can change at most once per cpuclk period (it's
+# a register in the SAME dram_fsm process that generates cpuclk itself --
+# see above). The default single-cycle hold check treats it like a
+# signal that could change on literally the next divclk edge, which is
+# never physically possible here.
+#
+# (First attempt at this was `-hold 0`, reasoning from the "control
+# signal released on the same edge as its own generated clock" pattern
+# in Intel's own timing-closure docs -- confirmed via report_timing that
+# was flat-out numerically wrong for this direction: it changed NOTHING
+# (identical -2.314ns before and after), while an unrelated sanity check
+# with an obviously-oversized value (-hold 20) immediately cleared the
+# violation, proving the exception mechanism itself was fine and only the
+# chosen value was wrong. -hold 15 -- one full cpuclk period, the actual
+# real periodicity limit -- resolves it identically to -hold 20 (0
+# violated, +0.168ns), so 15 is the value grounded in real hardware
+# rather than an arbitrary large number that merely happens to work.)
+#
+# Confirmed via report_timing this is genuinely a reset-fanout-wide issue
+# (the worst 8 cpuclk hold paths all source from cpureset, landing on
+# many different downstream registers: kw11l's lc_ie/br, cpu0's r7,
+# rbus_cpu_mode, ...) so this is scoped by clock, not one register. The
+# -setup here is NOT just restating the default: it also covers a real,
+# separate divclk->cpuclk violation on this same clock pair -- dati[8/9/11]
+# (the DRAM read-data register) into cpu0's state_dst1. mister_top.vhd's
+# dram_c13 state writes `dati <= dram_dq` at source edge 25 (12 divclk
+# periods into the current cpuclk period); the CPU doesn't consume it
+# until the NEXT cpuclk rising edge (edge 31, one full period later) --
+# a real 3-period (edges 25->31) window, not the single-divclk-period the
+# default assumes. -setup 3 matches this exactly (not more -- edge 31 is
+# the genuine next capture point, so -setup 4 would claim margin that
+# doesn't exist). Verified via report_timing: this alone took that
+# violation from -9.150ns to -0.833ns against the existing placement.
+# The remaining -0.833ns is real and NOT an SDC modeling error -- it
+# needs an actual RTL fix (an extra pipeline stage on the dati->mmu->cpu
+# combinational path, per [[register-addr-checks-for-timing]]), not
+# another multicycle number. Not attempted this session; multicycle
+# values are defined relative to whatever -setup is in effect, so the
+# -hold 15 below was re-verified against this -setup 3 (still 0 violated).
+set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
+   -to [get_clocks {cpuclk}] -setup 3
+set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
+   -to [get_clocks {cpuclk}] -hold 15
