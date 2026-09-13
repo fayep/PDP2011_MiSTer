@@ -26,30 +26,24 @@ create_generated_clock -name cpuclk \
    -source [get_pins {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
    -edges {1 15 31} \
    [get_registers {emu:emu|mister_top:mister_top|cpuclk}]
-create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|rh11:rh0|sdspi:sd1|clk
-create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|rk11:rk0|sdspi:sd1|clk
-create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|rl11:rl0|sdspi:sd1|clk
+# rh0/rk0/rl0's sdspi create_clock/false_path entries (previously here)
+# removed 2026-09-13: the disk-transport rewrite (Phases 1-3) deleted
+# sdspi.vhd's instantiation from rh11/rk11/rl11 entirely -- these three
+# controllers now talk hps_io's native sd_* protocol directly, so
+# rh0/rk0/rl0|sdspi:sd1|clk no longer exists in the netlist. Confirmed
+# dead (not just redundant) via this exact build's own STA warnings:
+# "Ignored filter ... could not be matched with a port or pin or
+# register ... or node" for all 6 lines. tm11 still has a real,
+# currently-instantiated sdspi.vhd (tape's own native-transport rewrite
+# is a separate, not-yet-started phase) -- but tm0|sdspi:sd1|clk has
+# never had its own create_clock here at all (this predates this
+# session), so it's a genuinely unconstrained clock right now
+# (Warning (332060): "determined to be a clock but was found without an
+# associated clock assignment") -- a real, separate gap, not touched by
+# this cleanup.
 
 derive_pll_clocks -use_net_name
 derive_clock_uncertainty
-
-# cpuclk -> sdspi crossings (rh0/rk0/rl0): the only signals crossing this
-# boundary are quasi-static per-command config registers (e.g. rh11's
-# rmdc, "desired cylinder number", a UNIBUS register written once by the
-# guest driver before a disk command and held stable for the whole
-# operation) consumed only deep inside sdspi.vhd's own multi-state command
-# sequencer, itself gated behind a real filtered/debounced start handshake
-# (read_start_filter/write_start_filter). Confirmed via source reading
-# (2026-08-27), not assumed -- see rtl/sdspi.vhd:161-182 and the
-# sdcard_addr consumption at rtl/sdspi.vhd:442-458. Genuine false path, not
-# a hazard a synchronizer would improve on -- the handshake already
-# provides the real synchronization at the protocol level.
-set_false_path -from [get_clocks {cpuclk}] \
-  -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rh11:rh0|sdspi:sd1|clk}]
-set_false_path -from [get_clocks {cpuclk}] \
-  -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rk11:rk0|sdspi:sd1|clk}]
-set_false_path -from [get_clocks {cpuclk}] \
-  -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rl11:rl0|sdspi:sd1|clk}]
 
 # cpuclk -> divclk: dram_addr[11:0] is only ever written from cpu0's addr/
 # rbus_ix chain inside the dram_fsm process (mister_top.vhd), at state
@@ -146,3 +140,30 @@ set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].
    -to [get_clocks {cpuclk}] -setup 3
 set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
    -to [get_clocks {cpuclk}] -hold 15
+
+# clk_50 (general[2]'s PLL output, kl11/kw11l/etc's clk50mhz port) ->
+# cpuclk: found 2026-09-13 as the new worst cpuclk setup offender
+# (-0.871ns, kl11's recv_buf[N] -> rx_buf[N] and
+# recv_state.recv_idle -> rx_act) after the disk-transport rewrite
+# removed sdspi.vhd's own clk (which had been the previous worst path,
+# see the create_clock declarations above -- still present in the SDC
+# for branches that still instantiate it, but no longer the bottleneck
+# on this one).
+#
+# Confirmed via source read (rtl/kl11.vhd) this is a real,
+# protocol-guarded false path, same class as the cpuclk->sdspi false
+# paths above: recv_buf (multi-bit byte data, clk50mhz domain) and
+# recv_copy (a LEVEL handshake, not a narrow pulse -- set '1' the exact
+# same cycle recv_buf is written at line ~438-440, held '1' until
+# acknowledged) are both in the SAME clocked process, so recv_buf is
+# guaranteed stable from the instant recv_copy asserts. The cpuclk-side
+# process only ever samples recv_buf (`rx_buf <= recv_buf`, line ~296)
+# after recv_copy_filter -- a multi-tap shift-register synchronizer of
+# recv_copy -- has fully saturated to all-1s (line ~294), i.e. after
+# several clk50mhz periods of recv_copy already being stable-high.
+# recv_buf itself never changes again until the return handshake
+# (rx_copied/rx_copied_filter, line ~424-428) lets recv_copy clear.
+# Genuine false path: the real synchronization is the filtered
+# handshake, not anything a tighter timing number would improve.
+set_false_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[2].gpll~PLL_OUTPUT_COUNTER|divclk}] \
+   -to [get_clocks {cpuclk}]
