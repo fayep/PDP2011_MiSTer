@@ -244,6 +244,19 @@ signal sd_lba_r : std_logic_vector(31 downto 0);  -- latched into clk_100mhz dom
                                                     -- for the whole transfer by construction
 signal sd_half_r : std_logic;                      -- sd_half latched alongside sd_lba_r --
                                                      -- see the write-preread comment below
+signal write_wc_r : integer range 0 to 128;        -- actual word count THIS transfer touches
+                                                     -- within its owning half -- latched
+                                                     -- alongside sd_half_r/sd_lba_r. A short
+                                                     -- write (wc < 128) only stages that many
+                                                     -- words into wsector; the rest of the
+                                                     -- "owning" half is untouched leftover
+                                                     -- wsector content, not real data -- see
+                                                     -- the merge mux below (found via ZRLID0's
+                                                     -- own TST 014 hardware diagnostic, which
+                                                     -- does exactly this kind of short write --
+                                                     -- the original bar-reset-era write-preread
+                                                     -- fix only ever tested full 128-word
+                                                     -- writes and missed this).
 
 type xfer_state_t is (
    xfer_idle,
@@ -357,6 +370,11 @@ begin
                   elsif sdcard_write_start = '1' then
                      sd_lba_r <= "00000000000000" & sd_addr;
                      sd_half_r <= sd_half;
+                     if unsigned(wcp) >= unsigned'("0000000010000000") then
+                        write_wc_r <= 128;
+                     else
+                        write_wc_r <= conv_integer(wcp);
+                     end if;
                      case write_req_gray is
                         when "00" => write_req_gray <= "01";
                         when "01" => write_req_gray <= "11";
@@ -506,11 +524,17 @@ begin
          -- write-commit read-modify-write mux: sd_buff_addr(7) is '0' for
          -- the low half (0-127) and '1' for the high half (128-255).
          -- wsector holds the controller's freshly-staged half (the one
-         -- sd_half_r names); rsector holds the just-prereread sibling
-         -- half straight off disk -- see the sd_state_t declaration
-         -- comment above. During a plain read, sd_buff_din isn't
-         -- consumed, so this mux is harmless then.
-         if sd_half_r = sd_buff_addr(7) then
+         -- sd_half_r names) -- but ONLY for the first write_wc_r words of
+         -- it: a short write (wc < 128) never stages the rest of that
+         -- same half via sdcard_xfer_write, so anything at or beyond
+         -- write_wc_r within the "owning" half is still stale leftover
+         -- wsector content, not real data, and must fall back to the
+         -- prereread rsector just like the sibling half does (found via
+         -- ZRLID0's own hardware diagnostic -- the original fix here only
+         -- ever validated full 128-word writes). During a plain read,
+         -- sd_buff_din isn't consumed, so this mux is harmless then.
+         if sd_half_r = sd_buff_addr(7)
+            and conv_integer(sd_buff_addr(6 downto 0)) < write_wc_r then
             sd_buff_din <= wsector(conv_integer(sd_buff_addr));
          else
             sd_buff_din <= rsector(conv_integer(sd_buff_addr));

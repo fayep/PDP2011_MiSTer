@@ -558,6 +558,85 @@ begin
          ok_all := false;
       end if;
 
+      -- Short-write regression: a partial write (wc < 128) into the ODD
+      -- half must only disturb the words it actually covers -- the REST
+      -- of that same half (words it never touched) must still show the
+      -- ORIGINAL block0 content, not stale wsector leftovers from an
+      -- earlier operation. Found via ZRLID0's real hardware diagnostic
+      -- (TST 014 SUB 002): the original write-preread fix only ever
+      -- validated full 128-word writes and missed this exact case.
+      for i in 0 to 7 loop
+         mem(BA0 + i) := 8#44000# + i;      -- 8-word pattern to write
+      end loop;
+      wait until rising_edge(clk);
+
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLDA,
+             std_logic_vector(to_unsigned(1, 16)));           -- sector 1 (odd)
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLBA,
+             std_logic_vector(to_unsigned(BA0*2, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLMP,
+             std_logic_vector(to_unsigned(8192 - 8, 16)));     -- wc = 8, not 128
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLCS, x"000B"); -- write, go=1
+
+      i := 0;
+      loop
+         bus_rd(bus_addr, bus_control_dati, A_RLCS, cs1);
+         exit when cs1(7) = '1';
+         i := i + 1;
+         if i > 3000 then
+            report "tb_rl11_dma [short write sector 1]: FAIL - write never completed (RLCS=" &
+               integer'image(to_integer(unsigned(cs1))) & ")" severity failure;
+         end if;
+      end loop;
+      for k in 1 to 20 loop wait until rising_edge(clk); end loop;
+
+      -- read the WHOLE sector 1 back (all 128 words)
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLDA,
+             std_logic_vector(to_unsigned(1, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLBA,
+             std_logic_vector(to_unsigned((BA0+300)*2, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLMP,
+             std_logic_vector(to_unsigned(8192 - 128, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLCS, x"000D");
+      i := 0;
+      loop
+         bus_rd(bus_addr, bus_control_dati, A_RLCS, cs1);
+         exit when cs1(7) = '1';
+         i := i + 1;
+         if i > 3000 then
+            report "tb_rl11_dma [short write sector 1]: FAIL - verify read never completed" severity failure;
+         end if;
+      end loop;
+      for k in 1 to 20 loop wait until rising_edge(clk); end loop;
+
+      bad := 0;
+      for i in 0 to 127 loop
+         if i < 8 then
+            want := 8#44000# + i;               -- the just-written short pattern
+         else
+            want := 8#22000# + i;               -- untouched: left over from the earlier
+                                                  -- "write sector 1, readback" scenario,
+                                                  -- which already overwrote this whole
+                                                  -- half with this exact pattern -- NOT
+                                                  -- the pristine init_block0 value
+         end if;
+         got := mem(BA0 + 300 + i);
+         if got /= want then
+            bad := bad + 1;
+            if bad <= 6 then
+               report "  [short write sector 1] word " & integer'image(i) &
+                  " : got " & integer'image(got) & " want " & integer'image(want) severity warning;
+            end if;
+         end if;
+      end loop;
+      if bad = 0 then
+         report "tb_rl11_dma [short write sector 1]: PASS - written words correct, rest of half untouched" severity note;
+      else
+         report "tb_rl11_dma [short write sector 1]: FAIL - " & integer'image(bad) &
+                " of 128 words wrong" severity error;
+         ok_all := false;
+      end if;
+
       if ok_all then
          report "tb_rl11_dma: ALL SCENARIOS PASSED" severity note;
       else
