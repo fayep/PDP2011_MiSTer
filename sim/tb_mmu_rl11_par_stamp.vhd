@@ -1,4 +1,4 @@
--- deps: sdspi.vhd mmu.vhd mmu_trace_watch.vhd rl11.vhd
+-- deps: mmu.vhd mmu_trace_watch.vhd rl11.vhd
 --
 -- tb_mmu_rl11_par_stamp.vhd -- integration test for the actual
 -- end-to-end sequence RSTS's MAPCOPY_PARAM performs and that tracecap
@@ -45,81 +45,6 @@
 -- caught it.
 --
 -- Run: sim/run_sim.sh tb_mmu_rl11_par_stamp --stop-time=4ms
-
-------------------------------------------------------------------------
--- behavioural sdspi (bound in place of the real one, copied from
--- tb_rl11_dma.vhd -- same identifiable-pattern read-only backing store,
--- writes not exercised here)
-------------------------------------------------------------------------
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
-
-entity sdspi is
-   port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-      sdcard_addr : in std_logic_vector(23 downto 0);
-      sdcard_idle : out std_logic;
-      sdcard_read_start : in std_logic;
-      sdcard_read_ack : in std_logic;
-      sdcard_read_done : out std_logic;
-      sdcard_write_start : in std_logic;
-      sdcard_write_ack : in std_logic;
-      sdcard_write_done : out std_logic;
-      sdcard_error : out std_logic;
-      sdcard_xfer_addr : in integer range 0 to 255;
-      sdcard_xfer_read : in std_logic;
-      sdcard_xfer_out : out std_logic_vector(15 downto 0);
-      sdcard_xfer_write : in std_logic;
-      sdcard_xfer_in : in std_logic_vector(15 downto 0);
-      enable : in integer range 0 to 1 := 0;
-      controller_clk : in std_logic;
-      reset : in std_logic;
-      clk50mhz : in std_logic
-   );
-end sdspi;
-
-architecture mock of sdspi is
-   signal busy : boolean := false;
-   signal cnt  : integer := 0;
-begin
-   sdcard_cs <= '1'; sdcard_mosi <= '0'; sdcard_sclk <= '0';
-   sdcard_debug <= "0000"; sdcard_error <= '0';
-   sdcard_idle <= '0' when busy else '1';
-
-   process(controller_clk)
-   begin
-      if rising_edge(controller_clk) then
-         sdcard_xfer_out <= std_logic_vector(to_unsigned(
-              8#10000# + sdcard_xfer_addr, 16));
-
-         if reset = '1' then
-            busy <= false; cnt <= 0;
-            sdcard_read_done <= '0'; sdcard_write_done <= '0';
-         else
-            if not busy then
-               sdcard_read_done <= '0'; sdcard_write_done <= '0';
-               if sdcard_read_start = '1' then
-                  busy <= true; cnt <= 0;
-               end if;
-            else
-               cnt <= cnt + 1;
-               if cnt = 20 then
-                  sdcard_read_done <= '1';
-               end if;
-               if cnt >= 20 and sdcard_read_ack = '1' then
-                  sdcard_read_done <= '0';
-                  busy <= false;
-               end if;
-            end if;
-         end if;
-      end if;
-   end process;
-end mock;
 
 ------------------------------------------------------------------------
 -- the testbench proper
@@ -195,8 +120,13 @@ architecture sim of tb_mmu_rl11_par_stamp is
    signal bm_dato  : std_logic_vector(15 downto 0);
    signal bm_cdati, bm_cdato : std_logic;
    signal bm_nxm : std_logic := '0';
-   signal sd_cs, sd_mosi, sd_sclk : std_logic;
-   signal sd_dbg : std_logic_vector(3 downto 0);
+   signal clk_100 : std_logic := '0';
+   signal sd_lba : std_logic_vector(31 downto 0);
+   signal sd_rd, sd_wr, sd_ack : std_logic := '0';
+   signal sd_buff_addr : std_logic_vector(8 downto 0) := (others => '0');
+   signal sd_buff_dout : std_logic_vector(15 downto 0) := (others => '0');
+   signal sd_buff_din : std_logic_vector(15 downto 0);
+   signal sd_buff_wr : std_logic := '0';
 
    signal trace_disk_valid : std_logic;
    signal trace_disk_dar   : std_logic_vector(15 downto 0);
@@ -344,9 +274,62 @@ architecture sim of tb_mmu_rl11_par_stamp is
    end procedure;
 
 begin
-   clk   <= not clk   after 50 ns when not sim_done else '0';
-   clk50 <= not clk50 after 10 ns when not sim_done else '0';
-   reset <= '1', '0' after 700 ns;
+   clk     <= not clk     after 50 ns when not sim_done else '0';
+   clk50   <= not clk50   after 10 ns when not sim_done else '0';
+   clk_100 <= not clk_100 after 5 ns  when not sim_done else '0';
+   reset   <= '1', '0' after 700 ns;
+
+   -- behavioural hps_io: read-only identifiable pattern (writes not
+   -- exercised here), same shape as tb_rh11_dma.vhd/tb_rk11_dma.vhd's
+   -- mocks, on its own clk_100 clock to actually exercise the real
+   -- Gray-coded CDC bridge in rl11.vhd.
+   process(clk_100)
+      variable phase : integer := 0;  -- 0=idle,1=acking,2=streaming,3=flush-wait
+      variable addr : integer := 0;
+      variable ack_delay : integer := 0;
+   begin
+      if rising_edge(clk_100) then
+         if reset = '1' then
+            phase := 0; sd_ack <= '0'; sd_buff_wr <= '0';
+         else
+            case phase is
+               when 0 =>
+                  sd_ack <= '0';
+                  if sd_rd = '1' then
+                     ack_delay := 5;
+                     phase := 1;
+                  end if;
+
+               when 1 =>
+                  if ack_delay > 0 then
+                     ack_delay := ack_delay - 1;
+                  else
+                     sd_ack <= '1';
+                     addr := 0;
+                     phase := 2;
+                  end if;
+
+               when 2 =>
+                  sd_buff_addr <= std_logic_vector(to_unsigned(addr, 9));
+                  sd_buff_dout <= std_logic_vector(to_unsigned(8#10000# + addr, 16));
+                  sd_buff_wr <= '1';
+                  if addr = 255 then
+                     phase := 3;
+                  else
+                     addr := addr + 1;
+                  end if;
+
+               when 3 =>
+                  sd_buff_wr <= '0';
+                  sd_ack <= '0';
+                  phase := 0;
+
+               when others =>
+                  phase := 0;
+            end case;
+         end if;
+      end if;
+   end process;
 
    mmu0 : mmu port map(
       cpu_addr_v => cpu_addr_v, cpu_datain => cpu_datain, cpu_dataout => cpu_dataout,
@@ -402,8 +385,10 @@ begin
          bus_master_addr=>bm_addr, bus_master_dati=>bm_dati, bus_master_dato=>bm_dato,
          bus_master_control_dati=>bm_cdati, bus_master_control_dato=>bm_cdato,
          bus_master_nxm=>bm_nxm,
-         sdcard_cs=>sd_cs, sdcard_mosi=>sd_mosi, sdcard_sclk=>sd_sclk,
-         sdcard_miso=>'0', sdcard_debug=>sd_dbg,
+         sd_lba=>sd_lba, sd_rd=>sd_rd, sd_wr=>sd_wr, sd_ack=>sd_ack,
+         sd_buff_addr=>sd_buff_addr, sd_buff_dout=>sd_buff_dout,
+         sd_buff_din=>sd_buff_din, sd_buff_wr=>sd_buff_wr,
+         clk_100mhz=>clk_100,
          have_rl=>1, img_mounted=>1,
          -- THE wire under test: mmu0's live output straight into rl0's
          -- input, exactly as unibus.vhd wires mmu_trace_kdpar5/6 into

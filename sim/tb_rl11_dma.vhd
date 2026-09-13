@@ -1,149 +1,36 @@
--- deps: sdspi.vhd rl11.vhd
+-- deps: rl11.vhd
 --
--- tb_rl11_dma.vhd -- does an RL11 READ land the right words at the right
--- memory addresses under the packed-sector addressing?
+-- tb_rl11_dma.vhd -- does an RL11 READ/WRITE land the right words at the
+-- right memory addresses under the packed-sector addressing, over the
+-- real native hps_io sd_* transport (Phase 3 of the disk-transport plan,
+-- same pattern as tb_rh11_dma.vhd/tb_rk11_dma.vhd's Phase 1/2 rewrites)?
 --
 -- Real RL02 sectors are 128 (16-bit) words -- RL02 Technical
 -- Description ("16 bit words per sector: 128"; "this track contains 40
 -- sectors of 128 words each") -- half of a 512-byte SD block. sd_addr
 -- packs two real sectors per SD block (index>>1) instead of every real
 -- sector wasting/padding a whole block. This drives the real rl11.vhd
--- with a behavioural sdspi that serves an identifiable pattern -- word
--- K of SD block B = (B+1)*010000 + K -- and checks:
+-- with a behavioural hps_io that serves an identifiable pattern -- word
+-- K of SD block B = (B+1)*010000 + K -- over rl11's real native sd_*
+-- ports and checks:
 --   * reading real sector 0 (even -> block 0, first half) gets
 --     the FIRST 128 words of block 0
 --   * reading real sector 1 (odd -> block 0, second half) gets
 --     the SECOND 128 words of the SAME block 0 -- not block 1
 --   * a single READ spanning sectors 0+1 (256 words, one command)
 --     gets both halves correctly and in order
+--   * writing the ODD real sector lands in the second half of the SAME
+--     SD block, without disturbing the EVEN sibling sector (the
+--     historical 830a839 bug class)
 --
 -- Uses cylinder 0 / head 0 throughout, matching dnca/dnhs's reset
 -- default, so no seek is needed before issuing the read command.
 --
+-- The hps_io mock runs on its own clk_100 clock (genuinely different from
+-- clk/cpuclk) specifically to exercise the real Gray-coded CDC bridge in
+-- rl11.vhd, not just its combinational logic on one shared clock.
+--
 -- Run:  sim/run_sim.sh tb_rl11_dma --stop-time=4ms
-
-------------------------------------------------------------------------
--- behavioural sdspi (bound in place of the real one)
-------------------------------------------------------------------------
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
-
-entity sdspi is
-   port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-      sdcard_addr : in std_logic_vector(23 downto 0);
-      sdcard_idle : out std_logic;
-      sdcard_read_start : in std_logic;
-      sdcard_read_ack : in std_logic;
-      sdcard_read_done : out std_logic;
-      sdcard_write_start : in std_logic;
-      sdcard_write_ack : in std_logic;
-      sdcard_write_done : out std_logic;
-      sdcard_error : out std_logic;
-      sdcard_xfer_addr : in integer range 0 to 255;
-      sdcard_xfer_read : in std_logic;
-      sdcard_xfer_out : out std_logic_vector(15 downto 0);
-      sdcard_xfer_write : in std_logic;
-      sdcard_xfer_in : in std_logic_vector(15 downto 0);
-      enable : in integer range 0 to 1 := 0;
-      controller_clk : in std_logic;
-      reset : in std_logic;
-      clk50mhz : in std_logic
-   );
-end sdspi;
-
-architecture mock of sdspi is
-   signal cur_block : integer := 0;
-   signal busy      : boolean := false;
-   signal writing   : boolean := false;
-   signal cnt       : integer := 0;
-
-   -- backing store for "block 0" only (all this testbench's scenarios use)
-   -- so a write's effect on both halves of the block can be checked by a
-   -- later read -- initialized with the same identifiable pattern the old
-   -- read-only mock computed on the fly.
-   type block_mem_t is array(0 to 255) of std_logic_vector(15 downto 0);
-   function init_block0 return block_mem_t is
-      variable m : block_mem_t;
-   begin
-      for k in 0 to 255 loop
-         m(k) := std_logic_vector(to_unsigned(8#10000# + k, 16));
-      end loop;
-      return m;
-   end function;
-   signal block0 : block_mem_t := init_block0;
-begin
-   sdcard_cs <= '1'; sdcard_mosi <= '0'; sdcard_sclk <= '0';
-   sdcard_debug <= "0000"; sdcard_error <= '0';
-   sdcard_idle <= '0' when busy else '1';
-
-   process(controller_clk)
-   begin
-      if rising_edge(controller_clk) then
-         if cur_block = 0 then
-            sdcard_xfer_out <= block0(sdcard_xfer_addr);
-         else
-            sdcard_xfer_out <= std_logic_vector(to_unsigned(
-                 ((cur_block + 1) * 8#10000#) + sdcard_xfer_addr, 16));
-         end if;
-
-         -- real hardware stages an entire sector into an internal buffer
-         -- via sdcard_xfer_write pulses BEFORE ever asserting
-         -- sdcard_write_start (which just commits the already-staged
-         -- buffer to the card) -- confirmed in rl11.vhd's busmaster_write/
-         -- busmaster_writen states, both of which run well before
-         -- busmaster_write_wait pulses sdcard_write_start. So this capture
-         -- must be unconditional on xfer_write, not gated on "busy"/
-         -- "writing" (an earlier version of this mock only captured after
-         -- observing sdcard_write_start and therefore missed every real
-         -- word -- sdcard_addr is valid throughout since it's purely
-         -- combinational off the already-decoded command, so it doesn't
-         -- need "busy" gating either).
-         if sdcard_xfer_write = '1' and to_integer(unsigned(sdcard_addr)) = 0 then
-            block0(sdcard_xfer_addr) <= sdcard_xfer_in;
-            report "sdspi: write word addr=" & integer'image(sdcard_xfer_addr) &
-               " data=" & integer'image(to_integer(unsigned(sdcard_xfer_in)));
-         end if;
-
-         if reset = '1' then
-            busy <= false; writing <= false; cnt <= 0;
-            sdcard_read_done <= '0'; sdcard_write_done <= '0';
-         else
-            if not busy then
-               sdcard_read_done <= '0'; sdcard_write_done <= '0';
-               if sdcard_read_start = '1' then
-                  cur_block <= to_integer(unsigned(sdcard_addr));
-                  report "sdspi: read block " & integer'image(to_integer(unsigned(sdcard_addr)));
-                  busy <= true; writing <= false; cnt <= 0;
-               elsif sdcard_write_start = '1' then
-                  cur_block <= to_integer(unsigned(sdcard_addr));
-                  report "sdspi: write block " & integer'image(to_integer(unsigned(sdcard_addr)));
-                  busy <= true; writing <= true; cnt <= 0;
-               end if;
-            else
-               cnt <= cnt + 1;
-               if cnt = 20 then
-                  if writing then
-                     sdcard_write_done <= '1';
-                  else
-                     sdcard_read_done <= '1';
-                  end if;
-               end if;
-               if cnt >= 20 and ((writing and sdcard_write_ack = '1') or
-                                  (not writing and sdcard_read_ack = '1')) then
-                  sdcard_read_done <= '0'; sdcard_write_done <= '0';
-                  busy <= false;
-               end if;
-            end if;
-         end if;
-      end if;
-   end process;
-end mock;
 
 ------------------------------------------------------------------------
 -- the testbench proper
@@ -156,7 +43,7 @@ entity tb_rl11_dma is
 end tb_rl11_dma;
 
 architecture sim of tb_rl11_dma is
-   signal clk, clk50, reset : std_logic := '0';
+   signal clk, nclk, clk50, clk_100, reset : std_logic := '0';
    signal sim_done : boolean := false;
 
    signal bus_addr        : std_logic_vector(17 downto 0) := (others => '0');
@@ -174,12 +61,32 @@ architecture sim of tb_rl11_dma is
    signal bm_cdati, bm_cdato : std_logic;
    signal bm_nxm : std_logic := '0';
 
-   signal sd_cs, sd_mosi, sd_sclk : std_logic;
-   signal sd_dbg : std_logic_vector(3 downto 0);
+   -- native hps_io sd_* interface (replaces sd_cs/mosi/sclk/dbg)
+   signal sd_lba : std_logic_vector(31 downto 0);
+   signal sd_rd, sd_wr, sd_ack : std_logic := '0';
+   signal sd_buff_addr : std_logic_vector(8 downto 0) := (others => '0');
+   signal sd_buff_dout : std_logic_vector(15 downto 0) := (others => '0');
+   signal sd_buff_din : std_logic_vector(15 downto 0);
+   signal sd_buff_wr : std_logic := '0';
 
    type mem_t is array(0 to 65535) of integer;
    shared variable mem : mem_t := (others => -1);
    signal wr_count : integer := 0;
+
+   -- backing store for "block 0" only (all this testbench's scenarios use)
+   -- so a write's effect on both halves of the block can be checked by a
+   -- later read -- initialized with the same identifiable pattern the old
+   -- mock computed on the fly.
+   type block_mem_t is array(0 to 255) of integer;
+   function init_block0 return block_mem_t is
+      variable m : block_mem_t;
+   begin
+      for k in 0 to 255 loop
+         m(k) := 8#10000# + k;
+      end loop;
+      return m;
+   end function;
+   shared variable block0 : block_mem_t := init_block0;
 
    constant A_RLCS : std_logic_vector(17 downto 0) := o"774400";
    constant A_RLBA : std_logic_vector(17 downto 0) := o"774402";
@@ -216,9 +123,11 @@ architecture sim of tb_rl11_dma is
    end procedure;
 
 begin
-   clk   <= not clk   after 50 ns when not sim_done else '0';
-   clk50 <= not clk50 after 10 ns when not sim_done else '0';
-   reset <= '1', '0' after 700 ns;
+   clk     <= not clk     after 50 ns when not sim_done else '0';
+   nclk    <= not clk;
+   clk50   <= not clk50   after 10 ns when not sim_done else '0';
+   clk_100 <= not clk_100 after 5 ns  when not sim_done else '0';
+   reset   <= '1', '0' after 700 ns;
 
    dut : entity work.rl11
       port map(
@@ -231,8 +140,10 @@ begin
          bus_master_addr=>bm_addr, bus_master_dati=>bm_dati, bus_master_dato=>bm_dato,
          bus_master_control_dati=>bm_cdati, bus_master_control_dato=>bm_cdato,
          bus_master_nxm=>bm_nxm,
-         sdcard_cs=>sd_cs, sdcard_mosi=>sd_mosi, sdcard_sclk=>sd_sclk,
-         sdcard_miso=>'0', sdcard_debug=>sd_dbg,
+         sd_lba=>sd_lba, sd_rd=>sd_rd, sd_wr=>sd_wr, sd_ack=>sd_ack,
+         sd_buff_addr=>sd_buff_addr, sd_buff_dout=>sd_buff_dout,
+         sd_buff_din=>sd_buff_din, sd_buff_wr=>sd_buff_wr,
+         clk_100mhz=>clk_100,
          have_rl=>1, img_mounted=>1,
          -- Walking/alternating-bit pattern, not zero: this DMA test
          -- never checks trace_disk_par5/6 itself, but tying the input
@@ -242,10 +153,119 @@ begin
          -- for the real end-to-end check of that path).
          trace_kdpar5=>x"AAAA", trace_kdpar6=>x"5555",
          trace_kipar5=>x"3333", trace_kipar6=>x"CCCC",
-         reset=>reset, clk50mhz=>clk50, nclk=>clk, clk=>clk
+         reset=>reset, clk50mhz=>clk50, nclk=>nclk, clk=>clk
       );
 
    npg <= npr;
+
+   -- behavioural hps_io: on sd_rd, ack after a short delay then stream
+   -- 256 words of block 0's persistent backing store (or a synthetic
+   -- pattern for any other block -- this test never touches one) via
+   -- sd_buff_addr/sd_buff_dout/sd_buff_wr. On sd_wr, ack then walk
+   -- sd_buff_addr 0..255 capturing sd_buff_din into block0 -- sd_buff_din
+   -- is a REGISTERED read on rl11.vhd's own clk_100mhz side (one cycle
+   -- of latency behind sd_buff_addr), so capture is one cycle behind the
+   -- address drive throughout, with one extra cycle at the end to catch
+   -- word 255. All on clk_100 (genuinely separate from rl11's own
+   -- clk/cpuclk) to actually exercise the Gray-coded CDC bridge.
+   process(clk_100)
+      variable cur_block : integer := 0;
+      variable phase : integer := 0;  -- 0=idle,1=acking,2=streaming,3=flush,4=drop
+      variable addr : integer := 0;
+      variable prev_addr : integer := 0;
+      variable ack_delay : integer := 0;
+      variable is_write : boolean := false;
+   begin
+      if rising_edge(clk_100) then
+         if reset = '1' then
+            phase := 0; sd_ack <= '0'; sd_buff_wr <= '0';
+         else
+            case phase is
+               when 0 =>
+                  sd_ack <= '0';
+                  if sd_rd = '1' then
+                     cur_block := to_integer(unsigned(sd_lba));
+                     is_write := false;
+                     report "hps_io mock: read block " & integer'image(cur_block);
+                     ack_delay := 5;
+                     phase := 1;
+                  elsif sd_wr = '1' then
+                     cur_block := to_integer(unsigned(sd_lba));
+                     is_write := true;
+                     report "hps_io mock: write block " & integer'image(cur_block);
+                     ack_delay := 5;
+                     phase := 1;
+                  end if;
+
+               when 1 =>
+                  if ack_delay > 0 then
+                     ack_delay := ack_delay - 1;
+                  else
+                     sd_ack <= '1';
+                     addr := 0;
+                     prev_addr := 0;
+                     sd_buff_addr <= std_logic_vector(to_unsigned(0, 9));
+                     phase := 2;
+                  end if;
+
+               when 2 =>
+                  if is_write then
+                     -- capture the PREVIOUS address's now-valid sd_buff_din
+                     -- (addr 0 has no valid data yet on the very first
+                     -- cycle here, since sd_buff_addr=0 was only just
+                     -- driven last cycle -- captured on the addr=1 pass
+                     -- instead, matching the one-cycle registered lag)
+                     if addr > 0 then
+                        if cur_block = 0 then
+                           block0(prev_addr) := to_integer(unsigned(sd_buff_din));
+                        end if;
+                        report "hps_io mock: write word addr=" & integer'image(prev_addr) &
+                           " data=" & integer'image(to_integer(unsigned(sd_buff_din)));
+                     end if;
+                     prev_addr := addr;
+                     if addr = 255 then
+                        phase := 3;   -- one more capture needed for word 255
+                     else
+                        addr := addr + 1;
+                        sd_buff_addr <= std_logic_vector(to_unsigned(addr, 9));
+                     end if;
+                  else
+                     sd_buff_addr <= std_logic_vector(to_unsigned(addr, 9));
+                     if cur_block = 0 then
+                        sd_buff_dout <= std_logic_vector(to_unsigned(block0(addr), 16));
+                     else
+                        sd_buff_dout <= std_logic_vector(to_unsigned(
+                           ((cur_block + 1) * 8#10000#) + addr, 16));
+                     end if;
+                     sd_buff_wr <= '1';
+                     if addr = 255 then
+                        phase := 3;
+                     else
+                        addr := addr + 1;
+                     end if;
+                  end if;
+
+               when 3 =>
+                  if is_write then
+                     if cur_block = 0 then
+                        block0(255) := to_integer(unsigned(sd_buff_din));
+                     end if;
+                     report "hps_io mock: write word addr=255 data=" &
+                        integer'image(to_integer(unsigned(sd_buff_din)));
+                  end if;
+                  sd_buff_wr <= '0';
+                  phase := 4;
+
+               when 4 =>
+                  sd_ack <= '0';
+                  phase := 0;
+
+               when others =>
+                  phase := 0;
+            end case;
+         end if;
+      end if;
+   end process;
 
    process(clk)
       variable wa : integer;

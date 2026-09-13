@@ -41,11 +41,16 @@ entity unibus is
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       rl_img_mounted : in integer range 0 to 1 := 1;                 -- is a disk image actually mounted (see rl11's img_mounted)
-      rl_sdcard_cs : out std_logic;
-      rl_sdcard_mosi : out std_logic;
-      rl_sdcard_sclk : out std_logic;
-      rl_sdcard_miso : in std_logic := '0';
-      rl_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      -- native hps_io block-transfer protocol (see rh11.vhd's Phase 1 port
+      -- comment) -- replaces rl_sdcard_cs/mosi/sclk/miso/debug (Phase 3)
+      rl_sd_lba : out std_logic_vector(31 downto 0);
+      rl_sd_rd : out std_logic;
+      rl_sd_wr : out std_logic;
+      rl_sd_ack : in std_logic := '0';
+      rl_sd_buff_addr : in std_logic_vector(8 downto 0) := (others => '0');
+      rl_sd_buff_dout : in std_logic_vector(15 downto 0) := (others => '0');
+      rl_sd_buff_din : out std_logic_vector(15 downto 0);
+      rl_sd_buff_wr : in std_logic := '0';
 
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -662,11 +667,15 @@ component rl11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(8 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_100mhz : in std_logic;
 
       have_rl : in integer range 0 to 1;
       img_mounted : in integer range 0 to 1 := 1;
@@ -2007,11 +2016,15 @@ begin
       bus_master_control_dato => rl0_control_dato,
       bus_master_nxm => busmaster_nxmabort,
 
-      sdcard_cs => rl_sdcard_cs,
-      sdcard_mosi => rl_sdcard_mosi,
-      sdcard_sclk => rl_sdcard_sclk,
-      sdcard_miso => rl_sdcard_miso,
-      sdcard_debug => rl_sdcard_debug,
+      sd_lba => rl_sd_lba,
+      sd_rd => rl_sd_rd,
+      sd_wr => rl_sd_wr,
+      sd_ack => rl_sd_ack,
+      sd_buff_addr => rl_sd_buff_addr,
+      sd_buff_dout => rl_sd_buff_dout,
+      sd_buff_din => rl_sd_buff_din,
+      sd_buff_wr => rl_sd_buff_wr,
+      clk_100mhz => clk_100mhz,
 
       have_rl => have_rl,
       img_mounted => rl_img_mounted,

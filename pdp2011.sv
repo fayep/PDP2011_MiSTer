@@ -368,44 +368,13 @@ always @(posedge clk_100mhz) begin
 	end
 end
 
-// RK11 talks hps_io's native sd_lba/sd_rd/sd_wr/sd_ack/sd_buff_* protocol
-// directly (see rk11.vhd/mister_top.vhd's rk_sd_* ports, wired straight to
-// sd_lba[0]/sd_rd[0]/sd_wr[0]/sd_ack[0]/sd_buff_*[0] in the mister_top
-// instantiation below) -- Phase 2 of the disk-transport plan, same as
-// RH11's Phase 1. No sd_card SPI-emulation instance needed any more,
-// unlike rl/tm below (not yet migrated).
-
-sd_card #(.WIDE(1)) sd_card_rl
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[1]),
-	.sd_rd       (sd_rd[1]),
-	.sd_wr       (sd_wr[1]),
-	.sd_ack      (sd_ack[1]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[1]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (rl_sclk),
-	.ss          (rl_cs | ~vsd_sel_rl),
-	.mosi        (rl_mosi),
-	.miso        (rl_miso)
-
-);
-
-// RH11 talks hps_io's native sd_lba/sd_rd/sd_wr/sd_ack/sd_buff_* protocol
-// directly (see rh11.vhd/mister_top.vhd's rh_sd_* ports, wired straight to
-// sd_lba[2]/sd_rd[2]/sd_wr[2]/sd_ack[2]/sd_buff_*[2] in the mister_top
-// instantiation below) -- no sd_card SPI-emulation instance needed any
-// more, unlike rk/rl/tm below (not yet migrated).
+// RK11/RL11/RH11 all talk hps_io's native sd_lba/sd_rd/sd_wr/sd_ack/
+// sd_buff_* protocol directly now (see rk11.vhd/rl11.vhd/rh11.vhd and
+// mister_top.vhd's rk_sd_*/rl_sd_*/rh_sd_* ports, wired straight to
+// sd_lba[0]/[1]/[2] etc. in the mister_top instantiation below) -- Phase
+// 3 of the disk-transport plan (RL11), same pattern as RH11's Phase 1
+// and RK11's Phase 2. No sd_card SPI-emulation instance needed any more
+// for any of the three, unlike tm below (not yet migrated).
 
 sd_card #(.WIDE(1)) sd_card_tm
 (
@@ -456,12 +425,6 @@ assign have_tm = 1;  // controller presence is a build-time choice, not tied to
 assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 
 //
-wire rl_sclk;
-wire rl_cs;
-wire rl_mosi;
-wire rl_miso;
-wire [3:0]rl_sddebug;
-//
 wire tm_sclk;
 wire tm_cs;
 wire tm_mosi;
@@ -474,8 +437,8 @@ wire [3:0]tm_sddebug;
 wire greenled;
 wire[3:0] sddebug;
 
-// rh11/rk11 no longer have an sddebug nibble (no SPI bit-banging left to blink an LED for)
-assign sddebug     = rl_sddebug;
+// rh11/rk11/rl11 no longer have an sddebug nibble (no SPI bit-banging left to blink an LED for)
+assign sddebug     = 4'b0;
 assign LED_POWER={1'b1,greenled};
 assign LED_DISK=sddebug[0] | sddebug[2];
 assign LED_USER=sddebug[1] | sddebug[3];
@@ -527,12 +490,15 @@ mister_top mister_top
 	
    .have_rl (have_rl),
    .rl_img_mounted (rl_img_mounted),
-   .rl_sdcard_cs    (rl_cs),
-   .rl_sdcard_miso  (rl_miso),
-   .rl_sdcard_mosi  (rl_mosi),
-   .rl_sdcard_sclk  (rl_sclk),
-   .rl_sdcard_debug (rl_sddebug),
-	
+   .rl_sd_lba       (sd_lba[1]),
+   .rl_sd_rd        (sd_rd[1]),
+   .rl_sd_wr        (sd_wr[1]),
+   .rl_sd_ack       (sd_ack[1]),
+   .rl_sd_buff_addr (sd_buff_addr),
+   .rl_sd_buff_dout (sd_buff_dout),
+   .rl_sd_buff_din  (sd_buff_din[1]),
+   .rl_sd_buff_wr   (sd_buff_wr),
+
    .have_rk  (have_rk),
    .rk_img_mounted (rk_img_mounted),
    .rk_sd_lba       (sd_lba[0]),

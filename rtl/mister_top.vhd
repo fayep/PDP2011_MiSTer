@@ -64,11 +64,14 @@ entity mister_top is
       rk_sd_buff_din : out std_logic_vector(15 downto 0);
       rk_sd_buff_wr : in std_logic;
 
-      rl_sdcard_cs   : out std_logic;
-      rl_sdcard_mosi : out std_logic;
-      rl_sdcard_sclk : out std_logic;
-      rl_sdcard_miso : in std_logic;
-		rl_sdcard_debug: out std_logic_vector (3 downto 0);
+      rl_sd_lba : out std_logic_vector(31 downto 0);
+      rl_sd_rd : out std_logic;
+      rl_sd_wr : out std_logic;
+      rl_sd_ack : in std_logic;
+      rl_sd_buff_addr : in std_logic_vector(8 downto 0);
+      rl_sd_buff_dout : in std_logic_vector(15 downto 0);
+      rl_sd_buff_din : out std_logic_vector(15 downto 0);
+      rl_sd_buff_wr : in std_logic;
 
       rh_sd_lba : out std_logic_vector(31 downto 0);
       rh_sd_rd : out std_logic;
@@ -194,11 +197,14 @@ component unibus is
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       rl_img_mounted : in integer range 0 to 1 := 1;
-      rl_sdcard_cs : out std_logic;
-      rl_sdcard_mosi : out std_logic;
-      rl_sdcard_sclk : out std_logic;
-      rl_sdcard_miso : in std_logic := '0';
-      rl_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rl_sd_lba : out std_logic_vector(31 downto 0);
+      rl_sd_rd : out std_logic;
+      rl_sd_wr : out std_logic;
+      rl_sd_ack : in std_logic := '0';
+      rl_sd_buff_addr : in std_logic_vector(8 downto 0) := (others => '0');
+      rl_sd_buff_dout : in std_logic_vector(15 downto 0) := (others => '0');
+      rl_sd_buff_din : out std_logic_vector(15 downto 0);
+      rl_sd_buff_wr : in std_logic := '0';
 
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -768,11 +774,14 @@ begin
 		
       have_rl => have_rl,
       rl_img_mounted => rl_img_mounted_sync,
-      rl_sdcard_cs    => rl_sdcard_cs,
-      rl_sdcard_miso  => rl_sdcard_miso,
-      rl_sdcard_mosi  => rl_sdcard_mosi,
-      rl_sdcard_sclk  => rl_sdcard_sclk,
-      rl_sdcard_debug => rl_sdcard_debug,
+      rl_sd_lba => rl_sd_lba,
+      rl_sd_rd => rl_sd_rd,
+      rl_sd_wr => rl_sd_wr,
+      rl_sd_ack => rl_sd_ack,
+      rl_sd_buff_addr => rl_sd_buff_addr,
+      rl_sd_buff_dout => rl_sd_buff_dout,
+      rl_sd_buff_din => rl_sd_buff_din,
+      rl_sd_buff_wr => rl_sd_buff_wr,
 
 		have_rk => have_rk,
 		rk_img_mounted => rk_img_mounted_sync,
