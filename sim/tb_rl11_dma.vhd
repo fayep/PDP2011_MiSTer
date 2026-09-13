@@ -485,6 +485,79 @@ begin
          ok_all := false;
       end if;
 
+      -- Even-sector write regression: writing sector 0 (sd_half='0')
+      -- starts busmaster_write1's sdcard_xfer_addr at 255, not 127 --
+      -- the FIRST increment in busmaster_write (255+1) overflows
+      -- "integer range 0 to 255" without the "mod 256" fix (found via
+      -- this exact scenario, previously untested -- the sibling-sector
+      -- write test above only ever exercised the ODD (start-at-127,
+      -- never-overflows) case). Real hardware never saw this (binary
+      -- wraparound is free there), but it's the same bug class as
+      -- tb_rh11_write.vhd found in rh11.vhd's write path.
+      for i in 0 to 127 loop
+         mem(BA0 + i) := 8#33000# + i;
+      end loop;
+      wait until rising_edge(clk);
+
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLDA,
+             std_logic_vector(to_unsigned(0, 16)));           -- sector 0 (even)
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLBA,
+             std_logic_vector(to_unsigned(BA0*2, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLMP,
+             std_logic_vector(to_unsigned(8192 - 128, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLCS, x"000B"); -- ds=00, fc=101 (write), go=1
+
+      i := 0;
+      loop
+         bus_rd(bus_addr, bus_control_dati, A_RLCS, cs1);
+         exit when cs1(7) = '1';
+         i := i + 1;
+         if i > 3000 then
+            report "tb_rl11_dma [write sector 0]: FAIL - write never completed (RLCS=" &
+               integer'image(to_integer(unsigned(cs1))) & ")" severity failure;
+         end if;
+      end loop;
+      for k in 1 to 20 loop wait until rising_edge(clk); end loop;
+
+      -- read sector 0 back -- must see the just-written pattern
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLDA,
+             std_logic_vector(to_unsigned(0, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLBA,
+             std_logic_vector(to_unsigned((BA0+300)*2, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLMP,
+             std_logic_vector(to_unsigned(8192 - 128, 16)));
+      bus_wr(bus_addr, bus_dato, bus_control_dato, A_RLCS, x"000D");
+      i := 0;
+      loop
+         bus_rd(bus_addr, bus_control_dati, A_RLCS, cs1);
+         exit when cs1(7) = '1';
+         i := i + 1;
+         if i > 3000 then
+            report "tb_rl11_dma [write sector 0]: FAIL - verify read never completed" severity failure;
+         end if;
+      end loop;
+      for k in 1 to 20 loop wait until rising_edge(clk); end loop;
+
+      bad := 0;
+      for i in 0 to 127 loop
+         want := 8#33000# + i;
+         got  := mem(BA0 + 300 + i);
+         if got /= want then
+            bad := bad + 1;
+            if bad <= 6 then
+               report "  [write sector 0, readback] word " & integer'image(i) &
+                  " : got " & integer'image(got) & " want " & integer'image(want) severity warning;
+            end if;
+         end if;
+      end loop;
+      if bad = 0 then
+         report "tb_rl11_dma [write sector 0, readback]: PASS - all 128 words correct" severity note;
+      else
+         report "tb_rl11_dma [write sector 0, readback]: FAIL - " & integer'image(bad) &
+                " of 128 words wrong" severity error;
+         ok_all := false;
+      end if;
+
       if ok_all then
          report "tb_rl11_dma: ALL SCENARIOS PASSED" severity note;
       else

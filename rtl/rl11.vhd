@@ -1076,7 +1076,15 @@ begin
                      if sectorcounter /= "000000000" then
                         sdcard_xfer_in <= bus_master_dati;
                         sdcard_xfer_write <= '1';
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        -- mod 256, not a plain increment -- the EVEN-half
+                        -- case (sd_half='0') starts this state at 255
+                        -- (busmaster_write1 above), so its very first
+                        -- increment here overflows "integer range 0 to
+                        -- 255" the same way rh11.vhd's/rk11.vhd's write
+                        -- paths did (see tb_rh11_write.vhd) -- the ODD-half
+                        -- case (starting at 127) never needed this, but
+                        -- mod 256 is a no-op for it either way.
+                        sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
 
                         if sectorcounter /= "000000001" then
                            work_bar <= work_bar + 1;
