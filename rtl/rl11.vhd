@@ -177,6 +177,21 @@ signal wcp : std_logic_vector(12 downto 0) := (others => '0');               -- 
 -- others
 
 signal start : std_logic;
+signal rldelay : integer range 0 to 240000;  -- real-cycle delay for seek/read
+                                              -- header, mirroring rk11.vhd's
+                                              -- proven rkdelay pattern -- see
+                                              -- the "011"/"100" cases below.
+                                              -- RL11's seek/read-header
+                                              -- previously completed in the
+                                              -- same cycle they started
+                                              -- (zero-delay), the likely
+                                              -- driver of ZRLID0's TST009/
+                                              -- 010/012 SEEK failures and
+                                              -- TST014 SUB001's rotation-
+                                              -- timing check -- found
+                                              -- 2026-09-13, not yet
+                                              -- hardware-confirmed as the
+                                              -- fix.
 signal write_start : std_logic;
 signal update_mpr : std_logic;
 
@@ -610,6 +625,7 @@ begin
             dnca(conv_integer(0)) <= (others => '0');
 
             start <= '0';
+            rldelay <= 0;
 
             write_start <= '0';
             sdcard_read_start <= '0';       -- was never reset -- 'U' in sim (blocks the
@@ -773,6 +789,9 @@ begin
                   if have_media = '1' or csr_fc = "000" then          -- no-op always allowed, like
                                                                        -- RH11's RIP/RK11's control-reset exemption
                      start <= '1';
+                     rldelay <= 120;   -- mirrors rk11.vhd's rkdelay: set on
+                                        -- every command start, consumed only
+                                        -- by the seek/read-header cases below
                   else
                      csr_e <= "001";                                  -- operation incomplete: no medium
                      csr_crdy <= '1';
@@ -803,23 +822,31 @@ begin
                         start <= '0';
 
                      when "011" =>                                        -- seek
-                        if dar(2) = '1' then
-                           dnca(conv_integer(csr_ds)) <= dnca(conv_integer(csr_ds)) + dar(15 downto 7);
+                        if rldelay = 0 then
+                           if dar(2) = '1' then
+                              dnca(conv_integer(csr_ds)) <= dnca(conv_integer(csr_ds)) + dar(15 downto 7);
+                           else
+                              dnca(conv_integer(csr_ds)) <= dnca(conv_integer(csr_ds)) - dar(15 downto 7);
+                           end if;
+                           dnhs(conv_integer(csr_ds)) <= dar(4);
+                           csr_crdy <= '1';
+                           start <= '0';
                         else
-                           dnca(conv_integer(csr_ds)) <= dnca(conv_integer(csr_ds)) - dar(15 downto 7);
+                           rldelay <= rldelay - 1;
                         end if;
-                        dnhs(conv_integer(csr_ds)) <= dar(4);
-                        csr_crdy <= '1';
-                        start <= '0';
 
                      when "100" =>                                        -- read header
-                        if unsigned(dar(5 downto 0)) < unsigned'("100111") then             -- don't increment beyond 047=39.
-                           dar(5 downto 0) <= dar(5 downto 0) + 1;
+                        if rldelay /= 0 then
+                           rldelay <= rldelay - 1;
                         else
-                           dar(5 downto 0) <= "000000";                   -- set to 0 on track overrun, does that make sense?
+                           if unsigned(dar(5 downto 0)) < unsigned'("100111") then             -- don't increment beyond 047=39.
+                              dar(5 downto 0) <= dar(5 downto 0) + 1;
+                           else
+                              dar(5 downto 0) <= "000000";                   -- set to 0 on track overrun, does that make sense?
+                           end if;
+                           csr_crdy <= '1';
+                           start <= '0';
                         end if;
-                        csr_crdy <= '1';
-                        start <= '0';
 
                      when "110" | "001" =>                                     -- read or write check
                         if dnca(conv_integer(csr_ds)) = dar(15 downto 7)
