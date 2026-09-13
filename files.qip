@@ -31,6 +31,7 @@ set_global_assignment -name VHDL_FILE rtl/paneldb.vhd
 set_global_assignment -name VHDL_FILE rtl/paneldriver.vhd
 set_global_assignment -name VHDL_FILE rtl/panelos.vhd
 set_global_assignment -name VHDL_FILE rtl/ps2.vhd
+set_global_assignment -name VHDL_FILE rtl/sd_bridge.vhd
 set_global_assignment -name VHDL_FILE rtl/rh11.vhd
 set_global_assignment -name VHDL_FILE rtl/rk11.vhd
 set_global_assignment -name VHDL_FILE rtl/rl11.vhd

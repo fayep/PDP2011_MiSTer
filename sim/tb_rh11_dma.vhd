@@ -1,4 +1,4 @@
--- deps: rh11.vhd
+-- deps: sd_bridge.vhd rh11.vhd
 --
 -- tb_rh11_dma.vhd -- does an RH70 multi-sector READ DATA land the right
 -- words at the right memory addresses?

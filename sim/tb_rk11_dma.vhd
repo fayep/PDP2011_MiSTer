@@ -1,4 +1,4 @@
--- deps: rk11.vhd
+-- deps: sd_bridge.vhd rk11.vhd
 --
 -- tb_rk11_dma.vhd -- does an RK11 multi-sector READ land the right words
 -- at the right memory addresses over the native hps_io sd_* transport?
