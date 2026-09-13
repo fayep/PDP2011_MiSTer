@@ -1344,7 +1344,13 @@ begin
                         wrkdb <= (others => '0');
                         sdcard_xfer_in <= bus_master_dati;
                         sdcard_xfer_write <= '1';
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        -- mod 256, not a plain increment -- same overflow
+                        -- class as the read path's fix above (this state
+                        -- starts at 255 via busmaster_write1; a full-block
+                        -- write's first increment here would overflow the
+                        -- "integer range 0 to 255" type). See rh11.vhd's
+                        -- matching fix (tb_rh11_write.vhd).
+                        sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
 
                         if sectorcounter /= "000000001" then
                            if rkcs_iba = '0' then

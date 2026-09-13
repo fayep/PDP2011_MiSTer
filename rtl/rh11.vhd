@@ -1719,7 +1719,17 @@ begin
                            sdcard_xfer_in <= bus_master_dati;
                         end if;
                         sdcard_xfer_write <= '1';
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        -- mod 256, not a plain increment -- sdcard_xfer_addr
+                        -- is "integer range 0 to 255" and this state starts
+                        -- at 255 (busmaster_write1); a full-block (256-word)
+                        -- write's first increment here would overflow to
+                        -- 256, which wraps for free in real hardware's
+                        -- binary arithmetic but is a real GHDL bounds-check
+                        -- failure (found via tb_rh11_write.vhd, written
+                        -- after a real-hardware boot regression report).
+                        -- Same fix as the read path already has (see
+                        -- busmaster_read1/busmaster_read above).
+                        sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
 
                         if sectorcounter /= "000000001" then
                            work_bar <= work_bar + 1;
