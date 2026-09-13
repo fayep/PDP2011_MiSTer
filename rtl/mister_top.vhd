@@ -55,11 +55,14 @@ entity mister_top is
 		cts1:in std_logic;
 
       -- sd card
-      rk_sdcard_cs   : out std_logic;
-      rk_sdcard_mosi : out std_logic;
-      rk_sdcard_sclk : out std_logic;
-      rk_sdcard_miso : in std_logic;
-		rk_sdcard_debug: out std_logic_vector (3 downto 0);
+      rk_sd_lba : out std_logic_vector(31 downto 0);
+      rk_sd_rd : out std_logic;
+      rk_sd_wr : out std_logic;
+      rk_sd_ack : in std_logic;
+      rk_sd_buff_addr : in std_logic_vector(8 downto 0);
+      rk_sd_buff_dout : in std_logic_vector(15 downto 0);
+      rk_sd_buff_din : out std_logic_vector(15 downto 0);
+      rk_sd_buff_wr : in std_logic;
 
       rl_sdcard_cs   : out std_logic;
       rl_sdcard_mosi : out std_logic;
@@ -119,6 +122,7 @@ entity mister_top is
       -- edge-detected here so a long menu click does not single-step
       -- at full speed.
       osd_halt       : in std_logic := '0';
+      osd_autoboot   : in std_logic := '0';
       osd_cont       : in std_logic := '0';
       osd_start      : in std_logic := '0';
       osd_load       : in std_logic := '0';
@@ -200,11 +204,14 @@ component unibus is
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       have_rk_num : in integer range 1 to 8 := 8;                    -- active number of drives on the controller; set to < 8 to save core
       rk_img_mounted : in integer range 0 to 1 := 1;
-      rk_sdcard_cs : out std_logic;
-      rk_sdcard_mosi : out std_logic;
-      rk_sdcard_sclk : out std_logic;
-      rk_sdcard_miso : in std_logic := '0';
-      rk_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rk_sd_lba : out std_logic_vector(31 downto 0);
+      rk_sd_rd : out std_logic;
+      rk_sd_wr : out std_logic;
+      rk_sd_ack : in std_logic := '0';
+      rk_sd_buff_addr : in std_logic_vector(8 downto 0) := (others => '0');
+      rk_sd_buff_dout : in std_logic_vector(15 downto 0) := (others => '0');
+      rk_sd_buff_din : out std_logic_vector(15 downto 0);
+      rk_sd_buff_wr : in std_logic := '0';
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -629,6 +636,25 @@ signal osd_exa_meta, osd_exa_d : std_logic := '0';
 signal osd_dep_meta, osd_dep_d : std_logic := '0';
 signal osd_cont_pulse, osd_start_pulse : std_logic := '0';
 signal osd_load_pulse, osd_exa_pulse, osd_dep_pulse : std_logic := '0';
+
+-- Auto-boot: when enabled, fires a one-shot cons_cont pulse (same effect
+-- as the OSD "Continue" button, or SSH ODT's "run"/"cont") the cycle
+-- after cpureset releases -- giving remote/serial-only control over
+-- getting the CPU out of state_halt and into the M9312 boot chain
+-- without a manual front-panel/ODT action every time. Bundled into the
+-- Phase 2 (RK11) disk-transport work per Faye, 2026-09-12 -- also the
+-- tool used to keep reproducing the still-open Phase 1 cold-reset boot
+-- regression (see the disk-transport plan's "KNOWN, UNRESOLVED
+-- regression" note) without the SSH ODT r7+run dance.
+signal osd_autoboot_meta, osd_autoboot_sync : std_logic := '0';
+-- cpureset is generated in the clk_100 process (dram_fsm's clock, not
+-- cpuclk) -- 2-FF synchronize it into cpuclk before edge-detecting its
+-- release, same convention as have_rk/rl/rh/tm's img_mounted/device-flag
+-- CDC elsewhere in this file (Faye, 2026-09-12: "sync on reset would be
+-- great for this autoboot feature").
+signal cpureset_meta, cpureset_sync : std_logic := '1';
+signal cpureset_sync_d : std_logic := '1';
+signal autoboot_pulse : std_logic := '0';
 signal cons_adss_mode : std_logic_vector(1 downto 0);
 signal cons_adss_id : std_logic;
 signal cons_adss_cons : std_logic;
@@ -750,11 +776,14 @@ begin
 
 		have_rk => have_rk,
 		rk_img_mounted => rk_img_mounted_sync,
-		rk_sdcard_cs    => rk_sdcard_cs,
-      rk_sdcard_mosi  => rk_sdcard_mosi,
-      rk_sdcard_sclk  => rk_sdcard_sclk,
-      rk_sdcard_miso  => rk_sdcard_miso,
-      rk_sdcard_debug => rk_sdcard_debug,
+		rk_sd_lba => rk_sd_lba,
+      rk_sd_rd => rk_sd_rd,
+      rk_sd_wr => rk_sd_wr,
+      rk_sd_ack => rk_sd_ack,
+      rk_sd_buff_addr => rk_sd_buff_addr,
+      rk_sd_buff_dout => rk_sd_buff_dout,
+      rk_sd_buff_din => rk_sd_buff_din,
+      rk_sd_buff_wr => rk_sd_buff_wr,
 
       have_rh => have_rh,
       rh_img_mounted => rh_img_mounted_sync,
@@ -916,6 +945,16 @@ begin
          osd_dep_meta <= osd_dep;
          osd_dep_d <= osd_dep_meta;
          osd_dep_pulse <= osd_dep_meta and not osd_dep_d;
+
+         osd_autoboot_meta <= osd_autoboot;
+         osd_autoboot_sync <= osd_autoboot_meta;
+         cpureset_meta <= cpureset;
+         cpureset_sync <= cpureset_meta;
+         cpureset_sync_d <= cpureset_sync;
+         -- fires exactly one cpuclk cycle after the SYNCHRONIZED
+         -- cpureset's release edge, only while the toggle is on -- see
+         -- the "Auto-boot" signal declaration comment above.
+         autoboot_pulse <= osd_autoboot_sync and cpureset_sync_d and not cpureset_sync;
       end if;
    end process;
 
@@ -925,7 +964,7 @@ begin
    dbg_nxm <= cons_adrserr;
 
    cons_ena <= '0' when osd_halt_sync = '1' else panel_ena;
-   cons_cont <= osd_cont_pulse or panel_cont;
+   cons_cont <= osd_cont_pulse or panel_cont or autoboot_pulse;
    cons_start <= osd_start_pulse or panel_start;
    cons_load <= osd_load_pulse or panel_load;
    cons_exa <= osd_exa_pulse or panel_exa;

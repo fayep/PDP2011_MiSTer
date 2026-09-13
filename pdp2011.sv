@@ -233,6 +233,7 @@ localparam CONF_STR = {
 	"P2T[20],Examine;",
 	"P2T[37],Deposit;",
 	"P2-;",
+	"P2O[39],Auto-boot,Off,On;",
 	"P2O[38],SR 17600000,0,1;",
 	"P2O[36],SR 100000,0,1;",
 	"P2O[35:33],SR 070000,0,1,2,3,4,5,6,7;",
@@ -367,31 +368,12 @@ always @(posedge clk_100mhz) begin
 	end
 end
 
-sd_card #(.WIDE(1)) sd_card_rk
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[0]),
-	.sd_rd       (sd_rd[0]),
-	.sd_wr       (sd_wr[0]),
-	.sd_ack      (sd_ack[0]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[0]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (rk_sclk),
-	.ss          (rk_cs | ~vsd_sel_rk),
-	.mosi        (rk_mosi),
-	.miso        (rk_miso)
-
-);
+// RK11 talks hps_io's native sd_lba/sd_rd/sd_wr/sd_ack/sd_buff_* protocol
+// directly (see rk11.vhd/mister_top.vhd's rk_sd_* ports, wired straight to
+// sd_lba[0]/sd_rd[0]/sd_wr[0]/sd_ack[0]/sd_buff_*[0] in the mister_top
+// instantiation below) -- Phase 2 of the disk-transport plan, same as
+// RH11's Phase 1. No sd_card SPI-emulation instance needed any more,
+// unlike rl/tm below (not yet migrated).
 
 sd_card #(.WIDE(1)) sd_card_rl
 (
@@ -474,12 +456,6 @@ assign have_tm = 1;  // controller presence is a build-time choice, not tied to
 assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 
 //
-wire rk_sclk;
-wire rk_cs;
-wire rk_mosi;
-wire rk_miso;
-wire [3:0]rk_sddebug;
-//
 wire rl_sclk;
 wire rl_cs;
 wire rl_mosi;
@@ -498,8 +474,8 @@ wire [3:0]tm_sddebug;
 wire greenled;
 wire[3:0] sddebug;
 
-// rh11 no longer has an sddebug nibble (no SPI bit-banging left to blink an LED for)
-assign sddebug     = rk_sddebug | rl_sddebug;
+// rh11/rk11 no longer have an sddebug nibble (no SPI bit-banging left to blink an LED for)
+assign sddebug     = rl_sddebug;
 assign LED_POWER={1'b1,greenled};
 assign LED_DISK=sddebug[0] | sddebug[2];
 assign LED_USER=sddebug[1] | sddebug[3];
@@ -559,12 +535,15 @@ mister_top mister_top
 	
    .have_rk  (have_rk),
    .rk_img_mounted (rk_img_mounted),
-	.rk_sdcard_cs     (rk_cs),
-   .rk_sdcard_mosi   (rk_mosi),
-   .rk_sdcard_sclk   (rk_sclk),
-   .rk_sdcard_miso   (rk_miso),
-   .rk_sdcard_debug  (rk_sddebug),
-	
+   .rk_sd_lba       (sd_lba[0]),
+   .rk_sd_rd        (sd_rd[0]),
+   .rk_sd_wr        (sd_wr[0]),
+   .rk_sd_ack       (sd_ack[0]),
+   .rk_sd_buff_addr (sd_buff_addr),
+   .rk_sd_buff_dout (sd_buff_dout),
+   .rk_sd_buff_din  (sd_buff_din[0]),
+   .rk_sd_buff_wr   (sd_buff_wr),
+
    .have_rh (have_rh),
    .rh_img_mounted (rh_img_mounted),
    .rh_sd_lba       (sd_lba[2]),
@@ -616,6 +595,7 @@ mister_top mister_top
    .have_act(have_act),
 
    .osd_halt (status[16]),
+   .osd_autoboot(status[39]),
    .osd_cont (status[17]),
    .osd_start(status[18]),
    .osd_load (status[19]),

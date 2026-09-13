@@ -46,11 +46,22 @@ entity rk11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      -- native hps_io block-transfer protocol (replaces the sdspi.vhd
+      -- fake-SD-over-SPI emulation layer -- Phase 2 of the disk-transport
+      -- plan, same pattern as rh11.vhd's Phase 1). sd_* live in the
+      -- clk_100mhz domain (hps_io's own domain); RK11's own DMA/busmaster
+      -- logic lives in cpuclk (clk/nclk below), bridged via a Gray-coded
+      -- 2-bit request/done toggle pair per direction plus a dual-clock
+      -- sector buffer -- see the "sd_* <-> busmaster bridge" section below.
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(8 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_100mhz : in std_logic;
 
       have_rk : in integer range 0 to 1;
       have_rk_num : in integer range 1 to 8;
@@ -67,38 +78,6 @@ entity rk11 is
 end rk11;
 
 architecture implementation of rk11 is
-
-component sdspi is
-   port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-
-      sdcard_addr : in std_logic_vector(23 downto 0);
-
-      sdcard_idle : out std_logic;
-      sdcard_read_start : in std_logic;
-      sdcard_read_ack : in std_logic;
-      sdcard_read_done : out std_logic;
-      sdcard_write_start : in std_logic;
-      sdcard_write_ack : in std_logic;
-      sdcard_write_done : out std_logic;
-      sdcard_error : out std_logic;
-
-      sdcard_xfer_addr : in integer range 0 to 255;
-      sdcard_xfer_read : in std_logic;
-      sdcard_xfer_out : out std_logic_vector(15 downto 0);
-      sdcard_xfer_write : in std_logic;
-      sdcard_xfer_in : in std_logic_vector(15 downto 0);
-
-      enable : in integer range 0 to 1 := 0;
-      controller_clk : in std_logic;
-      reset : in std_logic;
-      clk50mhz : in std_logic
-   );
-end component;
 
 
 -- regular bus interface
@@ -215,9 +194,10 @@ signal rkcs_godelay : integer range 0 to 10000;
 signal write_start : std_logic;
 signal wrkdb : std_logic_vector(15 downto 0);
 
--- sdspi interface signals
+-- sd_* transfer-buffer interface signals (formerly the sdspi component's
+-- port contract -- same names/semantics, now fulfilled by the "sd_* <->
+-- busmaster bridge" below instead of a real sdspi.vhd instance)
 
-signal sdcard_xfer_clk : std_logic;
 signal sdcard_xfer_addr : integer range 0 to 255;
 signal sdcard_xfer_read : std_logic;
 signal sdcard_xfer_out : std_logic_vector(15 downto 0);
@@ -231,7 +211,59 @@ signal sdcard_read_done : std_logic;
 signal sdcard_write_start : std_logic;
 signal sdcard_write_ack : std_logic;
 signal sdcard_write_done : std_logic;
-signal sdcard_error : std_logic;
+signal sdcard_error : std_logic;                       -- no real SD-protocol errors possible
+                                                          -- any more (hps_io's virtual disk has no
+                                                          -- CRC/card-fault concept) -- tied to '0'
+
+-- dual-clock sector buffer: same proven idiom rh11.vhd's Phase 1 rewrite
+-- used (plain VHDL array, one port per clock domain -- Quartus infers
+-- M10K dual-clock dual-port block RAM from exactly this shape). rsector
+-- is filled by hps_io (clk_100mhz, via sd_buff_wr) and drained by the
+-- busmaster (clk); wsector is filled by the busmaster (clk) and drained
+-- by hps_io (clk_100mhz, via sd_buff_addr/din). RK11's real sector is
+-- already exactly 256 words = 512 bytes = one hps_io block -- confirmed
+-- distinct from RL11's 128-word/256-byte case, no sub-block packing
+-- needed here (see the disk-transport plan's own note on this).
+type rk11_sector_buf_t is array(0 to 255) of std_logic_vector(15 downto 0);
+signal rsector : rk11_sector_buf_t;
+signal wsector : rk11_sector_buf_t;
+
+-- sd_* <-> busmaster CDC bridge: a Gray-coded 2-bit request/done toggle
+-- pair per direction, 2-FF synchronized each way -- see rh11.vhd's Phase 1
+-- comment on why Gray coding (not a naive multi-bit synchronizer) is
+-- required here. Sequence used: 00 -> 01 -> 11 -> 10 -> 00 ...
+signal read_req_gray   : std_logic_vector(1 downto 0) := "00";  -- cpuclk domain
+signal read_req_gray_r1, read_req_gray_r2 : std_logic_vector(1 downto 0) := "00"; -- synced into clk_100mhz
+signal read_done_gray  : std_logic_vector(1 downto 0) := "00";  -- clk_100mhz domain
+signal read_done_gray_r1, read_done_gray_r2 : std_logic_vector(1 downto 0) := "00"; -- synced into cpuclk
+
+signal write_req_gray  : std_logic_vector(1 downto 0) := "00";  -- cpuclk domain
+signal write_req_gray_r1, write_req_gray_r2 : std_logic_vector(1 downto 0) := "00"; -- synced into clk_100mhz
+signal write_done_gray : std_logic_vector(1 downto 0) := "00";  -- clk_100mhz domain
+signal write_done_gray_r1, write_done_gray_r2 : std_logic_vector(1 downto 0) := "00"; -- synced into cpuclk
+
+signal sd_lba_r : std_logic_vector(31 downto 0);  -- latched into clk_100mhz domain
+                                                    -- when a request edge is seen; sd_addr
+                                                    -- (source side) is already held stable
+                                                    -- for the whole transfer by construction
+
+type xfer_state_t is (
+   xfer_idle,
+   xfer_read_wait,
+   xfer_read_done_hold,
+   xfer_write_wait,
+   xfer_write_done_hold
+);
+signal xfer_state : xfer_state_t := xfer_idle;
+
+type sd_state_t is (
+   sd_idle,
+   sd_read_req,
+   sd_read_xfer,
+   sd_write_req,
+   sd_write_xfer
+);
+signal sd_state : sd_state_t := sd_idle;
 
 -- busmaster controller
 
@@ -259,35 +291,192 @@ begin
 
    have_media <= '1' when img_mounted = 1 else '0';
 
-   sd1: sdspi port map(
-      sdcard_cs => sdcard_cs,
-      sdcard_mosi => sdcard_mosi,
-      sdcard_sclk => sdcard_sclk,
-      sdcard_miso => sdcard_miso,
-      sdcard_debug => sdcard_debug,
+-- sd_* <-> busmaster bridge
+--
+-- Replaces the "sd1: sdspi port map(...)" black box. Fulfils the exact
+-- same signal contract the busmaster/register-file logic below already
+-- expects (sdcard_idle/read_start/read_ack/read_done/write_start/
+-- write_ack/write_done/xfer_*), so none of that logic needed to change --
+-- only what backs those signals did. See rh11.vhd's Phase 1 rewrite for
+-- the full rationale; this is the same pattern verbatim.
 
-      sdcard_addr => sd_addr,
+   sdcard_error <= '0';
 
-      sdcard_idle => sdcard_idle,
-      sdcard_read_start => sdcard_read_start,
-      sdcard_read_ack => sdcard_read_ack,
-      sdcard_read_done => sdcard_read_done,
-      sdcard_write_start => sdcard_write_start,
-      sdcard_write_ack => sdcard_write_ack,
-      sdcard_write_done => sdcard_write_done,
-      sdcard_error => sdcard_error,
+-- cpuclk-domain half: drives sdcard_idle/read_done/write_done, consumes
+-- sdcard_read_start/read_ack/write_start/write_ack. Kicks off a transfer
+-- by toggling the Gray request code; waits for the synchronized Gray done
+-- code to change before declaring done.
 
-      sdcard_xfer_addr => sdcard_xfer_addr,
-      sdcard_xfer_read => sdcard_xfer_read,
-      sdcard_xfer_out => sdcard_xfer_out,
-      sdcard_xfer_in => sdcard_xfer_in,
-      sdcard_xfer_write => sdcard_xfer_write,
+   process(clk, reset)
+   begin
+      if clk = '1' and clk'event then
+         if reset = '1' then
+            xfer_state <= xfer_idle;
+            sdcard_read_done <= '0';
+            sdcard_write_done <= '0';
+            read_req_gray <= "00";
+            write_req_gray <= "00";
+            read_done_gray_r1 <= "00";
+            read_done_gray_r2 <= "00";
+            write_done_gray_r1 <= "00";
+            write_done_gray_r2 <= "00";
+         else
+            -- 2-FF synchronizers for the two done-side Gray codes
+            read_done_gray_r1 <= read_done_gray;
+            read_done_gray_r2 <= read_done_gray_r1;
+            write_done_gray_r1 <= write_done_gray;
+            write_done_gray_r2 <= write_done_gray_r1;
 
-      enable => have_rk,
-      controller_clk => clk,
-      reset => reset,
-      clk50mhz => clk50mhz
-   );
+            case xfer_state is
+               when xfer_idle =>
+                  sdcard_read_done <= '0';
+                  sdcard_write_done <= '0';
+                  if sdcard_read_start = '1' then
+                     sd_lba_r <= "00000000" & sd_addr;   -- stable well before this point
+                     case read_req_gray is
+                        when "00" => read_req_gray <= "01";
+                        when "01" => read_req_gray <= "11";
+                        when "11" => read_req_gray <= "10";
+                        when others => read_req_gray <= "00";
+                     end case;
+                     xfer_state <= xfer_read_wait;
+                  elsif sdcard_write_start = '1' then
+                     sd_lba_r <= "00000000" & sd_addr;
+                     case write_req_gray is
+                        when "00" => write_req_gray <= "01";
+                        when "01" => write_req_gray <= "11";
+                        when "11" => write_req_gray <= "10";
+                        when others => write_req_gray <= "00";
+                     end case;
+                     xfer_state <= xfer_write_wait;
+                  end if;
+
+               when xfer_read_wait =>
+                  if read_done_gray_r2 = read_req_gray then
+                     sdcard_read_done <= '1';
+                     xfer_state <= xfer_read_done_hold;
+                  end if;
+
+               when xfer_read_done_hold =>
+                  if sdcard_read_ack = '1' then
+                     sdcard_read_done <= '0';
+                     xfer_state <= xfer_idle;
+                  end if;
+
+               when xfer_write_wait =>
+                  if write_done_gray_r2 = write_req_gray then
+                     sdcard_write_done <= '1';
+                     xfer_state <= xfer_write_done_hold;
+                  end if;
+
+               when xfer_write_done_hold =>
+                  if sdcard_write_ack = '1' then
+                     sdcard_write_done <= '0';
+                     xfer_state <= xfer_idle;
+                  end if;
+
+               when others =>
+                  xfer_state <= xfer_idle;
+            end case;
+         end if;
+      end if;
+   end process;
+
+   sdcard_idle <= '1' when xfer_state = xfer_idle else '0';
+
+-- clk_100mhz-domain half: watches the synchronized Gray request codes,
+-- drives sd_lba/sd_rd/sd_wr, waits for sd_ack's standard hps_io
+-- rise-then-fall sequence, then toggles the Gray done code back.
+
+   process(clk_100mhz, reset)
+   begin
+      if clk_100mhz = '1' and clk_100mhz'event then
+         if reset = '1' then
+            sd_state <= sd_idle;
+            sd_rd <= '0';
+            sd_wr <= '0';
+            sd_lba <= (others => '0');
+            read_req_gray_r1 <= "00";
+            read_req_gray_r2 <= "00";
+            write_req_gray_r1 <= "00";
+            write_req_gray_r2 <= "00";
+            read_done_gray <= "00";
+            write_done_gray <= "00";
+         else
+            -- 2-FF synchronizers for the two request-side Gray codes
+            read_req_gray_r1 <= read_req_gray;
+            read_req_gray_r2 <= read_req_gray_r1;
+            write_req_gray_r1 <= write_req_gray;
+            write_req_gray_r2 <= write_req_gray_r1;
+
+            case sd_state is
+               when sd_idle =>
+                  if read_req_gray_r2 /= read_done_gray then
+                     sd_lba <= sd_lba_r;
+                     sd_rd <= '1';
+                     sd_state <= sd_read_req;
+                  elsif write_req_gray_r2 /= write_done_gray then
+                     sd_lba <= sd_lba_r;
+                     sd_wr <= '1';
+                     sd_state <= sd_write_req;
+                  end if;
+
+               when sd_read_req =>
+                  if sd_ack = '1' then
+                     sd_rd <= '0';
+                     sd_state <= sd_read_xfer;
+                  end if;
+
+               when sd_read_xfer =>
+                  if sd_ack = '0' then
+                     read_done_gray <= read_req_gray_r2;
+                     sd_state <= sd_idle;
+                  end if;
+
+               when sd_write_req =>
+                  if sd_ack = '1' then
+                     sd_wr <= '0';
+                     sd_state <= sd_write_xfer;
+                  end if;
+
+               when sd_write_xfer =>
+                  if sd_ack = '0' then
+                     write_done_gray <= write_req_gray_r2;
+                     sd_state <= sd_idle;
+                  end if;
+
+               when others =>
+                  sd_state <= sd_idle;
+            end case;
+         end if;
+      end if;
+   end process;
+
+-- dual-clock sector buffer access. rsector's write port (hps_io fills it
+-- during a read) and wsector's read port (hps_io drains it during a
+-- write) live in clk_100mhz; the other two ports live in clk, matching
+-- what the busmaster process below already expects from
+-- sdcard_xfer_out/in/read/write/addr.
+
+   process(clk_100mhz)
+   begin
+      if clk_100mhz = '1' and clk_100mhz'event then
+         if sd_buff_wr = '1' then
+            rsector(conv_integer(sd_buff_addr)) <= sd_buff_dout;
+         end if;
+         sd_buff_din <= wsector(conv_integer(sd_buff_addr));
+      end if;
+   end process;
+
+   process(clk)
+   begin
+      if clk = '1' and clk'event then
+         sdcard_xfer_out <= rsector(sdcard_xfer_addr);
+         if sdcard_xfer_write = '1' then
+            wsector(sdcard_xfer_addr) <= sdcard_xfer_in;
+         end if;
+      end if;
+   end process;
 
 
 -- regular bus interface
@@ -407,6 +596,14 @@ begin
             rkdb <= (others => '0');
 
             start <= '0';
+            -- sdcard_read_start has no explicit reset value on real
+            -- silicon (an FPGA flip-flop powers up at '0' regardless),
+            -- but GHDL simulates the true VHDL 'U' default -- without
+            -- this, "sdcard_idle='1' and sdcard_read_start='0'" (the
+            -- read-start gate) never evaluates true, deadlocking every
+            -- read forever. Found via tb_rk11_dma.vhd (Phase 2); rh11.vhd
+            -- already did this correctly for its own sdcard_read_start.
+            sdcard_read_start <= '0';
 
             rkwc <= (others => '0');
             update_rkwc <= '1';
@@ -1079,7 +1276,14 @@ begin
                      bus_master_addr <= work_bar(17 downto 1) & '0';
                      bus_master_dato <= sdcard_xfer_out;
                      bus_master_control_dato <= '0';
-                     sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                     -- mod 256, not a plain increment -- sdcard_xfer_addr
+                     -- is "integer range 0 to 255"; a full 256-word sector
+                     -- pushes the final increment to 256, which wraps for
+                     -- free in real hardware's binary arithmetic but is a
+                     -- real GHDL bounds-check failure (found via
+                     -- tb_rk11_dma.vhd, Phase 2). rh11.vhd's own read path
+                     -- already does this -- see rh11.vhd:1637.
+                     sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
 
 
                   when busmaster_read =>
@@ -1087,7 +1291,7 @@ begin
                         if rkcs_iba = '0' then
                            work_bar <= work_bar + 1;
                         end if;
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        sdcard_xfer_addr <= (sdcard_xfer_addr + 1) mod 256;
                         sectorcounter <= sectorcounter - 1;
 
                         bus_master_control_dati <= '0';
