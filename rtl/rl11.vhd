@@ -148,7 +148,12 @@ signal csr_fc : std_logic_vector(2 downto 0);
 signal csr_drdy : std_logic;
 signal have_media : std_logic;                                        -- img_mounted, as a std_logic
 
-signal bar : std_logic_vector(15 downto 1);
+-- explicit initial values (defense in depth): the reset branch above
+-- already covers these every reset, but Cyclone V FPGA power-up state
+-- is not reliably zero for a signal that never had one, and this is
+-- exactly what real hardware showed for bar -- see the reset branch's
+-- comment.
+signal bar : std_logic_vector(15 downto 1) := (others => '0');
 
 -- dar subfields : read/write
 
@@ -159,15 +164,15 @@ subtype dnca_subtype is std_logic_vector(8 downto 0);
 type dnca_type is array(3 downto 0) of dnca_subtype;
 signal dnca : dnca_type;
 
-signal dar : std_logic_vector(15 downto 0);
+signal dar : std_logic_vector(15 downto 0) := (others => '0');
 
 -- mpr subfields : get status
 signal gs_vc : std_logic;          -- volume changed
 
-signal mpr : std_logic_vector(15 downto 0);
+signal mpr : std_logic_vector(15 downto 0) := (others => '0');
 
 -- mpr subfield; wc is only writeable field, but it is not readable
-signal wcp : std_logic_vector(12 downto 0);               -- positive value of wc
+signal wcp : std_logic_vector(12 downto 0) := (others => '0');               -- positive value of wc
 
 -- others
 
@@ -546,49 +551,59 @@ begin
       if nclk = '1' and nclk'event then
          if reset = '1' then
 
-            if have_rl = 1 then
-               csr_fc <= "000";
-               csr_ba <= "00";
-               csr_ie <= '0';
-               csr_crdy <= '1';
-               csr_ds <= "00";
-               csr_e <= "000";
-               csr_nxm <= '0';
+            -- unconditional, not gated behind "if have_rl = 1" -- have_rl
+            -- is a static always-1 generic here so this makes no logical
+            -- difference, but rh11.vhd/rk11.vhd's equivalent registers
+            -- reset unconditionally and this block should match that
+            -- shape rather than being a structural outlier. Real hardware
+            -- was observed with bar reading back a stuck-nonzero value
+            -- (0x1000) immediately after a genuine cold reset, before any
+            -- software ran -- GHDL simulation (which applies its initial
+            -- reset uniformly) never reproduced this, consistent with
+            -- this codebase's own existing caution just below about
+            -- Cyclone V FPGA power-up state not being reliably zero for
+            -- every signal without an explicit initial value.
+            csr_fc <= "000";
+            csr_ba <= "00";
+            csr_ie <= '0';
+            csr_crdy <= '1';
+            csr_ds <= "00";
+            csr_e <= "000";
+            csr_nxm <= '0';
 
-               bar <= "000000000000000";
-               dar <= "0000000000000000";
-               mpr <= "0000000000000000";
-               wcp <= "0000000000000";
+            bar <= "000000000000000";
+            dar <= "0000000000000000";
+            mpr <= "0000000000000000";
+            wcp <= "0000000000000";
 
-               dnhs(conv_integer(3)) <= '0';
-               dnhs(conv_integer(2)) <= '0';
-               dnhs(conv_integer(1)) <= '0';
-               dnhs(conv_integer(0)) <= '0';
-               dnca(conv_integer(3)) <= (others => '0');
-               dnca(conv_integer(2)) <= (others => '0');
-               dnca(conv_integer(1)) <= (others => '0');
-               dnca(conv_integer(0)) <= (others => '0');
+            dnhs(conv_integer(3)) <= '0';
+            dnhs(conv_integer(2)) <= '0';
+            dnhs(conv_integer(1)) <= '0';
+            dnhs(conv_integer(0)) <= '0';
+            dnca(conv_integer(3)) <= (others => '0');
+            dnca(conv_integer(2)) <= (others => '0');
+            dnca(conv_integer(1)) <= (others => '0');
+            dnca(conv_integer(0)) <= (others => '0');
 
-               start <= '0';
+            start <= '0';
 
-               write_start <= '0';
-               sdcard_read_start <= '0';       -- was never reset -- 'U' in sim (blocks the
-                                                -- idle/read-start guard forever); real hardware
-                                                -- apparently gets away with it only by luck of
-                                                -- Cyclone V's LUT-FF power-up-to-0 convention
-                                                -- (same bug found and fixed in rk11.vhd)
+            write_start <= '0';
+            sdcard_read_start <= '0';       -- was never reset -- 'U' in sim (blocks the
+                                             -- idle/read-start guard forever); real hardware
+                                             -- apparently gets away with it only by luck of
+                                             -- Cyclone V's LUT-FF power-up-to-0 convention
+                                             -- (same bug found and fixed in rk11.vhd)
 
-               gs_vc <= '1';
-               update_mpr <= '0';
+            gs_vc <= '1';
+            update_mpr <= '0';
 
-               br <= '0';
-               interrupt_trigger <= '0';
-               int_owed <= '0';
-               csr_crdy_d <= '1';
-               csr_ie_d <= '0';
-               interrupt_state <= i_idle;
+            br <= '0';
+            interrupt_trigger <= '0';
+            int_owed <= '0';
+            csr_crdy_d <= '1';
+            csr_ie_d <= '0';
+            interrupt_state <= i_idle;
 
-            end if;
          else
 
             trace_disk_valid <= '0';  -- one-cycle pulse default; the READ/WCHK
