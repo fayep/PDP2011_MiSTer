@@ -17,19 +17,30 @@
 // plain text):
 //   send <text>       -- write <text> + CR to the serial TX
 //   sendraw <hex>      -- write raw hex-encoded bytes to the serial TX (e.g. control chars)
+//   log [n]            -- replies "OK <base64 of the last n bytes (default
+//                          2000, capped at the ring buffer size) of raw
+//                          serial RX>" -- reading output no longer needs a
+//                          separate ssh+tail of the log FILE at all (Faye:
+//                          "you still have to ssh in to get the serial
+//                          log, is the irony of that lost on you?"),
+//                          decode client-side, e.g.:
+//                          echo log | nc -w2 host port | cut -d' ' -f2 | base64 -d
 //   ping               -- replies "pong"
-// Every request gets exactly one line back: "OK" or "ERR <message>".
+// Every request gets exactly one line back: "OK[ <data>]" or "ERR <message>".
 package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -89,6 +100,41 @@ func openSerial(path string, baud uint32) (*os.File, error) {
 	return f, nil
 }
 
+// ringBuf: bounded in-memory copy of the last N bytes of raw serial RX,
+// so the "log" control command can serve recent output without ever
+// touching the log FILE (or needing filesystem/ssh access at all) --
+// updated from the same RX goroutine that writes to logFile, so it's
+// always exactly the same bytes, just kept in memory too.
+type ringBuf struct {
+	mu  sync.Mutex
+	buf []byte
+	max int
+}
+
+func newRingBuf(max int) *ringBuf {
+	return &ringBuf{max: max}
+}
+
+func (r *ringBuf) write(p []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.buf = append(r.buf, p...)
+	if len(r.buf) > r.max {
+		r.buf = r.buf[len(r.buf)-r.max:]
+	}
+}
+
+func (r *ringBuf) tail(n int) []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if n <= 0 || n > len(r.buf) {
+		n = len(r.buf)
+	}
+	out := make([]byte, n)
+	copy(out, r.buf[len(r.buf)-n:])
+	return out
+}
+
 func main() {
 	dev := flag.String("dev", "/dev/ttyS1", "serial device")
 	baud := flag.Uint("baud", 19200, "baud rate")
@@ -116,8 +162,16 @@ func main() {
 	fmt.Fprintf(logFile, "\n--- pdp_harness started %s ---\n", time.Now().Format(time.RFC3339))
 	log.Printf("logging raw serial RX to %s (tail -f it)", *logPath)
 
+	// 256KiB is comfortably more than any single debug session's worth
+	// of "what just happened" -- the log FILE (unbounded, append-only)
+	// is still the source of truth for a full-session history; this is
+	// only for the "log" control command's own recent-output serving.
+	rb := newRingBuf(256 * 1024)
+
 	// RX: copy every byte from serial straight into the log, unbuffered,
-	// so `tail -f` shows exactly what a terminal would.
+	// so `tail -f` shows exactly what a terminal would -- and into the
+	// in-memory ring buffer, so the "log" control command can serve
+	// recent output without any filesystem access at all.
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -125,6 +179,7 @@ func main() {
 			if n > 0 {
 				logFile.Write(buf[:n])
 				logFile.Sync()
+				rb.write(buf[:n])
 			}
 			if err != nil {
 				log.Printf("serial read error: %v", err)
@@ -142,7 +197,7 @@ func main() {
 	os.Chmod(*sockPath, 0666)
 	log.Printf("control socket: %s", *sockPath)
 
-	go acceptLoop(l, serial, logFile)
+	go acceptLoop(l, serial, logFile, rb)
 
 	if *tcpAddr != "" {
 		tl, err := net.Listen("tcp", *tcpAddr)
@@ -151,7 +206,7 @@ func main() {
 		}
 		defer tl.Close()
 		log.Printf("control tcp: %s", *tcpAddr)
-		acceptLoop(tl, serial, logFile)
+		acceptLoop(tl, serial, logFile, rb)
 		return
 	}
 
@@ -160,28 +215,28 @@ func main() {
 	select {}
 }
 
-func acceptLoop(l net.Listener, serial *os.File, logFile *os.File) {
+func acceptLoop(l net.Listener, serial *os.File, logFile *os.File, rb *ringBuf) {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			log.Printf("accept: %v", err)
 			continue
 		}
-		go handleConn(conn, serial, logFile)
+		go handleConn(conn, serial, logFile, rb)
 	}
 }
 
-func handleConn(conn net.Conn, serial *os.File, logFile *os.File) {
+func handleConn(conn net.Conn, serial *os.File, logFile *os.File, rb *ringBuf) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := strings.TrimRight(scanner.Text(), "\r\n")
-		reply := dispatch(line, serial, logFile)
+		reply := dispatch(line, serial, logFile, rb)
 		fmt.Fprintln(conn, reply)
 	}
 }
 
-func dispatch(line string, serial *os.File, logFile *os.File) string {
+func dispatch(line string, serial *os.File, logFile *os.File, rb *ringBuf) string {
 	fields := strings.SplitN(line, " ", 2)
 	cmd := fields[0]
 	var arg string
@@ -210,6 +265,17 @@ func dispatch(line string, serial *os.File, logFile *os.File) string {
 			return "ERR " + err.Error()
 		}
 		return "OK"
+
+	case "log":
+		n := 2000
+		if arg != "" {
+			parsed, err := strconv.Atoi(arg)
+			if err != nil {
+				return "ERR bad byte count: " + err.Error()
+			}
+			n = parsed
+		}
+		return "OK " + base64.StdEncoding.EncodeToString(rb.tail(n))
 
 	default:
 		return "ERR unknown command: " + cmd
