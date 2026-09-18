@@ -25,6 +25,16 @@
 //                          log, is the irony of that lost on you?"),
 //                          decode client-side, e.g.:
 //                          echo log | nc -w2 host port | cut -d' ' -f2 | base64 -d
+//   newlog             -- replies "OK <base64 of everything written since
+//                          the last newlog call>" -- a shared cursor
+//                          (across all connections), so repeated polling
+//                          during an interactive session doesn't have to
+//                          re-fetch/re-decode output already seen (Faye:
+//                          "maybe you should have made the log command
+//                          give you a tail instead of from the top" / "or
+//                          just a newlog"). Falls back to returning from
+//                          the oldest still-retained byte if the cursor
+//                          has fallen behind the ring buffer's own bound.
 //   ping               -- replies "pong"
 // Every request gets exactly one line back: "OK[ <data>]" or "ERR <message>".
 package main
@@ -106,9 +116,11 @@ func openSerial(path string, baud uint32) (*os.File, error) {
 // updated from the same RX goroutine that writes to logFile, so it's
 // always exactly the same bytes, just kept in memory too.
 type ringBuf struct {
-	mu  sync.Mutex
-	buf []byte
-	max int
+	mu     sync.Mutex
+	buf    []byte
+	max    int
+	total  int64 // cumulative bytes ever written, for newlog's cursor math
+	cursor int64 // absolute position of the last "newlog" read (shared across all connections)
 }
 
 func newRingBuf(max int) *ringBuf {
@@ -119,6 +131,7 @@ func (r *ringBuf) write(p []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.buf = append(r.buf, p...)
+	r.total += int64(len(p))
 	if len(r.buf) > r.max {
 		r.buf = r.buf[len(r.buf)-r.max:]
 	}
@@ -132,6 +145,29 @@ func (r *ringBuf) tail(n int) []byte {
 	}
 	out := make([]byte, n)
 	copy(out, r.buf[len(r.buf)-n:])
+	return out
+}
+
+// newlog returns only the bytes written since the last newlog call (the
+// first call, before the cursor has ever moved, naturally returns
+// everything since the harness started -- same as "log" with a huge n),
+// then advances the shared cursor. If the cursor has fallen behind what the
+// bounded ring buffer still retains (a long gap between polls on a busy
+// console), this returns from the oldest still-available byte instead of
+// erroring -- some output was truly lost in that case, same tradeoff the
+// bounded ring buffer already makes for "log".
+func (r *ringBuf) newlog() []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	start := r.cursor
+	oldest := r.total - int64(len(r.buf))
+	if start < oldest {
+		start = oldest
+	}
+	offset := int(start - oldest)
+	out := make([]byte, len(r.buf)-offset)
+	copy(out, r.buf[offset:])
+	r.cursor = r.total
 	return out
 }
 
@@ -276,6 +312,9 @@ func dispatch(line string, serial *os.File, logFile *os.File, rb *ringBuf) strin
 			n = parsed
 		}
 		return "OK " + base64.StdEncoding.EncodeToString(rb.tail(n))
+
+	case "newlog":
+		return "OK " + base64.StdEncoding.EncodeToString(rb.newlog())
 
 	default:
 		return "ERR unknown command: " + cmd
