@@ -419,3 +419,205 @@ The xfer-address increment already uses `(sdcard_xfer_addr + 1) mod
 from the start - makes sense given RH70/RP06 genuinely needs
 multi-block DMA spanning many sectors, so this was presumably built
 correctly for that case originally. No fix needed on RH11.
+
+## 2026-09-16 - RSTS V9.6 (not just V10.1) hits the same hang shape on RH11
+
+Independent evidence this is a controller-level bug, not specific to
+V10.1's monitor: built a fresh RSTS V9.6 install from scratch on real
+MiSTer hardware this session (genuine DEC V9.6 distribution kit tape,
+`rsts_v9_6_install.tap` -- had to convert from TPC to raw SimH .tap
+format first, see [[reference_pdp_harness_operating]] area / this
+session's own notes for that detour) onto a blank RP06 disk via TM11 +
+RH11 -- i.e. a from-scratch SYSGEN done entirely on MiSTer, using
+MiSTer's own real-detected memory (1920K) throughout, no GA-media
+vintage-mismatch confound at all. It STILL hit the same "13 devices
+disabled" hang -- PC readings (`121564`, `141552`, `115166`, `144102`,
+`042014`...) matching this file's own documented "wide PC range across
+multiple kernel pages, scheduler alive, mainline starved" hang
+signature (see [[rsts-v96-hang-kipar5-nonidentity]] for that file's own
+parallel V9.6-on-RL characterization). Disk write activity (checked via
+file mtime) had genuinely stopped ~26 minutes before the check, ruling
+out "it's just slow real disk I/O" as an explanation -- this really is
+the hang, not patience.
+
+This means the hang reproduces on RH11 across at least two different
+RSTS monitor versions (V9.6, V10.1) with fully independent, freshly-
+generated disks. Faye's correction to an over-narrow first draft of this
+entry (which called it "RH11-specific"): "RH11 and RL11 and RK11 all
+hang" -- all three controllers show this same-shaped symptom. This
+file's own "Why RL02 hangs the same way" section above already flags a
+real, concrete SHARED SUSPECT (the identical copy-pasted interrupt FSM
+idiom in all three) -- but Faye's further point stands and is NOT yet
+ruled out: **they could each be independently broken in their own way**,
+merely producing a similar-looking "scheduler alive, mainline starved"
+symptom, rather than provably sharing one root cause. The shared-idiom
+fix (`e5186d9`) was tried on this exact RH70 hang and did NOT fix it
+(see "2026-09-04 - the interrupt fix does NOT fix this hang" above) --
+which itself is evidence AGAINST "it's simply the shared FSM bug" as a
+complete explanation, at least for RH70. Do not treat "same shape across
+three controllers" as proof of one shared cause; it's a real, testable
+lead, not a conclusion.
+
+This DOES still directly falsify the theory (explored earlier this same
+session, before this was found) that MiSTer's hardcoded 1920K memory-
+size register (`cr.vhd:365`) needed raising to fix RSTS V9.6 -- a fresh
+SYSGEN with zero size-template mismatch hit the identical hang, so the
+size register was never the culprit for this specific hang (it may
+still be worth revisiting on its own architectural-accuracy merits
+later, but not as a fix for this bug).
+
+## 2026-09-16 - interrupt FSM defect A re-verified against CURRENT rtl/, still present as a narrow residual race; real GHDL repro + fix (defect B confirmed already fixed)
+
+Independently re-checked the "Why RL02 hangs the same way" / "the
+interrupt fix does NOT fix this hang" history above against the ACTUAL
+current `rtl/rh11.vhd`, `rtl/rl11.vhd`, `rtl/rk11.vhd` on this branch
+(disk/native-transport-rh11), not the old line numbers/wording. The
+tree has moved on since those entries were written (this branch's own
+recent commits rewrote the sd_* transport, per the log at the top of
+this session) but the interrupt FSM itself is essentially what
+`e5186d9` ("int_owed fix") left it as.
+
+**Defect B (rh11-only, edge-vs-level) is genuinely fixed.** The
+int_owed-latching condition in current `rh11.vhd` is:
+
+```
+if rmcs1_rdyset = '1' or rmds_ataset = '1'
+   or (rmcs1_ie = '1' and rmcs1_ie_d = '0' and (rmcs1_rdy = '1' or rmds_ata = '1')) then
+   int_owed <= '1';
+end if;
+```
+
+The third term is a genuine level-based "IE armed while already
+ready/ATA" path, independent of the 1-cycle `rdyset`/`ataset` pulses --
+exactly what defect B needed. Confirmed working via Phase 1 of the new
+testbench below (interrupt #2: IE cleared, then rearmed on an
+already-ready controller well clear of any grant -- fires cleanly).
+
+**Defect A (all three controllers, "interrupt_trigger never cleared on
+delivery") is fixed for the WIDE case `e5186d9` targeted, but a narrow,
+single-cycle race version of the exact same defect was still present
+in the current tree before this session's fix below.** `int_owed` is a
+level latch, cleared only in the `i_wait -> i_idle` transition
+(`bg='0'`). `interrupt_trigger` -- the actual "one interrupt in flight"
+guard that gates re-entry into `i_req` -- was, in the pre-fix tree,
+**only ever cleared in `i_idle`'s else-branch** (taken when
+`int_owed='0'`), never on the `i_wait -> i_idle` transition itself. If
+a *new* completion/rearm event's `int_owed <= '1'` assignment (the
+general post-case if-block, textually AFTER the interrupt_state case,
+so it wins for that clock edge -- last-assignment-wins, ordinary VHDL
+sequential-process semantics) lands on the EXACT SAME nclk edge as a
+grant (`bg` deasserting, `i_wait -> i_idle`), then: the case's
+tentative `int_owed <= '0'` gets overridden back to `'1'` by the later
+assignment, while `interrupt_trigger` -- untouched by the `i_wait`
+branch -- is still `'1'` from the interrupt that was just granted.
+`i_idle` can then NEVER reach the `int_owed = '0'` else-branch that
+would clear `interrupt_trigger` (int_owed will never be `'0'` again),
+so **both signals latch permanently at `'1'` and every later
+completion on that controller is silently eaten until reset** -- a
+genuine, self-sustaining deadlock, not a one-off dropped interrupt.
+This is a strictly narrower window than the original defect A the
+notes described (needs exact single-nclk-edge coincidence between a
+grant and a new completion/rearm, not merely "any rearm while ready"),
+which is fully consistent with `e5186d9` having closed the wide case
+but the 2026-09-04 hardware test still hanging identically -- the wide
+case was never what was killing the real RH70 boot; this narrow one
+might still be relevant if real bus-arbitration timing can put a
+completion and a grant-ack on the same cycle, but that's unverified
+(see "still unproven" below).
+
+Same defect, same-shaped code, confirmed present in `rl11.vhd` and
+`rk11.vhd` too (identical `i_wait` branch, identical general
+`int_owed`-setting if-block placed after the case). rk11.vhd also has
+an odd vestigial direct `interrupt_trigger <= '1'` write in its CS1
+write-decode path ("setting ide, not setting go, but rdy = 1 ->
+interrupt") that looks backwards at first read, but traced through
+sequential/edge semantics it turns out to be harmless dead weight
+(self-corrects one cycle later via the same else-branch, before
+`int_owed` catches up) -- not touched, out of scope, flagged here only
+so nobody rediscovers it and assumes it's live.
+
+### Real GHDL repro: `sim/tb_rh11_int_owed_race.vhd`
+
+Built following the same house style as `tb_rh11_attn.vhd`/
+`tb_rh11_dma.vhd` (real `rh11` entity instantiation, no reimplemented
+logic), but drives `bg` itself (no CPU model) so the exact grant/
+deassert edge can be engineered cycle-for-cycle to coincide with a
+register write. Two phases:
+
+  - **Phase 1** (baseline, non-racing): SEEK completes with IE already
+    set -> interrupt #1 delivered/granted; IE cleared then rearmed on
+    the still-ready controller, well clear of any grant -> interrupt
+    #2 fires cleanly. Regression-proves `e5186d9`'s fix still works.
+  - **Phase 2** (the race): a third SEEK gets the FSM into `i_wait`;
+    IE is cleared and then the write that rearms it is timed so its
+    `int_owed`-latching edge (rmcs1_ie='1' current, rmcs1_ie_d='0'
+    current -- worked out from the register-write pipeline delay, see
+    the testbench's own comments for the edge-by-edge derivation) lands
+    on the exact nclk edge `bg` is dropped for interrupt #3's own
+    grant. Checks interrupt #4 (the rearm) is delivered, then issues a
+    genuinely new, unrelated SEEK afterward and checks interrupt #5
+    fires too (proving the controller isn't just "late" but actually
+    unstuck).
+
+Confirmed via temporary per-cycle `report` instrumentation added to
+`rh11.vhd` (removed before commit, not part of the diff) that on the
+PRE-FIX tree this exactly reproduces the predicted permanent lockup:
+`int_owed='1', interrupt_trigger='1', state=i_idle` from the race edge
+onward for the remainder of a 30us+ simulation window, `br` never
+pulsing again. Pre-fix run: **2 of 5 checks FAIL** (interrupt #4 eaten,
+and the supposedly-unrelated interrupt #5 also never fires because the
+FSM is now permanently dead, not just that one interrupt).
+
+### Fix (rh11.vhd, rl11.vhd, rk11.vhd)
+
+Added `interrupt_trigger <= '0';` alongside the existing
+`int_owed <= '0';` in the `i_wait -> i_idle` (`bg='0'`) transition, in
+all three files -- clearing the in-flight guard unconditionally at the
+moment the interrupt is actually granted, rather than relying on a
+later `i_idle` cycle that the race could prevent from ever occurring.
+Even if `int_owed` gets re-latched to `'1'` on that same edge by a
+coincident event, `interrupt_trigger` is now already `'0'` the very
+next edge, so `i_idle` re-enters `i_req` normally instead of
+deadlocking.
+
+Post-fix: **`tb_rh11_int_owed_race`: ALL 5 CHECKS PASS.** Full existing
+regression suite re-run clean after the fix: `tb_rh11_attn`,
+`tb_rh11_dma`, `tb_rh11_write`, `tb_rk11_dma`, `tb_rl11_dma`,
+`tb_mmu_rl11_par_stamp` all still PASS -- no observed regression.
+
+### What this does NOT establish
+
+**This is a real, testbench-proven, now-fixed RTL defect -- but it is
+NOT shown to be the cause of the actual RSTS hang on real hardware,**
+and per this file's own 2026-09-04 entry, a structurally similar
+"fix the interrupt FSM" change was already tried on real hardware and
+did **not** move the RH70 hang at all (byte-identical halt state
+before/after `e5186d9`). The race this session found and fixed is
+strictly narrower than what `e5186d9` covered, so there is no basis yet
+to expect a different real-hardware outcome:
+
+  - Reproducing it requires an exact single-nclk-edge (100 MHz-domain)
+    coincidence between a grant-ack and a fresh completion/rearm event.
+    Whether real UNIBUS/interrupt-arbiter timing on this core can ever
+    actually produce that coincidence during a real RSTS boot is
+    UNKNOWN -- not measured, not simulated against real driver timing,
+    not tested on hardware.
+  - The 2026-09-04 hardware hang investigation's own later entries
+    (MMR0 read-only-abort angle, `sim/tb_rsts_overlay` phases 1-5 all
+    passing / eliminating polled-read, interrupt-arbitration, MMU
+    D-space routing, and PAR-5 remap as mechanisms) remain the last
+    live, UNRESOLVED lead for the actual RH70 hang and are untouched by
+    this fix.
+  - This fix has NOT been deployed to or tested on real MiSTer
+    hardware, per the task boundary for this session's work (RTL +
+    simulation only). Do not treat this as "found and fixed the RSTS
+    hang" -- it is a real defect, real fix, real simulation proof, and
+    an open question whether it's relevant to the actual boot hang at
+    all.
+
+Worth doing next, NOT done here: run this exact fix (all three
+controllers) through a real hardware boot-to-hang cycle the same way
+`e5186d9` was tested, using the `.mgl`-boot procedure in
+`memory/feedback_mister_boot_procedure.md`, and see whether the hang
+point moves even slightly -- that's the only way to learn whether this
+narrow race is reachable by real RSTS driver/arbiter timing at all.

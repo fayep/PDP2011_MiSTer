@@ -372,6 +372,14 @@ begin
                      if bg = '0' then
                         interrupt_state <= i_idle;
                         int_owed <= '0';                                      -- interrupt granted: clear the pending latch
+                        interrupt_trigger <= '0';                             -- and the in-flight guard, unconditionally --
+                                                                                -- see notes/rsts-v10-rh70-hang.md 2026-09-16 /
+                                                                                -- rh11.vhd's matching comment: leaving this to
+                                                                                -- i_idle's else-branch left a 1-cycle race
+                                                                                -- where a coincident CRDY/IE-rearm event
+                                                                                -- re-latches int_owed on this exact edge while
+                                                                                -- interrupt_trigger is still stuck '1',
+                                                                                -- permanently eating every later interrupt.
                      end if;
 
                   when others =>

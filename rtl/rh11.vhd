@@ -696,6 +696,23 @@ begin
                      if bg = '0' then
                         interrupt_state <= i_idle;
                         int_owed <= '0';                                      -- interrupt granted: clear the pending latch
+                        interrupt_trigger <= '0';                             -- and the in-flight guard, unconditionally --
+                                                                                -- see notes/rsts-v10-rh70-hang.md 2026-09-16:
+                                                                                -- leaving this to i_idle's else-branch left a
+                                                                                -- 1-cycle race where a completion/rearm event
+                                                                                -- whose int_owed-set coincides with THIS exact
+                                                                                -- edge re-latches int_owed <= '1' (that
+                                                                                -- assignment is textually later, so it wins),
+                                                                                -- while interrupt_trigger -- untouched here --
+                                                                                -- stays '1' from the interrupt just granted.
+                                                                                -- i_idle can then never reach the int_owed='0'
+                                                                                -- else-branch that would have cleared it, so
+                                                                                -- both signals latch permanently and every
+                                                                                -- later completion is silently eaten.  Clearing
+                                                                                -- interrupt_trigger here too removes the race:
+                                                                                -- even if int_owed gets re-latched this same
+                                                                                -- edge, interrupt_trigger is already '0' next
+                                                                                -- edge and i_idle re-enters i_req normally.
                      end if;
 
                   when others =>

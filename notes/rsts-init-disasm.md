@@ -81,6 +81,38 @@ just with different tools available:
   loaded into KIPAR5/KIPAR6 windows during INIT's execution is NOT a
   simple "read block N of INIT.SYS" operation. How it's actually
   populated remains unresolved (see Open Questions).
+
+  **CORRECTION (independent re-verification, new session, real bytes
+  cross-checked against `~/Source/files11/init.sys` and a real RSTS
+  V9.6 GA disk image, `rsts_v9.6_rl_GA.dsk`)**: "own LBN range (2-623)"
+  above was computed in RSTS's own 512-byte-block directory accounting
+  (622 blocks × 512 = 318,464 bytes, matching the file exactly), NOT in
+  the native 256-byte RL sector units this same file's later
+  sector-size correction (see below) uses everywhere else. In THOSE
+  units — the ones the RL debug log's own `lbn:` values and this
+  session's `pdp11dis/overlaymap.py` both use — the real range is
+  **LBN 4-1247** (each 512-byte RSTS block = 2 native LBNs; confirmed
+  directly: `init.sys`'s first 64 bytes were found byte-for-byte at
+  disk offset 1024 = LBN 4 × 256 on the real GA pack). LBN 2 is one
+  sector EARLIER — `init.sys`'s own RSTS file-header block, not body
+  content — matching this doc's own "almost certainly checking a
+  header/version field" guess for the repeated re-reads in "Phase 3"
+  below.
+
+  Much more significantly: **every one of the "genuine" staging LBNs in
+  the "Physical memory layout" table below DOES resolve via simple
+  file-offset math after all** — `file_offset = (LBN - 4) * 256` — and
+  reproduces a full, byte-identical 8K page of the real `init.sys` file
+  at that offset every time it was checked (not merely "some bytes
+  matched": whole 8192-byte pages, byte-for-byte). What's genuinely
+  scattered/non-contiguous is which 8K page of the file gets staged
+  before which specific `MAPCOPY_PARAM` call, not the arithmetic for
+  any one of them. This doesn't overturn the open thread below (finding
+  `025006`'s real callers is still unresolved), but "ruled out... simple
+  file-offset math" was too strong — see `pdp11dis/overlaymap.py`'s
+  module docstring for the full derivation and
+  `tests/test_overlaymap.py` for byte-level proof, and the "Physical
+  memory layout" section below for per-pair specifics.
 - **Live-vs-static divergence**: several addresses in the 100000-127777
   range (`110434`, `110126`, `120562` seen live) contain **different,
   non-zero, coherently-executing code** at runtime than what's stored
@@ -768,6 +800,40 @@ those LBNs holds real, structured binary data -- not filler, not
 zero-fill. **`pdp11dis/rldma.py`'s `RL_BLOCK_BYTES` had the same bug
 (512 instead of 256) and has been fixed.**
 
+**UPDATE (independent re-verification, new session): 4 of these 5 pairs'
+staging LBNs resolve to real, byte-identical `init.sys` content via
+plain `file_offset = (LBN - 4) * 256` arithmetic (native 256-byte
+sectors, `init.sys` body starting at LBN 4 — see the sector-size
+correction above).** Concretely, against the real
+`~/Source/files11/init.sys` (318,464 bytes) and a real RSTS V9.6 GA RL
+pack:
+
+| bank pair (phys)  | resolved content LBNs (decimal) | init.sys file offset(s) |
+|--------------------|----------------------------------|--------------------------|
+| `0o400000`/`0o420000` | 4, 40, 80, 120, 160, 200 (LBN 0 predates the body — not attributable) | `0o0`, `0o22000`, `0o46000`, `0o72000`, `0o116000`, `0o142000` |
+| `0o300000`/`0o320000` | 304, 320 | `0o226000`, `0o236000` |
+| `0o340000`/`0o360000` | 346, 360 | `0o253000`, `0o262000` |
+| `0o240000`/`0o260000` | 392, 400 | `0o302000`, `0o306000` |
+
+Every one of those offsets was checked as a FULL 8K PAGE match (not
+just a leading few bytes), byte-for-byte identical between the disk's
+copy at that LBN and the extracted file at that offset. The
+`0o160000`/`0o200000` pair (already correctly identified above as pack-
+boundary probing, not a content load) partially re-confirms too: of its
+listed staging LBNs, only 226/240/280 (decimal) fall inside `init.sys`'s
+own body extent at all — the LBN-20000s cluster is confirmed
+numerically impossible as `init.sys` content on a real ~20,480-LBN RL02
+pack, exactly as this doc already concluded. New reusable tool for this:
+`~/Source/11orcam`'s `pdp11dis/overlaymap.py` (`disasm.py -overlaymap
+<name> <init.sys-path>`) resolves any of these 6 named bank pairs to
+file offsets/`-map` directives on demand — see its module docstring and
+`tests/test_overlaymap.py` for the full derivation and byte-level
+proof. Demonstrated concretely: `disasm.py -x init.sys 0o140000
+0o140000 -map 0:0o226000,0o140000,0o20000` now disassembles the
+`0o300000`/`0o320000` pair's real content at its virtual window,
+something no prior session's tooling could do without hand-deriving the
+offset first.
+
 **A genuine 11th target, breaking the "always identity on one side"
 pattern**: two final `MAPCOPY_PARAM` calls target physical `0o460000`,
 but with `PAR5 = 0o510` (phys `0o51000`) instead of the usual `0o1200`
@@ -786,6 +852,20 @@ it needs next" -- consistent with this being the LAST of the 22 calls
 before the
 mechanism goes quiet for the rest of the boot (see "Full-boot capture"
 below).
+
+**UPDATE (independent re-verification, new session)**: this "messier,
+directory-lookup-shaped" characterization is now CONFIRMED from static
+file analysis alone, not just inferred from the read pattern's shape.
+Checked directly against `init.sys`'s real 1244-LBN body extent
+(LBN 4-1247): the quoted burst ranges 1516-1660, 2488-2492, and
+3394-3424 all fall ENTIRELY outside it — they cannot be `init.sys`
+content at all under any file-offset interpretation, confirming they're
+genuinely some other file's directory-driven reads. LBN 928 (the "N
+devices disabled" transfer's start LBN, see Open Questions #1) IS
+inside `init.sys`'s body and resolves cleanly: `file_offset = (928 - 4)
+* 256 = 0o716000`, a real, byte-identical 8K page. See
+`pdp11dis/overlaymap.py`'s `"460000"` entry and
+`tests/test_overlaymap.py::test_460000_only_lbn928_resolves`.
 
 Reproducing this capture: `notes/rsts-init-symbols.txt`'s addresses
 plus
@@ -938,10 +1018,23 @@ re-deriving these names from scratch each session.
    of which lands on disk-exerciser filler bytes or, past cyl 255,
    entirely outside this container's real 20,480-block extent (SIMH
    synthesizes zero for those rather than erroring) -- almost certainly
-   pack-size auto-detection, not a load. Ruled out for the 4 genuine
-   pairs: simple file-offset-relative-to-
-   INIT.SYS's-own-LBN-range reads (the real LBNs are scattered, not a
-   contiguous run), and a single large multi-block DMA burst covering
+   pack-size auto-detection, not a load.
+
+   **UPDATE (independent re-verification, new session)**: "ruled out...
+   simple file-offset-relative-to-INIT.SYS's-own-LBN-range reads" below
+   needed a correction, not just a restatement -- see the sector-size
+   correction's own update above and `pdp11dis/overlaymap.py`. Each
+   INDIVIDUAL staging LBN for the 4 genuine pairs (plus LBN 928 of the
+   6th, anomalous pair) DOES resolve via plain `(LBN-4)*256` file-offset
+   arithmetic, confirmed as a full byte-identical 8K page every time.
+   What's genuinely scattered is WHICH page of the file gets staged
+   before which call, not the underlying arithmetic for any one
+   transfer -- the paragraph below (ruling out a single contiguous
+   multi-block DMA burst covering the whole file) is still correct and
+   unaffected by this correction; each MAPCOPY_PARAM call's own staging
+   read really is one separate, simple, page-sized transfer to a
+   computable offset, just not all from the same contiguous run.
+   And a single large multi-block DMA burst covering
    the whole file -- provably impossible, in fact: `init.sys` is
    318,464 bytes, LARGER than the entire 256KB (18-bit) unmapped-DMA
    window, so it cannot fit as one contiguous blob regardless of
@@ -954,12 +1047,16 @@ re-deriving these names from scratch each session.
    once: bit 5 WAS set but every map register read zero, and all known
    overlay banks (up to `0o460000`) sit comfortably under 256KB anyway,
    so nothing observed this session has actually required the map.
-   Still open: the final, non-identity-paired call into `0o460000` (see
-   above) is fed by a much messier, directory-lookup-shaped read
-   pattern that hasn't been correlated to a specific file the way the
-   other 5 pairs were -- finding `025006`'s callers remains the natural
-   next step to understand what actually selects each pair's content
-   rather than continuing to chase disk reads directly.
+   Still open (unchanged by the above -- this is a DIFFERENT question,
+   "which segment number picks which staging burst", not "what bytes
+   back a given burst"): the final, non-identity-paired call into
+   `0o460000` (see above) is fed by a much messier, directory-lookup-
+   shaped read pattern that hasn't been correlated to a specific file
+   the way the other 5 pairs were (now CONFIRMED via static analysis to
+   be genuinely outside `init.sys`'s own body for all but its one
+   content LBN, 928 -- see above) -- finding `025006`'s callers remains
+   the natural next step to understand what actually selects each
+   pair's content rather than continuing to chase disk reads directly.
 3. **RSTS genuinely uses ED=1 (downward-expanding) MMU pages** during
    normal execution -- confirmed live (`KIPAR1`, `KIPAR4` both ED=1 at
    a point during ordinary boot). This remains the strongest surviving
@@ -976,3 +1073,15 @@ re-deriving these names from scratch each session.
    conditional branches, refined by a preceding `CMP reg,#imm`) -- see
    its own module docstrings for details. Reusable for continuing this
    investigation or any similar RSTS/RT-11 reverse-engineering task.
+   New this session: `pdp11dis/overlaymap.py` (`disasm.py -overlaymap
+   <bank-pair-name> <init.sys-path>`) resolves any of the 6 named
+   overlay bank pairs to real `init.sys` file byte ranges and emits
+   ready-to-paste `-map` directives, entirely from static file bytes --
+   see its module docstring for the full LBN-to-file-offset derivation
+   and `tests/test_overlaymap.py` for byte-level proof. Genuinely NOT
+   yet built: turning a `025262`/device-walk-region investigation into
+   a similar one-shot tool -- that needs the live PAR5/PAR6 timeline
+   (`-pagemap`) correlated with a fresh capture, which this session had
+   no SIMH/hardware access to produce; see Open Questions #1's own next
+   step (disassemble `025262` itself, breakpoint with an `r1==041020`
+   filter) for what a future live-capture session should do next.
