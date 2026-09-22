@@ -728,7 +728,7 @@ begin
       else "000000" & cpu_addr_v(15 downto 6);
    addr_p(21 downto 6) <=
       "1111" & addr_p18 when top8k = '1' and map18 = '1'
-      else "111111" & cpu_addr_v(12 downto 6) when top8k = '1'
+      else "111111" & cpu_addr_v(15 downto 6) when top8k = '1'
       else addr_raw;
    io_page <= '1' when addr_p(21 downto 13) = "111111111" else '0';
 
