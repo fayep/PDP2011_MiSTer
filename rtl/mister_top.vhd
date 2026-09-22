@@ -1040,7 +1040,11 @@ begin
 	
    greenled  <= not rxrx1 or not txtx1 or not rxrx0 or not txtx0;
 	
-	dram_match <= '1' when addr(21 downto 18) /= "1111" else '0';
+	-- Model 70: RAM through the byte before the I/O page (2044KW, SIMH
+	-- 4096K). Other models keep the real Unibus hole above 1920KW.
+	dram_match <= '1' when modelcode_sync = 70 and addr(21 downto 13) /= "111111111"
+	         else '1' when modelcode_sync /= 70 and addr(21 downto 18) /= "1111"
+	         else '0';
    dram_ldqm <= dram_addr(11);
 	dram_udqm <= dram_addr(12);
 	

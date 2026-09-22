@@ -551,7 +551,7 @@ begin
    with modelcode select have_1920 <=  -- for 22-bit, does memory end at 1920KWords
       1 when 24,                             -- kdf11 but not 11/23, I'd speculate
       1 when 44,
-      1 when 70,
+      0 when 70,                             -- SIMH 4096K: RAM through the I/O page, 2044KW
       0 when others;
 
    with modelcode select have_mmumm <= -- does the mmu have the maintenance mode bit in sr0
@@ -786,36 +786,24 @@ begin
 
 -- memory interface
 -- addr_p(21:18)="1111" covers the whole top 256 KW (0o17000000-0o17777777).
--- Only 0o17000000-0o17757777 is the "maybe absent" extended Unibus window
--- (legitimately NXM on a real 1920 KW /70 with nothing out there). The top
--- 8 KW, 0o17760000-0o17777777 (addr_p(21:13)="111111111"), is the FIXED
--- Unibus I/O page -- always physically present on real hardware, holding
--- device CSRs, the MMU registers (172xxx, i.e. 17772xxx), and the CPU's
--- own Internal Register block (17777700-17777717, decoded separately in
--- cpu.vhd via consoleaddr(21:4)="111111111111111100"). b406979 NXM'd this
--- whole 256 KW range uniformly, which incorrectly also NXMs the always-
--- present I/O page for any address in it nothing else already answers for
--- (e.g. the Internal Register block) -- narrow the Unibus-mapped/NXM-
--- eligible condition to exclude the I/O page.
-   bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111" and io_page = '0'
+-- The top 8 KW, 0o17760000-0o17777777 (addr_p(21:13)="111111111"), is the
+-- I/O page. Below that, 0o17000000-0o17757777 is the Unibus window on a
+-- 1920 KW machine (have_1920=1: NXM, nothing answers). Model 70 has
+-- have_1920=0, so that window is RAM and the size register reports
+-- 2044 KW. b406979 must not NXM the I/O page itself.
+   bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111" and io_page = '0' and have_1920 = 1
 --      else '1' when unibus_busmaster_control_npg = '1'
       else '0';
 
    bus_addr <= ubmmaddr when sr3(5) = '1' and unibus_busmaster_control_npg = '1' and have_ubm = 1
    else "0000" & unibus_busmaster_addr when unibus_busmaster_control_npg = '1'
-   else ubmmaddr when sr3(5) = '1' and sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and have_ubm = 1
--- was: else "0000" & addr_p(17 downto 0) when addr_p(21 downto 18) = "1111" and have_mmu22 = 1 and have_1920 = 1
--- That branch aliased the whole top 256 KW window (0o17000000-0o17777777)
--- down to physical 0..0o777777. On a real 1920 KW 11/70 that range is
--- UNIBUS address space, not memory: with nothing on the Unibus it must
--- NXM. The alias made RSTS/E INIT's XBUF-placement probe read back valid
--- (mirrored low) data above 1920 KW, conclude memory reaches 2044 KW,
--- and skip trimming the SIL default table -> "Adjusting memory table" ->
--- monitor shrink -> boot hang. Dropping the branch: an unmapped "1111"
--- CPU access falls through to addr_p, misses dram_match (mister_top
--- only matches addr(21:18) /= "1111") and all device matches, and
--- unibus.vhd's cer_ioabort (addr_match='0' + bus_unibus_mapped='1')
--- raises nxmabort -- i.e. a proper NXM trap, like the hardware.
+   else ubmmaddr when sr3(5) = '1' and sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and have_ubm = 1 and have_1920 = 1
+-- Model 70 keeps this window as RAM (have_1920=0). SIMH SET CPU 4096K
+-- is 4,186,112 bytes, (MEMSIZE>>6)-1 = 177577, 2044KW: every physical
+-- address below the I/O page is memory, including 17000000-17757777.
+-- The pack was SYSGENed for that. A real Unibus 11/70 NXMs here
+-- (have_1920=1, models 24 and 44). Do not alias the window down into
+-- low memory; mister_top's dram covers it as its own rows.
    else addr_p;
 
    bus_dato <= mmu_dato when unibus_busmaster_control_npg = '0'
