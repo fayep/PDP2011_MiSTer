@@ -95,7 +95,13 @@ entity rl11 is
       trace_kipar5       : in  std_logic_vector(15 downto 0);
       trace_kipar6       : in  std_logic_vector(15 downto 0);
       trace_disk_kipar5  : out std_logic_vector(15 downto 0);
-      trace_disk_kipar6  : out std_logic_vector(15 downto 0)
+      trace_disk_kipar6  : out std_logic_vector(15 downto 0);
+
+      -- KW11-L line_tick, one nclk wide. Read and write hold the
+      -- written registers until crdy_hold increments wrap to zero,
+      -- then publish the finished CSR/BA/DA/MP and the interrupt.
+      -- Unconnected (and crdy_hold = 0) keeps instant completion.
+      line_tick : in std_logic := '0'
    );
 end rl11;
 
@@ -143,7 +149,21 @@ signal int_owed : std_logic := '0';        -- latched interrupt-pending: set by 
                                             -- on an already-ready controller; gated by IE,
                                             -- cleared only when the interrupt is granted.
 signal csr_crdy_d : std_logic := '1';       -- CRDY delayed one cycle, for edge detect
+signal csr_crdy_vis : std_logic;            -- CRDY as software reads it
 signal csr_ie_d : std_logic := '0';         -- IE delayed one cycle, for edge detect
+
+-- 0 is instant completion (PDP2011_20260922.rbf). 255 is one line tick:
+-- the counter increments while nonzero and the wrap publishes the
+-- finished registers and posts the interrupt. Seek, get status, and
+-- read header are not held.
+constant crdy_hold : integer range 0 to 255 := 255;
+signal holding : std_logic := '0';
+signal hold_pending : std_logic := '0';     -- tick already wrapped, transfer still running
+signal hold_count : std_logic_vector(7 downto 0) := x"00";
+signal hold_csr : std_logic_vector(15 downto 0);
+signal hold_ba : std_logic_vector(15 downto 0);
+signal hold_da : std_logic_vector(15 downto 0);
+signal hold_mp : std_logic_vector(15 downto 0);
 type interrupt_state_type is (
    i_idle,
    i_req,
@@ -285,6 +305,7 @@ begin
 
    csr_drdy <= have_media;             -- drive ready reflects whether a disk is actually mounted
    csr_de <= '0';                      -- the drive has no errors
+   csr_crdy_vis <= '0' when holding = '1' else csr_crdy;
 
    csr_err <= '0' when csr_e = "000" and csr_nxm = '0' and csr_de = '0' else '1';
 
@@ -334,6 +355,9 @@ begin
                br <= '0';
                interrupt_trigger <= '0';
                int_owed <= '0';
+               holding <= '0';
+               hold_pending <= '0';
+               hold_count <= x"00";
                csr_crdy_d <= '1';
                csr_ie_d <= '0';
                interrupt_state <= i_idle;
@@ -391,10 +415,10 @@ begin
                -- complete) regardless of IE, or on IE being armed while CRDY is already
                -- set (the classic "enable interrupts on a ready controller" probe).
                -- After the case so a completion coincident with a grant is not lost.
-               csr_crdy_d <= csr_crdy;
+               csr_crdy_d <= csr_crdy_vis;
                csr_ie_d <= csr_ie;
-               if (csr_crdy = '1' and csr_crdy_d = '0')
-                  or (csr_ie = '1' and csr_ie_d = '0' and csr_crdy = '1') then
+               if (csr_crdy_vis = '1' and csr_crdy_d = '0')
+                  or (csr_ie = '1' and csr_ie_d = '0' and csr_crdy_vis = '1') then
                   int_owed <= '1';
                end if;
 
@@ -408,12 +432,27 @@ begin
                if base_addr_match = '1' and bus_control_dati = '1' then
                   case bus_addr(2 downto 1) is
                      when "00" =>
-                        bus_dati <= csr_err & csr_de & csr_nxm & csr_e & csr_ds & csr_crdy & csr_ie & csr_ba & csr_fc & csr_drdy;
+                        if holding = '1' then
+                           bus_dati <= hold_csr;
+                        else
+                           bus_dati <= csr_err & csr_de & csr_nxm & csr_e & csr_ds & csr_crdy & csr_ie & csr_ba & csr_fc & csr_drdy;
+                        end if;
                      when "01" =>
-                        bus_dati <= bar & '0';
+                        if holding = '1' then
+                           bus_dati <= hold_ba;
+                        else
+                           bus_dati <= bar & '0';
+                        end if;
                      when "10" =>
-                        bus_dati <= dar;
+                        if holding = '1' then
+                           bus_dati <= hold_da;
+                        else
+                           bus_dati <= dar;
+                        end if;
                      when "11" =>
+                        if holding = '1' then
+                           bus_dati <= hold_mp;
+                        else
 
                         case csr_fc is
                            when "010" =>                                  -- get status
@@ -437,6 +476,7 @@ begin
                            when others =>
                               bus_dati <= (others => '0');
                         end case;
+                        end if;
                      when others =>
                         bus_dati <= (others => '0');
                   end case;
@@ -488,10 +528,34 @@ begin
                   update_mpr <= '0';
                end if;
 
+               if holding = '1' and hold_pending = '0' and line_tick = '1' then
+                  hold_count <= hold_count + 1;
+                  if hold_count = x"FF" then
+                     if csr_crdy = '1' then
+                        holding <= '0';
+                     else
+                        hold_pending <= '1';                          -- card still moving; publish when it posts CRDY
+                     end if;
+                  end if;
+               end if;
+               if hold_pending = '1' and csr_crdy = '1' then
+                  holding <= '0';
+                  hold_pending <= '0';
+               end if;
+
                if csr_crdy = '0' and start = '0' then
                   if have_media = '1' or csr_fc = "000" then          -- no-op always allowed, like
                                                                        -- RH11's RIP/RK11's control-reset exemption
                      start <= '1';
+                     if crdy_hold /= 0 and (csr_fc = "110" or csr_fc = "101" or csr_fc = "001") then
+                        holding <= '1';
+                        hold_pending <= '0';
+                        hold_count <= conv_std_logic_vector(crdy_hold, 8);
+                        hold_csr <= csr_err & csr_de & csr_nxm & csr_e & csr_ds & '0' & csr_ie & csr_ba & csr_fc & csr_drdy;
+                        hold_ba <= bar & '0';
+                        hold_da <= dar;
+                        hold_mp <= mpr;
+                     end if;
                   else
                      csr_e <= "001";                                  -- operation incomplete: no medium
                      csr_crdy <= '1';

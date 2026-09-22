@@ -57,6 +57,11 @@ entity kw11l is
       -- real, AC-mains-accurate behavior).
       debug_freeze : in std_logic := '0';
 
+      -- One clk-cycle pulse on the same edge that sets the line-clock
+      -- monitor bit. rl11 uses it to retire a held transfer. Stays
+      -- quiet while debug_freeze holds the divider.
+      line_tick : out std_logic;
+
       reset : in std_logic;
       clk50mhz : in std_logic;
       clk : in std_logic
@@ -103,6 +108,7 @@ begin
          if reset = '1' then
 
             br <= '0';
+            line_tick <= '0';
             if have_kw11l = 1 then
                interrupt_state <= i_idle;
 
@@ -150,6 +156,7 @@ begin
                br <= '0';
             end if;
 
+            line_tick <= '0';
             if have_kw11l = 1 then
                if base_addr_match = '1' and bus_control_dati = '1' then
                   bus_dati <= "00000000" & lc_monitor & lc_ie & "000000";
@@ -165,6 +172,7 @@ begin
                lc_clk_old <= lineclk;
                if lineclk /= lc_clk_old and lineclk = '1' then
                   lc_monitor <= '1';
+                  line_tick <= '1';
                end if;
             end if;
 
