@@ -118,6 +118,14 @@ signal addr_p : std_logic_vector(21 downto 0);
 
 signal addr_p18 : std_logic_vector(17 downto 6);
 signal addr_p22 : std_logic_vector(21 downto 6);
+signal addr_raw : std_logic_vector(21 downto 6);
+signal console_phys : std_logic;
+signal reloc_on : std_logic;
+signal reloc : std_logic;
+signal map22 : std_logic;
+signal map18 : std_logic;
+signal top8k : std_logic;
+signal io_page : std_logic;
 signal addr_p24z1 : std_logic_vector(23 downto 0);
 signal addr_p24z5 : std_logic_vector(23 downto 0);
 signal mmu_datain : std_logic_vector(15 downto 0);
@@ -695,16 +703,34 @@ begin
    addr_p22 <= unsigned(par) + (unsigned'("000000000") & unsigned(cpu_addr_v(12 downto 6)));
    addr_p24z1 <= "00" & addr_p(21 downto 1) & '0';
    addr_p24z5 <= "00" & addr_p(21 downto 5) & "00000";
+
+   -- Physical address, then one top-8K rule.
+   -- MMU off: the top 8K of the 16-bit virtual address is the top 8K
+   -- of 22-bit physical memory. MMU on in 18-bit mode: the top 8K of
+   -- that 18-bit result gets the same lift. MMU on in 22-bit mode:
+   -- no lift; a page, including page 7, is that window only when its
+   -- PAR lands there. io_page is the only register/Unibus test.
+   console_phys <= '1' when cons_exadep = '1' and cons_adss_cons = '1' else '0';
+   reloc_on <= '1' when have_mmu = 1 and sr0(0) = '1' else '0';
+   reloc <= '1' when reloc_on = '1'
+      or (sr0(8) = '1' and dstfreference = '1' and have_mmumm = 1)
+      else '0';
+   map22 <= '1' when reloc = '1' and have_mmu22 = 1 and sr3(4) = '1' else '0';
+   map18 <= '1' when reloc = '1' and map22 = '0' else '0';
+   top8k <= '0' when console_phys = '1' or map22 = '1'
+      else '1' when map18 = '1' and addr_p18(17 downto 13) = "11111"
+      else '1' when map18 = '0' and cpu_addr_v(15 downto 13) = "111"
+      else '0';
+   addr_raw <=
+      cons_consphy(21 downto 6) when console_phys = '1'
+      else addr_p22 when map22 = '1'
+      else "0000" & addr_p18 when map18 = '1'
+      else "000000" & cpu_addr_v(15 downto 6);
    addr_p(21 downto 6) <=
-      cons_consphy(21 downto 6) when cons_exadep = '1' and cons_adss_cons = '1'
-      else "0000" & addr_p18 when have_mmu = 1 and sr0(0) = '1' and (sr3(4) = '0' or have_mmu22 = 0) and addr_p18(17 downto 13) /= "11111"
-      else "1111" & addr_p18 when have_mmu = 1 and sr0(0) = '1' and (sr3(4) = '0' or have_mmu22 = 0) and addr_p18(17 downto 13) = "11111"
-      else addr_p22 when have_mmu = 1 and sr0(0) = '1' and sr3(4) = '1' and have_mmu22 = 1
-      else "0000" & addr_p18 when sr0(8) = '1' and dstfreference = '1' and (sr3(4) = '0' or have_mmu22 = 0)  and have_mmumm = 1 and addr_p18(17 downto 13) /= "11111"
-      else "1111" & addr_p18 when sr0(8) = '1' and dstfreference = '1' and (sr3(4) = '0' or have_mmu22 = 0)  and have_mmumm = 1 and addr_p18(17 downto 13) = "11111"
-      else addr_p22 when sr0(8) = '1' and dstfreference = '1' and sr3(4) = '1' and have_mmu22 = 1 and have_mmumm = 1
-      else "000000" & cpu_addr_v(15 downto 6) when cpu_addr_v(15 downto 13) /= "111"
-      else "111111" & cpu_addr_v(15 downto 6);
+      "1111" & addr_p18 when top8k = '1' and map18 = '1'
+      else "111111" & cpu_addr_v(12 downto 6) when top8k = '1'
+      else addr_raw;
+   io_page <= '1' when addr_p(21 downto 13) = "111111111" else '0';
 
 -- generate abort nonresident
    abort_nonresident <= '1' when have_acf3 = 1 and sr0(0) = '1' and (cpu_rd = '1' or cpu_wr = '1')
@@ -771,7 +797,7 @@ begin
 -- present I/O page for any address in it nothing else already answers for
 -- (e.g. the Internal Register block) -- narrow the Unibus-mapped/NXM-
 -- eligible condition to exclude the I/O page.
-   bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111" and addr_p(21 downto 13) /= "111111111"
+   bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111" and io_page = '0'
 --      else '1' when unibus_busmaster_control_npg = '1'
       else '0';
 
@@ -797,19 +823,19 @@ begin
 
    bus_control_dati <= '1' when unibus_busmaster_control_npg = '0'
       and cpu_rd = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0' and oddaddress = '0'
-      and addr_p(21 downto 13) /= "111111111"
+      and io_page = '0'
       else unibus_busmaster_control_dati when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) /= "11111"
       else '0';
 
    bus_control_dato <= '1' when unibus_busmaster_control_npg = '0'
       and cpu_rd = '0' and cpu_wr = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
-      and addr_p(21 downto 13) /= "111111111"
+      and io_page = '0'
       else unibus_busmaster_control_dato when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) /= "11111"
       else '0';
 
    bus_control_datob <= '1' when unibus_busmaster_control_npg = '0'
       and cpu_rd = '0' and cpu_wr = '1' and cpu_dw8 = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
-      and addr_p(21 downto 13) /= "111111111"
+      and io_page = '0'
       else unibus_busmaster_control_datob when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) /= "11111"
       else '0';
 
@@ -820,18 +846,18 @@ begin
 -- unibus interface - to the registers in the devices on the unibus
 -- or what behaves like that, ie. the top 8K of the unibus address space only;
 -- all the rest lives on the unibus map, via unibus_busmaster, or the memory bus
--- hence, the addresses that are valid on this bus are addr_p(21 downto 13) = all ones.
+-- hence, the addresses that are valid on this bus are io_page.
 
    unibus_addr <= unibus_busmaster_addr when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) = "11111"
       else addr_p(17 downto 0);
    unibus_control_dati <= '1' when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) = "11111" and unibus_busmaster_control_dati = '1'
-      else '1' when addr_p(21 downto 13) = "111111111" and cpu_rd = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0' and oddaddress = '0'
+      else '1' when io_page = '1' and cpu_rd = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0' and oddaddress = '0'
       else '0';
    unibus_control_dato <= '1' when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) = "11111" and unibus_busmaster_control_dato = '1'
-      else '1' when addr_p(21 downto 13) = "111111111" and cpu_rd = '0' and cpu_wr = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
+      else '1' when io_page = '1' and cpu_rd = '0' and cpu_wr = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
       else '0';
    unibus_control_datob <= '1' when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) = "11111" and unibus_busmaster_control_datob = '1'
-      else '1' when addr_p(21 downto 13) = "111111111" and cpu_rd = '0' and cpu_wr = '1' and cpu_dw8 = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
+      else '1' when io_page = '1' and cpu_rd = '0' and cpu_wr = '1' and cpu_dw8 = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
       else '0';
 
 -- drive out word or byte writes onto the bus, taking care of flipping output bytes onto the odd byte of the bus if needed
@@ -904,7 +930,7 @@ begin
       else "0000000000" & sr3out when addr_p24z1 = o"17772516" and have_mmu = 1
       else ubmo2(15 downto 0) when ubmo2valid = '1' and addr_p(1) = '0' and have_ubm = 1
       else "0000000000" & ubmo2(21 downto 16) when ubmo2valid = '1' and addr_p(1) = '1' and have_ubm = 1
-      else unibus_dati when addr_p(21 downto 13) = "111111111"
+      else unibus_dati when io_page = '1'
       else bus_dati;
 
 -- generate mmu_addr_match, extremely unelegant but I don't see how else to do this
