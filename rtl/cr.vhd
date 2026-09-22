@@ -363,7 +363,7 @@ begin
                         if bus_control_dati = '1' then
 --                           bus_dati <= "0111111111111111";           -- 077777 means 1024Kwords
 --                           bus_dati <= "1110111111111111";           -- 167777 means 1920Kwords
-                           bus_dati <= "1111111110111111";           -- 177577 means 2044Kwords
+                           bus_dati <= "1111111101111111";           -- 177577 means 2044Kwords
    --                                   1098765432109876
                         end if;
                      else
