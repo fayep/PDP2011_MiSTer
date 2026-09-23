@@ -1,12 +1,26 @@
 # RL11 line-tick hold
 
-`131f272` on `disk/native-transport-rh11` held both read and write.
-That bitstream is `output_files/pdp2011.rbf`, MD5
-`ba1bc2f0657269f9ee3fdca3ae71326a`, copied to the MiSTer as
-`_Computer/PDP2011_20260922_linehold.rbf`. The `.mgl` is
-`_Debug/pdp2011_rl_linehold.mgl`, disk `rsts_v9.6_rl.dsk`.
-`_Computer/PDP2011_20260922.rbf` was left in place. The write-only
-arm is a later change and is not in that bitstream.
+`d864485` on `disk/native-transport-rh11` arms the hold on the RLCS
+register write for read (`110`), write (`101`), and write-check
+(`001`). That bitstream is `output_files/pdp2011.rbf`, MD5
+`68c621da3c6706e12860ae5e91910dfe`, 3,646,840 bytes, copied to the
+MiSTer as `_Computer/PDP2011_20260922_rlcswr.rbf`. The `.mgl` is
+`_Debug/pdp2011_rl_rlcswr.mgl`, disk `rsts_v9.6_rl.dsk`. It was not
+loaded over the core that was already running.
+`_Computer/PDP2011_20260922.rbf` was left in place.
+
+Earlier cuts, still on the card:
+
+- `131f272` held read and write. MD5
+  `ba1bc2f0657269f9ee3fdca3ae71326a`,
+  `_Computer/PDP2011_20260922_linehold.rbf`,
+  `_Debug/pdp2011_rl_linehold.mgl`. The boot device list did not
+  appear.
+- `3b3efbd` armed only the disk WRITE function. MD5
+  `482c954a0ee90f931b1a6bcfd5fdf512`,
+  `_Computer/PDP2011_20260922_wrhold.rbf`,
+  `_Debug/pdp2011_rl_wrhold.mgl`. That boot reached "13 devices
+  disabled" and stopped.
 
 ## What the hold does
 
@@ -40,9 +54,11 @@ models.
 
 ## Build
 
-`./build-fpga.sh`, log `/tmp/pdp2011-bitstream-linehold.log`. Map, fit,
-and asm finished with 0 errors. TimeQuest setup slack on `cpuclk` is
-−2.353. The 20260922 build was −1.467.
+`d864485`: `./build-fpga.sh`, log
+`/tmp/pdp2011-bitstream-rlcs-write.log`. Map, fit, asm, and TimeQuest
+finished with 0 errors. Slow 1100mV 100C setup slack on `cpuclk` is
+−1.705. The write-function bitstream was −1.630. The read-and-write
+bitstream was −2.353. The 20260922 build was −1.467.
 
 ## What the boot did
 
