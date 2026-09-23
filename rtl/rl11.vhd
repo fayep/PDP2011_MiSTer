@@ -97,11 +97,10 @@ entity rl11 is
       trace_disk_kipar5  : out std_logic_vector(15 downto 0);
       trace_disk_kipar6  : out std_logic_vector(15 downto 0);
 
-      -- KW11-L line_tick, one nclk wide. A write command holds the
-      -- written registers until crdy_hold increments wrap to zero,
-      -- then publishes the finished CSR/BA/DA/MP and the interrupt.
-      -- A read does not arm the hold. Unconnected (and crdy_hold = 0)
-      -- keeps instant completion.
+      -- KW11-L line_tick, one nclk wide. A write of RLCS that starts a
+      -- read or write arms the hold. The counter then runs on its own:
+      -- a later read of the register neither arms nor retires it.
+      -- Unconnected (and crdy_hold = 0) keeps instant completion.
       line_tick : in std_logic := '0'
    );
 end rl11;
@@ -155,10 +154,10 @@ signal csr_ie_d : std_logic := '0';         -- IE delayed one cycle, for edge de
 
 -- 0 is instant completion (PDP2011_20260922.rbf). 255 is one line tick:
 -- the counter increments while nonzero and the wrap publishes the
--- finished registers and posts the interrupt. Armed by a write
--- command, not by a read: the M9312 boot block is a read, and holding
--- that read is what kept the boot device list from appearing. Seek,
--- get status, and read header are not held.
+-- finished registers and posts the interrupt. Armed by the RLCS
+-- register write that starts a read or write, not by a register read
+-- and not by the disk function alone. Seek, get status, and read
+-- header are not held.
 constant crdy_hold : integer range 0 to 255 := 255;
 signal holding : std_logic := '0';
 signal hold_pending : std_logic := '0';     -- tick already wrapped, transfer still running
@@ -524,6 +523,27 @@ begin
                      end case;
                   end if;
 
+                  -- The CSR write that clears ready starts the pause.
+                  -- A read of RLCS does not, so a command that waits
+                  -- for the interrupt still retires on the line tick.
+                  if crdy_hold /= 0
+                     and bus_addr(2 downto 1) = "00"
+                     and (bus_control_datob = '0' or (bus_control_datob = '1' and bus_addr(0) = '0'))
+                     and bus_dato(7) = '0'
+                     and (bus_dato(3 downto 1) = "110" or bus_dato(3 downto 1) = "101" or bus_dato(3 downto 1) = "001") then
+                     holding <= '1';
+                     hold_pending <= '0';
+                     hold_count <= conv_std_logic_vector(crdy_hold, 8);
+                     hold_ba <= bar & '0';
+                     hold_da <= dar;
+                     hold_mp <= mpr;
+                     if bus_control_datob = '0' or bus_addr(0) = '1' then
+                        hold_csr <= "000000" & bus_dato(9 downto 8) & '0' & bus_dato(6 downto 1) & csr_drdy;
+                     else
+                        hold_csr <= "000000" & csr_ds & '0' & bus_dato(6 downto 1) & csr_drdy;
+                     end if;
+                  end if;
+
                end if;
 
                if update_mpr = '1' then
@@ -550,15 +570,6 @@ begin
                   if have_media = '1' or csr_fc = "000" then          -- no-op always allowed, like
                                                                        -- RH11's RIP/RK11's control-reset exemption
                      start <= '1';
-                     if crdy_hold /= 0 and csr_fc = "101" then
-                        holding <= '1';
-                        hold_pending <= '0';
-                        hold_count <= conv_std_logic_vector(crdy_hold, 8);
-                        hold_csr <= csr_err & csr_de & csr_nxm & csr_e & csr_ds & '0' & csr_ie & csr_ba & csr_fc & csr_drdy;
-                        hold_ba <= bar & '0';
-                        hold_da <= dar;
-                        hold_mp <= mpr;
-                     end if;
                   else
                      csr_e <= "001";                                  -- operation incomplete: no medium
                      csr_crdy <= '1';

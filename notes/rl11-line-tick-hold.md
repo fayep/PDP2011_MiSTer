@@ -10,23 +10,24 @@ arm is a later change and is not in that bitstream.
 
 ## What the hold does
 
-`crdy_hold` in `rtl/rl11.vhd` is 255. A write command loads that value
-into an 8-bit counter and latches the CSR, BA, DA, and MP that software
-just wrote. While the counter is nonzero, reads of those four registers
-return the latch, so controller ready stays clear. Each rising edge of
-the KW11-L (`line_tick` from `rtl/kw11l.vhd`, the same edge that sets
-the line-clock monitor bit) increments the counter. The wrap to zero
-publishes the finished registers and posts the one interrupt. If the
-card is still moving when the counter wraps, publication waits until
-the transfer has actually set ready. A register read does not arm or
-advance the counter. If nothing ever reads the CSR, the tick still
-publishes ready and posts the interrupt.
+`crdy_hold` in `rtl/rl11.vhd` is 255. The pause starts on the RLCS
+register write that clears ready and starts a read or a write. That
+write loads the counter and latches the CSR, BA, DA, and MP. While the
+counter is nonzero, reads of those four registers return the latch, so
+controller ready stays clear. A read of a register does not arm the
+hold and does not retire it. Each rising edge of the KW11-L
+(`line_tick` from `rtl/kw11l.vhd`, the same edge that sets the
+line-clock monitor bit) increments the counter. The wrap to zero
+publishes the finished registers and posts the one interrupt, including
+when software never reads the CSR and only waits for the interrupt. If
+the card is still moving when the counter wraps, publication waits
+until the transfer has actually set ready.
 
-A read command does not arm the hold. The first cut armed read as well
-as write. The M9312 RL boot (`roms/m9312h47.mac`, `rlgo`) loads the
-boot block with one read and only then jumps to it, so that hold kept
-the boot device list from appearing. With no read to finish, nothing
-later in the boot ran either.
+The first cut armed the hold from inside the command once it had been
+accepted, and only for a disk write on the second cut. A read command
+is started by writing RLCS, so that write is the trigger. If the first
+register read was what advanced the state, a command that never reads
+the CSR would never finish, and the next command would never start.
 
 255 is one tick. This core's KW11-L is 60 Hz, so that is about 16.7 ms.
 `crdy_hold = 0` is instant completion, which is what
