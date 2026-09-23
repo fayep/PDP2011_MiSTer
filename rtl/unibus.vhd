@@ -629,8 +629,6 @@ component kw11l is
 
       debug_freeze : in std_logic := '0';
 
-      line_tick : out std_logic;
-
       reset : in std_logic;
       clk50mhz : in std_logic;
       clk : in std_logic
@@ -689,9 +687,7 @@ component rl11 is
       trace_kipar5       : in  std_logic_vector(15 downto 0);
       trace_kipar6       : in  std_logic_vector(15 downto 0);
       trace_disk_kipar5  : out std_logic_vector(15 downto 0);
-      trace_disk_kipar6  : out std_logic_vector(15 downto 0);
-
-      line_tick : in std_logic := '0'
+      trace_disk_kipar6  : out std_logic_vector(15 downto 0)
    );
 end component;
 
@@ -1329,7 +1325,6 @@ signal kw0_addr_match : std_logic;
 signal kw0_dati : std_logic_vector(15 downto 0);
 signal kw0_bg : std_logic;
 signal kw0_br : std_logic;
-signal kw0_line_tick : std_logic;
 signal kw0_ivec : std_logic_vector(8 downto 0);
 
 signal rl0_addr_match : std_logic;
@@ -1833,7 +1828,6 @@ begin
       have_kw11l => have_kw11l,
       kw11l_hz => kw11l_hz,
       debug_freeze => not cpu_cons_run,
-      line_tick => kw0_line_tick,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       clk => nclk
@@ -2038,9 +2032,7 @@ begin
       trace_kipar5 => mmu_trace_kipar5,
       trace_kipar6 => mmu_trace_kipar6,
       trace_disk_kipar5 => trace_rl_kipar5,
-      trace_disk_kipar6 => trace_rl_kipar6,
-
-      line_tick => kw0_line_tick
+      trace_disk_kipar6 => trace_rl_kipar6
    );
 
    tm0: tm11 port map(
