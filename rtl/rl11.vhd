@@ -97,10 +97,11 @@ entity rl11 is
       trace_disk_kipar5  : out std_logic_vector(15 downto 0);
       trace_disk_kipar6  : out std_logic_vector(15 downto 0);
 
-      -- KW11-L line_tick, one nclk wide. Read and write hold the
+      -- KW11-L line_tick, one nclk wide. A write command holds the
       -- written registers until crdy_hold increments wrap to zero,
-      -- then publish the finished CSR/BA/DA/MP and the interrupt.
-      -- Unconnected (and crdy_hold = 0) keeps instant completion.
+      -- then publishes the finished CSR/BA/DA/MP and the interrupt.
+      -- A read does not arm the hold. Unconnected (and crdy_hold = 0)
+      -- keeps instant completion.
       line_tick : in std_logic := '0'
    );
 end rl11;
@@ -154,8 +155,10 @@ signal csr_ie_d : std_logic := '0';         -- IE delayed one cycle, for edge de
 
 -- 0 is instant completion (PDP2011_20260922.rbf). 255 is one line tick:
 -- the counter increments while nonzero and the wrap publishes the
--- finished registers and posts the interrupt. Seek, get status, and
--- read header are not held.
+-- finished registers and posts the interrupt. Armed by a write
+-- command, not by a read: the M9312 boot block is a read, and holding
+-- that read is what kept the boot device list from appearing. Seek,
+-- get status, and read header are not held.
 constant crdy_hold : integer range 0 to 255 := 255;
 signal holding : std_logic := '0';
 signal hold_pending : std_logic := '0';     -- tick already wrapped, transfer still running
@@ -547,7 +550,7 @@ begin
                   if have_media = '1' or csr_fc = "000" then          -- no-op always allowed, like
                                                                        -- RH11's RIP/RK11's control-reset exemption
                      start <= '1';
-                     if crdy_hold /= 0 and (csr_fc = "110" or csr_fc = "101" or csr_fc = "001") then
+                     if crdy_hold /= 0 and csr_fc = "101" then
                         holding <= '1';
                         hold_pending <= '0';
                         hold_count <= conv_std_logic_vector(crdy_hold, 8);
