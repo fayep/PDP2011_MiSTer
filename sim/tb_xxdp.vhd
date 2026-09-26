@@ -31,7 +31,7 @@ entity tb_xxdp is
       mem             : string  := "build/xxdp.mem";
       init_pc         : integer := 8#200#;
       cons_sw         : integer := 0;
-      budget          : integer := 2000000;
+      budget          : integer := 30000000;
       pass_match      : string  := "";
       fail_match      : string  := "";
       fail_match2     : string  := "";

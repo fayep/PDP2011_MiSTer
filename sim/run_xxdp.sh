@@ -8,6 +8,8 @@
 # Halt-on-error scoreboard (tb_xxdp) prints pc/ir/psw/r0 in octal.
 # EKBAD0's failing test number is R0 (MAINDEC "TEST NUMBER(R0) IS").
 # Catalog field 2 may be comma-separated abs files (overlay, in order).
+# stop-time / budget come from xxdp.tab (EKBAD0 500ms / 30e6 clocks;
+# ZMMCA0 2sec / 120e6).  Extra args after the name are passed to GHDL.
 
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

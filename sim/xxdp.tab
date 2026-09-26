@@ -7,6 +7,8 @@
 #
 # cons_sw 104001 = SW15 halt-on-error + SW11 inhibit-iterations + SW00 skip operator (EKBAD0).
 # ZMMCA0 uses 0 so the diagnostic takes default limits 2710-17470.
+# stop-time must be > budget*20ns to let the scoreboard TIMEOUT fire;
+# budget is cpu clocks (20 ns). 20ms was only enough for the EKBAD0 banner.
 #
-EKBAD0|EKBAD0.BIC|200|104001|END PASS|TEST NUMBER||20ms|2000000
-ZMMCA0|ZMMCA0.BIC|200|0||WRITE-READ ERROR|DUAL ADDRESS ERROR|20ms|2000000
+EKBAD0|EKBAD0.BIC|200|104001|END PASS|TEST NUMBER||500ms|30000000
+ZMMCA0|ZMMCA0.BIC|200|0||WRITE-READ ERROR|DUAL ADDRESS ERROR|2sec|120000000
