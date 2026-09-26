@@ -31,7 +31,14 @@ the mock:
 last, so the mock architecture wins.  GHDL prints a "was also defined"
 warning for this; it is expected.
 
-## SIMH cross-checks
+## XXDP / MAINDEC
+
+`sim/run_xxdp.sh EKBAD0` (or `ZMMCA0`) converts an abs-loader `.BIC` from
+`XXDP_ROOT` (default `/Users/faye/Source/files11/xxdp_rl`) through
+`abs2mem.py` and runs the shared `tb_xxdp` harness.  Add another test
+with one line in `sim/xxdp.tab` — see that file and `docs/xxdp-cpu-mem-tb.md`.
+
+`sim/*.mem` is gitignored; `run_xxdp.sh` writes `sim/build/xxdp_<name>.mem`.
 
 `sim/simh/` has notes on driving Open SIMH's `pdp11` as a reference
 model for comparison work.

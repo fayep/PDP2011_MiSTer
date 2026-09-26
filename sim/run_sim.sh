@@ -67,4 +67,9 @@ else
 	ghdl -m $GHDL_FLAGS -o "build/$TOP" "$TOP"
 fi
 
-exec "build/$TOP" "--vcdgz=build/$TOP.vcd.gz" "$@"
+VCD_ARG="--vcdgz=build/$TOP.vcd.gz"
+if [ "${GHDL_VCD:-}" = "none" ]; then
+	VCD_ARG=""
+fi
+# shellcheck disable=SC2086
+exec "build/$TOP" $VCD_ARG "$@"
