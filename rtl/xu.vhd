@@ -135,6 +135,7 @@ component cpu is
 
       dbg_r7 : out std_logic_vector(15 downto 0);
       dbg_ir : out std_logic_vector(15 downto 0);
+      dbg_r0 : out std_logic_vector(15 downto 0);
 
       clk : in std_logic;
       reset : in std_logic
@@ -602,6 +603,7 @@ begin
       init_psw => init_psw,
       dbg_r7 => open,
       dbg_ir => open,
+      dbg_r0 => open,
       clk => cpuclk,
       reset => xureset
    );

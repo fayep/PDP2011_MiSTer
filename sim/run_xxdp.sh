@@ -5,10 +5,8 @@
 #   sim/run_xxdp.sh EKBAD0 [extra ghdl -r args...]
 #   sim/run_xxdp.sh ZMMDB0   # after adding a line to sim/xxdp.tab
 #
-# Converts $XXDP_ROOT/<file> (default /Users/faye/Source/files11/xxdp_rl)
-# with abs2mem.py into sim/build/xxdp_<name>.mem (gitignored), elaborates
-# tb_xxdp, runs with -g generics from xxdp.tab.  Adding a third test is
-# one catalog line plus this command — not a new VHDL clone.
+# Halt-on-error scoreboard (tb_xxdp) prints pc/ir/psw/r0 in octal.
+# EKBAD0's failing test number is R0 (MAINDEC "TEST NUMBER(R0) IS").
 
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

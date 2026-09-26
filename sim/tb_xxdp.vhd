@@ -19,6 +19,7 @@
 -- new VHDL file.  Direct: sim/run_sim.sh tb_xxdp -gmem=...
 --
 -- Pass/fail: see sim/xxdp.tab and docs/xxdp-cpu-mem-tb.md.
+-- HALT/FAIL/TIMEOUT reports include r0 (MAINDEC test number).
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
@@ -55,6 +56,7 @@ architecture sim of tb_xxdp is
    signal dbg_r7     : std_logic_vector(15 downto 0);
    signal dbg_psw    : std_logic_vector(15 downto 0);
    signal dbg_ir     : std_logic_vector(15 downto 0);
+   signal dbg_r0     : std_logic_vector(15 downto 0);
    signal tx0        : std_logic := '1';
 
    type ram_t is array(0 to 65535) of std_logic_vector(15 downto 0);
@@ -157,6 +159,7 @@ begin
          dbg_r7       => dbg_r7,
          dbg_psw      => dbg_psw,
          dbg_ir       => dbg_ir,
+         dbg_r0       => dbg_r0,
          tx0          => tx0,
          rx0          => '1',
 
@@ -257,6 +260,7 @@ begin
                or contains(cons, ncons, fail_match2) then
                report "tb_xxdp FAIL mem=" & mem & " cycles=" & integer'image(i)
                   & " pc=" & oct(dbg_r7) & " ir=" & oct(dbg_ir)
+                  & " r0=" & oct(dbg_r0)
                   & " console=" & cons_dump(cons, ncons) severity error;
                done := true;
                exit;
@@ -270,7 +274,7 @@ begin
          elsif saw_run and cons_run = '0' then
             report "tb_xxdp HALT mem=" & mem & " cycles=" & integer'image(i)
                & " pc=" & oct(dbg_r7) & " ir=" & oct(dbg_ir)
-               & " psw=" & oct(dbg_psw)
+               & " psw=" & oct(dbg_psw) & " r0=" & oct(dbg_r0)
                & " console=" & cons_dump(cons, ncons) severity error;
             done := true;
             exit;
@@ -282,6 +286,7 @@ begin
       if not done then
          report "tb_xxdp TIMEOUT mem=" & mem & " cycles=" & integer'image(i)
             & " pc=" & oct(dbg_r7) & " ir=" & oct(dbg_ir)
+            & " r0=" & oct(dbg_r0)
             & " console=" & cons_dump(cons, ncons) severity error;
       end if;
       wait;

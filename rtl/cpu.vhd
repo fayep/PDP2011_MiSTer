@@ -109,6 +109,7 @@ entity cpu is
 
       dbg_r7 : out std_logic_vector(15 downto 0);                    -- live PC (R7) for the OSD front-panel banner
       dbg_ir : out std_logic_vector(15 downto 0);                    -- last fetched instruction word (*ir_addr)
+      dbg_r0 : out std_logic_vector(15 downto 0);                    -- live R0 (current register set); MAINDEC test number
 
       clk : in std_logic;                                            -- input clock
       reset : in std_logic                                           -- reset cpu, also causes init signal to devices on the bus to be asserted
@@ -807,6 +808,7 @@ begin
    addr_v <= addr;
    dbg_r7 <= r7;
    dbg_ir <= ir;
+   dbg_r0 <= r0;
 
 
 -- id : map states onto instruction or data access

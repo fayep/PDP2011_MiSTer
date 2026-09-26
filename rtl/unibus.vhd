@@ -37,6 +37,7 @@ entity unibus is
       dbg_r7 : out std_logic_vector(15 downto 0);                    -- live PC (R7)
       dbg_ir : out std_logic_vector(15 downto 0);                    -- last fetched instruction
       dbg_psw : out std_logic_vector(15 downto 0);                   -- live PSW
+      dbg_r0 : out std_logic_vector(15 downto 0);                    -- live R0 (MAINDEC test number)
 
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -399,6 +400,7 @@ component cpu is
 
       dbg_r7 : out std_logic_vector(15 downto 0);
       dbg_ir : out std_logic_vector(15 downto 0);
+      dbg_r0 : out std_logic_vector(15 downto 0);
 
       clk : in std_logic;                                            -- input clock
       reset : in std_logic                                           -- reset cpu, also causes init signal to devices on the bus to be asserted
@@ -1653,6 +1655,7 @@ begin
       cons_user => cons_user,
       dbg_r7 => cpu_dbg_r7,
       dbg_ir => dbg_ir,
+      dbg_r0 => dbg_r0,
       clk => clk,
       reset => reset
    );

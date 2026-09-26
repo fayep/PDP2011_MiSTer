@@ -153,6 +153,7 @@ component cpu is
       cons_user : out std_logic;                                     -- '1' if user mode
       dbg_r7 : out std_logic_vector(15 downto 0);
       dbg_ir : out std_logic_vector(15 downto 0);
+      dbg_r0 : out std_logic_vector(15 downto 0);
 
       clk : in std_logic;                                            -- input clock
       reset : in std_logic                                           -- reset cpu, also causes init signal to devices on the bus to be asserted
@@ -657,6 +658,7 @@ begin
       init_psw => init_psw,
       dbg_r7 => open,
       dbg_ir => open,
+      dbg_r0 => open,
       clk => cpuclk,
       reset => reset
    );
