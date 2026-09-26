@@ -561,7 +561,7 @@ signal cpuresetlength : integer range 0 to 255 := 255;
 -- largest cpuclk setup-TNS source in the design. 2-FF sync on cpuclk
 -- while cpureset='1' (~126 cpuclk cycles), then freeze -- also the
 -- intended "OSD CPU model takes effect on reset" behavior.
-signal modelcode_meta, modelcode_sync : integer range 0 to 255 := 0;
+signal modelcode_meta, modelcode_sync : integer range 0 to 255 := 70;
 signal have_xu_meta, have_xu_sync : integer range 0 to 1 := 0;
 -- have_rk/have_rl/have_rh/have_tm are all plain constants -- controller
 -- presence is a build-time choice (a real RK11/RL11/RP06/TM11 doesn't
