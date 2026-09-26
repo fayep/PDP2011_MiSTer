@@ -7,6 +7,7 @@
 #
 # Halt-on-error scoreboard (tb_xxdp) prints pc/ir/psw/r0 in octal.
 # EKBAD0's failing test number is R0 (MAINDEC "TEST NUMBER(R0) IS").
+# Catalog field 2 may be comma-separated abs files (overlay, in order).
 
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -40,16 +41,26 @@ FAIL2=$(echo "$LINE" | awk -F'|' '{print $7}')
 STOP=$(echo "$LINE" | awk -F'|' '{print $8}')
 BUDGET=$(echo "$LINE" | awk -F'|' '{print $9}')
 
-SRC="$XXDP_ROOT/$FILE"
-if [ ! -f "$SRC" ]; then
-	echo "missing XXDP image: $SRC (set XXDP_ROOT)" >&2
-	exit 1
-fi
-
 cd "$SIM"
 mkdir -p build
 MEM="build/xxdp_${NAME}.mem"
-python3 abs2mem.py "$SRC" "$MEM"
+
+SRCS=""
+OLDIFS=$IFS
+IFS=,
+for f in $FILE; do
+	f=${f#"${f%%[![:space:]]*}"}
+	f=${f%"${f##*[![:space:]]}"}
+	SRC="$XXDP_ROOT/$f"
+	if [ ! -f "$SRC" ]; then
+		echo "missing XXDP image: $SRC (set XXDP_ROOT)" >&2
+		exit 1
+	fi
+	SRCS="$SRCS $SRC"
+done
+IFS=$OLDIFS
+# shellcheck disable=SC2086
+python3 abs2mem.py -o "$MEM" $SRCS
 
 GHDL_FLAGS="--std=08 -fexplicit -fsynopsys -frelaxed --workdir=build -Pbuild"
 TOP=tb_xxdp
@@ -58,6 +69,16 @@ DEPS=$(sed -n 's/^--[[:space:]]*deps:[[:space:]]*//p' "$TOP.vhd" | tr '\n' ' ')
 need_elab=1
 if [ -x "build/$TOP" ] && [ "build/$TOP" -nt "$TOP.vhd" ]; then
 	need_elab=0
+	for f in $DEPS; do
+		found=""
+		for d in ../rtl ../roms . ..; do
+			if [ -f "$d/$f" ]; then found="$d/$f"; break; fi
+		done
+		if [ -n "$found" ] && [ "$found" -nt "build/$TOP" ]; then
+			need_elab=1
+			break
+		fi
+	done
 fi
 if [ "$need_elab" -eq 1 ]; then
 	rm -rf build/work-obj08.cf

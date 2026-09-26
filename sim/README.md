@@ -33,10 +33,11 @@ warning for this; it is expected.
 
 ## XXDP / MAINDEC
 
-`sim/run_xxdp.sh EKBAD0` (or `ZMMCA0`) converts an abs-loader `.BIC` from
-`XXDP_ROOT` (default `/Users/faye/Source/files11/xxdp_rl`) through
-`abs2mem.py` and runs the shared `tb_xxdp` harness.  Add another test
-with one line in `sim/xxdp.tab` — see that file and `docs/xxdp-cpu-mem-tb.md`.
+`sim/run_xxdp.sh EKBAD0` (or `ZMMCA0`) converts one or more abs-loader
+`.BIC`/`.BIN` files from `XXDP_ROOT` through `abs2mem.py` (byte-wise
+load, optional comma-separated overlay list in `sim/xxdp.tab`) and runs
+the shared `tb_xxdp` harness.  Add another test with one line in
+`sim/xxdp.tab` — see that file and `docs/xxdp-cpu-mem-tb.md`.
 
 `sim/*.mem` is gitignored; `run_xxdp.sh` writes `sim/build/xxdp_<name>.mem`.
 

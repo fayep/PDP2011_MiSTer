@@ -13,10 +13,18 @@ Per block, prefer the convention whose 8-bit checksum is 0.  If neither
 checksums (slack), prefer A if it fits, else B.  A count==6 block with
 an odd load address is the DEC terminator and is not stored.
 
+Payload bytes are stored at the load address **byte-wise**.  Odd load
+addresses stitch a leftover byte from the previous DOS-11 record (EKBAD0
+block 2 ends at 002066, block 3 starts at 002067).  Pairing payload
+words from k=0 at (load//2) misplaces every later odd-origin block.
+
 Emits one "<word-index> <value>\\n" line per 16-bit word, both DECIMAL
 (word-index = byte-address / 2), matching sim/mac2mem.py.
 
-Usage:  abs2mem.py <in.bin> <out.mem>
+Usage:
+  abs2mem.py <in.bin> <out.mem>
+  abs2mem.py -o <out.mem> <in.bin> [<in.bin> ...]
+Later files overlay earlier ones (same 64K byte image).
 """
 import os
 import sys
@@ -43,8 +51,16 @@ def _candidate(blob, off, mode):
             "count": count, "csum": csum}
 
 
-def parse_abs(blob):
-    words = {}
+def parse_abs(blob, mem=None, hit=None):
+    """Load one abs file into a 64K byte image.  Returns
+    (words_dict, transfer, nblocks, nterm, nbadcs, consumed, modes).
+    words_dict maps word-index -> value for any word with a written byte.
+    mem/hit if passed are reused so a later file can overlay.
+    """
+    if mem is None:
+        mem = bytearray(65536)
+    if hit is None:
+        hit = bytearray(65536)
     transfer = None
     off = 0
     n = len(blob)
@@ -78,30 +94,23 @@ def parse_abs(blob):
         else:
             nblocks += 1
             modes.append(rec["mode"])
-            for k in range(0, len(payload) - 1, 2):
-                w = payload[k] | (payload[k + 1] << 8)
-                words[(rec["load"] + k) // 2] = w
-            if len(payload) % 2:
-                a = rec["load"] + len(payload) - 1
-                prev = words.get(a // 2, 0)
-                if a % 2 == 0:
-                    words[a // 2] = (prev & 0xFF00) | payload[-1]
-                else:
-                    words[a // 2] = (prev & 0x00FF) | (payload[-1] << 8)
+            load = rec["load"]
+            for k, b in enumerate(payload):
+                a = load + k
+                if 0 <= a < 65536:
+                    mem[a] = b
+                    hit[a] = 1
         off += rec["size"]
-    return words, transfer, nblocks, nterm, nbadcs, off, modes
+    words = {}
+    for a in range(0, 65536, 2):
+        if hit[a] or hit[a + 1]:
+            words[a // 2] = mem[a] | (mem[a + 1] << 8)
+    return words, transfer, nblocks, nterm, nbadcs, off, modes, mem, hit
 
 
-def main():
-    if len(sys.argv) != 3:
-        sys.exit(__doc__)
-    src, dst = sys.argv[1], sys.argv[2]
-    blob = open(src, "rb").read()
-    words, xfer, nblocks, nterm, nbadcs, consumed, modes = parse_abs(blob)
-    if not words:
-        sys.exit("%s: no absolute-loader blocks" % src)
-    os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True)
-    with open(dst, "w") as f:
+def _emit(path, words, xfer, nblocks, nterm, nbadcs, consumed, modes, nbytes):
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    with open(path, "w") as f:
         for a in sorted(words):
             f.write("%d %d\n" % (a, words[a]))
     lo = min(words) * 2
@@ -110,12 +119,47 @@ def main():
     sys.stderr.write(
         "%s: %d words  bytes %06o-%06o  blocks=%d term=%d badcs=%d "
         "modes=%s xfer=%s consumed=%d/%d\n"
-        % (dst, len(words), lo, hi, nblocks, nterm, nbadcs, mc,
+        % (path, len(words), lo, hi, nblocks, nterm, nbadcs, mc,
            ("%06o" % xfer) if xfer is not None else "none",
-           consumed, len(blob))
+           consumed, nbytes)
     )
     sys.stderr.write("  @0=%06o  @200=%06o\n" % (
         words.get(0, 0), words.get(0o200 // 2, 0)))
+
+
+def main():
+    args = sys.argv[1:]
+    if len(args) >= 3 and args[0] == "-o":
+        dst, srcs = args[1], args[2:]
+    elif len(args) == 2:
+        srcs, dst = [args[0]], args[1]
+    else:
+        sys.exit(__doc__)
+    mem = bytearray(65536)
+    hit = bytearray(65536)
+    tot_blocks = tot_term = tot_bad = 0
+    all_modes = []
+    last_xfer = None
+    last_cons = last_n = 0
+    words = {}
+    for src in srcs:
+        blob = open(src, "rb").read()
+        words, xfer, nblocks, nterm, nbadcs, consumed, modes, mem, hit = \
+            parse_abs(blob, mem, hit)
+        tot_blocks += nblocks
+        tot_term += nterm
+        tot_bad += nbadcs
+        all_modes.extend(modes)
+        last_xfer = xfer
+        last_cons, last_n = consumed, len(blob)
+        if len(srcs) > 1:
+            sys.stderr.write("  loaded %s blocks=%d xfer=%s\n" % (
+                os.path.basename(src), nblocks,
+                ("%06o" % xfer) if xfer is not None else "none"))
+    if not words:
+        sys.exit("%s: no absolute-loader blocks" % srcs[0])
+    _emit(dst, words, last_xfer, tot_blocks, tot_term, tot_bad,
+          last_cons, all_modes, last_n)
 
 
 if __name__ == "__main__":

@@ -571,9 +571,10 @@ begin
                      when xmit_data =>
                         tx <= xmit_buf(xmit_bit);
                         if xmit_sample >= samplerate-1 then
-                           xmit_bit <= xmit_bit + 1;
                            if xmit_bit = 7 then
                               xmit_state <= xmit_stopbit;
+                           else
+                              xmit_bit <= xmit_bit + 1;
                            end if;
                         end if;
 

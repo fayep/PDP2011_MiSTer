@@ -1,6 +1,9 @@
 # XXDP MAINDEC catalog for sim/run_xxdp.sh
 # Fields, '|'-separated:
-#   name | file in XXDP_ROOT | init_pc oct | cons_sw oct | pass_match | fail_match | fail_match2 | stop-time | budget
+#   name | files in XXDP_ROOT | init_pc oct | cons_sw oct | pass_match | fail_match | fail_match2 | stop-time | budget
+#
+# "files" is one basename or comma-separated basenames, loaded in order
+# (later overlays earlier) by abs2mem.py onto one 64K image.
 #
 # cons_sw 104001 = SW15 halt-on-error + SW11 inhibit-iterations + SW00 skip operator (EKBAD0).
 # ZMMCA0 uses 0 so the diagnostic takes default limits 2710-17470.
