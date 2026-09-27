@@ -950,7 +950,7 @@ sr0out_debug <= sr0;
             abort_acknowledged <= '0';
             mmutrap <= '0';
             sr0(15 downto 0) <= "0000000000000000";
-            sr1 <= sr1_in;
+            sr1 <= (others => '0');                        -- INIT clears MMR1
             sr2 <= sr2_in;
             sr3 <= "000000";
             if modelcode = 23 or modelcode = 24 then
@@ -976,6 +976,7 @@ sr0out_debug <= sr0;
             end if;
             if sr0(15 downto 13) = "000" then
                abort_acknowledged <= '0';
+               sr1 <= sr1_in;                               -- KB11-C: track autoinc/dec until freeze
                sr2 <= sr2_in;
                if sr0(0) = '1' then
                   sr0(15) <= abort_nonresident;

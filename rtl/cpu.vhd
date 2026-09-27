@@ -459,6 +459,7 @@ signal have_mtps : integer range 0 to 1;
 signal have_mfp : integer range 0 to 1;
 signal have_mpr : integer range 0 to 1;
 signal have_spl : integer range 0 to 1;
+signal have_mmr1_j11strip : integer range 0 to 1;                     -- J-11 omits PC (027) from MMR1
 signal have_csm : integer range 0 to 1;
 signal have_red : integer range 0 to 1;
 signal have_kmwaitonly : integer range 0 to 1;
@@ -930,10 +931,10 @@ begin
 
    ir_mf <= '1' when ir_mfpi = '1' or ir_mfpd = '1' else '0';
    ir_mt <= '1' when ir_mtpi = '1' or ir_mtpd = '1' else '0';
-   sr1_dst <= sr1_dstd & ir(2 downto 0) when sr1_dstd /= "00000" and ir(2 downto 0) /= "111"
+   sr1_dst <= sr1_dstd & ir(2 downto 0) when sr1_dstd /= "00000" and (have_mmr1_j11strip = 0 or ir(2 downto 0) /= "111")
       else "00000000";
    sr1_src <= sr1_srcd & "110" when (ir_mt = '1' or ir_mf = '1' or ir_jsr = '1') and sr1_srcd /= "00000"
-      else sr1_srcd & ir(8 downto 6) when sr1_srcd /= "00000" and ir(8 downto 6) /= "111" and ir_dop = '1'
+      else sr1_srcd & ir(8 downto 6) when sr1_srcd /= "00000" and ir_dop = '1' and (have_mmr1_j11strip = 0 or ir(8 downto 6) /= "111")
       else "00000000";
 
    sr1 <= sr1_dst & sr1_src when (ir_dop = '1' or ir_jsr = '1') and sr1_srcd /= "00000"
@@ -1085,6 +1086,11 @@ begin
       1 when 73 | 83 | 84 | 93 | 94,   -- kdj11
       0 when others;
 
+   -- SIMH clean_MMR1 / CPUT_J: drop 027. 11/70 records R7 (#, @#, (PC)+).
+   with modelcode select have_mmr1_j11strip <=
+      1 when 73 | 83 | 84 | 93 | 94,
+      0 when others;
+
    with modelcode select have_csm <=
       1 when 44,
       1 when 73 | 83 | 84 | 93 | 94,   -- kdj11
@@ -1226,6 +1232,8 @@ begin
             rbus_waddr <= "000000";                        -- select r0 in set 0
             rbus_d <= conv_std_logic_vector(modelcode, 16);          -- set modelcode on rbus
             rbus_we <= '1';                                -- pulse write
+            sr1_srcd <= "00000";                           -- INIT: MMR1 packer idle (KB11-C)
+            sr1_dstd <= "00000";
          else
 
 --
