@@ -2,6 +2,7 @@
 
 ; result(500):
 ;   1  all passed
+;  53  CLR dest DATO stored through NR MM-register alias
 ;  55  ACF 1 read did not stick MMR0 bit 12 (TENB off)
 ;  54  ACF 1 read did not return the page-5 pattern
 ;  13  ACF 1 write did not abort (bit 13)

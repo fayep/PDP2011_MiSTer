@@ -1,8 +1,11 @@
 -- deps: cpuregs.vhd fpuregs.vhd cpu.vhd mmu.vhd mmu_trace_watch.vhd cr.vhd csdr.vhd xubm.vhd xubl.vhd xubrt45.vhd xu.vhd m9312h47.vhd m9312l47.vhd kl11.vhd kw11l.vhd sdspi.vhd rh11.vhd rk11.vhd rl11.vhd tm11.vhd dr11c.vhd mncad.vhd mnckw.vhd mncaa.vhd mncdi.vhd mncdo.vhd brk_compare.vhd unibus.vhd
 --
--- EKBEE1 TESTNO 55: ACF 1 write aborts (MMR0 bit 13); ACF 1 read sets
--- sticky bit 12 with TENB off; TENB then vector 250 and page field 4
--- (011011). Do not retarget page 4 to 1.
+-- EKBEE1 TESTNO 53: CLR (R1) through NR page 5 alias of KIPAR4 must
+-- abort and not store (KIPAR4 stays 1000). Dest is DATO-only (rs_dw);
+-- gate PAR/PDR/MMR writes on mmu_mmuabort.
+-- EKBEE1 TESTNO 55: ACF 1 write aborts (MMR0 bit 13, 020011 not 030011);
+-- ACF 1 read sets sticky bit 12 with TENB off; TENB then vector 250
+-- and page field 4 (011011). Do not retarget page 4 to 1.
 --
 -- Run: sim/run_sim.sh tb_acf_trap --ieee-asserts=disable --stop-time=2ms
 
