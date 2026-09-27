@@ -238,6 +238,7 @@ signal ir_rtt : std_logic;
 signal ir_wait : std_logic;
 signal ir_byte : std_logic;
 signal ir_store : std_logic;
+signal ir_dstwo : std_logic;                               -- dest write-only (MOV/CLR): no dest DATI
 signal ir_srcr7 : std_logic;
 signal ir_dstr7 : std_logic;
 signal ir_dstm2r7 : std_logic;
@@ -314,6 +315,7 @@ signal id_select : std_logic;
 signal rd_select : std_logic;
 signal rs_mt : std_logic;
 signal rs_jj : std_logic;
+signal rs_dw : std_logic;
 signal rd_signal : std_logic;
 
 signal wr_signal : std_logic;
@@ -692,8 +694,11 @@ begin
 -- rs signals - read suppression for specific cases, because raising the read line would cause a wrong memory access - potentially a trap
    rs_mt <= '1' when (ir_mtpi = '1' or ir_mtpd = '1') and finalreference = '1' and state /= state_store_alu_w else '0';
    rs_jj <= '1' when (ir_jmp = '1' or ir_jsr = '1') and finalreference = '1' else '0';
+   -- MOV/CLR dest is DATO only. Dest DATI on ACF 1 ORs MMR0 bit 12, then
+   -- the store aborts RO (bit 13) → 030011. EKBEE1 TESTNO 55 wants 020011.
+   rs_dw <= '1' when ir_dstwo = '1' and dstfreference = '1' and state /= state_store_alu_w else '0';
 
-   rd_signal <= '0' when rs_mt = '1' or rs_jj = '1' or ir_wait = '1' else rd_select;
+   rd_signal <= '0' when rs_mt = '1' or rs_jj = '1' or rs_dw = '1' or ir_wait = '1' else rd_select;
    rd <= rd_signal;
 
 -- wr : cpu needs write transaction
@@ -3889,6 +3894,7 @@ begin
    begin
       ir_byte <= '0';
       ir_store <= '1';
+      ir_dstwo <= '0';
       if ir_sop = '1' then
          case ir(15 downto 6) is
             when "0000000011" =>                                     -- swab
@@ -3909,12 +3915,14 @@ begin
                alu_psw(0) <= '0';
 
             when "0000101000" =>                                     -- clr
+               ir_dstwo <= '1';
                result := "0000000000000000";
                alu_output <= result;
                alu_psw(3 downto 0) <= "0100";
 
             when "1000101000" =>                                     -- clrb
                ir_byte <= '1';
+               ir_dstwo <= '1';
                result := "0000000000000000";
                alu_output <= result;
                alu_psw(3 downto 0) <= "0100";
@@ -4276,6 +4284,7 @@ begin
       elsif ir_dop = '1' then
          case ir(15 downto 12) is
             when "0001" =>                                           -- mov
+               ir_dstwo <= '1';
                result := alus_input;
                alu_output <= result;
                alu_psw(3) <= result(15);
@@ -4289,6 +4298,7 @@ begin
 
             when "1001" =>                                           -- movb
                ir_byte <= '1';
+               ir_dstwo <= '1';
                result := alus_input;
                alu_output <= result;
                alu_psw(3) <= result(7);

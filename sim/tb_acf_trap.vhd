@@ -153,6 +153,7 @@ begin
          " result=" & oct(res) &
          " snap=" & oct(ram(8#510# / 2)) &
          " mmr0r=" & oct(ram(8#512# / 2)) &
+         " abtsnap=" & oct(ram(8#514# / 2)) &
          " got250=" & oct(ram(8#506# / 2)) &
          " pc=" & oct(dbg_r7) &
          " run=" & std_logic'image(cons_run);

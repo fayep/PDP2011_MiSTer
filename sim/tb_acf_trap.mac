@@ -5,6 +5,7 @@
 ;  55  ACF 1 read did not stick MMR0 bit 12 (TENB off)
 ;  54  ACF 1 read did not return the page-5 pattern
 ;  13  ACF 1 write did not abort (bit 13)
+;  30  ACF 1 write abort also set bit 12 (030011 vs 020011)
 ;  56  TENB ACF 1 read did not take vector 250
 ;  11  TENB snap was not 011011 (page 4, not page 1)
 
@@ -37,6 +38,7 @@ t4pc:	.word	0
 got250:	.word	0
 snap:	.word	0
 mmr0r:	.word	0
+abtsnap:.word	0
 
 	.=1000
 start:
@@ -61,8 +63,13 @@ start:
 	halt
 contw:
 	bit	#20000,@#MMR0
-	bne	1$
+	bne	0$
 	mov	#13.,@#result
+	halt
+0$:	mov	@#snap,@#abtsnap
+	cmp	#20011,@#abtsnap	; bit 13+page4+MME, not 030011
+	beq	1$
+	mov	#30.,@#result
 	halt
 1$:	mov	#1,@#MMR0		; clear freeze; keep MME; page stays 4
 	mov	#12547,@#120000		; restamp via ACF 6 if the abort leaked

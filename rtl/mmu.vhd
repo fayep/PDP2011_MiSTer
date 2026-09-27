@@ -1017,7 +1017,10 @@ sr0out_debug <= sr0;
                   -- Bit 12 is sticky until software/INIT clear. Assigning
                   -- trap_mm every unfrozen cycle cleared it after the ACF
                   -- access (no freeze; freeze is 15:13 only).
-                  if acf_trap = '1' then
+                  -- ACF trap (bit 12) is not an abort. relocW ACF 1/2 is
+                  -- RO abort only (020011). Do not OR trap onto abort.
+                  if acf_trap = '1' and abort_readonly = '0'
+                     and abort_nonresident = '0' and abort_pagelength = '0' then
                      sr0(12) <= '1';
                   end if;
                   sr0(7) <= sr0_ic;
