@@ -322,6 +322,7 @@ signal wr_signal : std_logic;
 
 -- address buffers
 signal dest_addr : std_logic_vector(15 downto 0);
+signal dstfref : std_logic;
 signal addr_indirect : std_logic_vector(15 downto 0);
 signal finalreference : std_logic;
 
@@ -540,7 +541,7 @@ begin
 -- this is needed for maintenance mode in the mmu, and then most likely only to be able
 -- to pass diagnostics without error messages
 
-   with state select dstfreference <=
+   with state select dstfref <=
       '1' when state_dst1,
       '1' when state_dst2,
       '1' when state_dst3a,
@@ -550,6 +551,7 @@ begin
       '1' when state_dst7b,
       '1' when state_store_alu_w,
       '0' when others;
+   dstfreference <= dstfref;
 
 
 -- generate signals for yellow stack trap
@@ -696,7 +698,7 @@ begin
    rs_jj <= '1' when (ir_jmp = '1' or ir_jsr = '1') and finalreference = '1' else '0';
    -- MOV/CLR dest is DATO only. Dest DATI on ACF 1 ORs MMR0 bit 12, then
    -- the store aborts RO (bit 13) → 030011. EKBEE1 TESTNO 55 wants 020011.
-   rs_dw <= '1' when ir_dstwo = '1' and dstfreference = '1' and state /= state_store_alu_w else '0';
+   rs_dw <= '1' when ir_dstwo = '1' and dstfref = '1' and state /= state_store_alu_w else '0';
 
    rd_signal <= '0' when rs_mt = '1' or rs_jj = '1' or rs_dw = '1' or ir_wait = '1' else rd_select;
    rd <= rd_signal;
