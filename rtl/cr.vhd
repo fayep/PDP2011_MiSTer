@@ -379,7 +379,7 @@ begin
 --                           bus_dati <= "1111111101111111";           -- 177577: SIMH 2044KW, bit 7 clear
                            bus_dati <= "1111111111111111";           -- 177777: bits 7:0 all ones (EKBEE1 TEST 2)
    --                                   1098765432109876
-                        -- DRAM map is still 2044KW (have_1920=0 / mister_top dram_match).
+                        -- Size CSR only. DRAM / have_1920 stop at 1920KW; 17000000-17757777 is Unibus window.
                         end if;
                      else
                         nxm <= '1';

@@ -551,7 +551,7 @@ begin
    with modelcode select have_1920 <=  -- for 22-bit, does memory end at 1920KWords
       1 when 24,                             -- kdf11 but not 11/23, I'd speculate
       1 when 44,
-      0 when 70,                             -- SIMH 4096K: RAM through the I/O page, 2044KW
+      1 when 70,                             -- Unibus window 17000000-17757777 is not core
       0 when others;
 
    with modelcode select have_mmumm <= -- does the mmu have the maintenance mode bit in sr0
@@ -792,13 +792,12 @@ begin
 -- addr_p(21:18)="1111" covers the whole top 256 KW (0o17000000-0o17777777).
 -- The top 8 KW, 0o17760000-0o17777777 (addr_p(21:13)="111111111"), is the
 -- I/O page. Below that, 0o17000000-0o17757777 is the Unibus window
--- (KB11-C 22-bit mapping). have_1920=1 (24/44): NXM, nothing answers.
--- Model 70 keeps have_1920=0 (LOSIZE 177777 / 2044KW DRAM decode);
--- CPU 22-bit accesses still take the Unibus window: BME uses the map,
--- else PA bits 17:0 as 18-bit Unibus. EKBEE1 TESTNO 50 stores via
--- KIPAR4=167777 at VA 100100 (PA 17000000) and fetches via PAR5=0
--- (PA 0); BME off so 17000000 aliases to 000000 and they meet.
--- b406979 must not NXM the I/O page itself.
+-- (KB11-C / SIMH e2ecc11 map22_unibus). have_1920=1: that 22-bit PA is
+-- not core; mister_top dram_match excludes 21:18=1111. Unmapped or
+-- absent accesses NXM (bus_unibus_mapped). CPU 22-bit relocate still
+-- takes the window: BME uses UBMAP 170200-170376; BME off uses PA bits
+-- 17:0 as 18-bit Unibus (TESTNO 50: 17000000 -> 000000). 24/44 keep a
+-- raw 22-bit window PA and NXM. b406979 must not NXM the I/O page.
    bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111" and io_page = '0' and have_1920 = 1
 --      else '1' when unibus_busmaster_control_npg = '1'
       else '0';
@@ -806,7 +805,7 @@ begin
    bus_addr <= ubmmaddr when sr3(5) = '1' and unibus_busmaster_control_npg = '1' and have_ubm = 1
    else "0000" & unibus_busmaster_addr when unibus_busmaster_control_npg = '1'
    else ubmmaddr when sr3(5) = '1' and sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and io_page = '0' and have_ubm = 1
-   else "0000" & addr_p(17 downto 0) when sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and io_page = '0' and have_1920 = 0
+   else "0000" & addr_p(17 downto 0) when sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and io_page = '0' and modelcode = 70
    else addr_p;
 
    bus_dato <= mmu_dato when unibus_busmaster_control_npg = '0'

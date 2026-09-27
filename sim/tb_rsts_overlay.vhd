@@ -223,7 +223,7 @@ begin
       );
 
    -- zero-wait-state RAM, physical 0..0377777 (BAE 0 and 1; below the I/O page)
-   addr_match <= '1' when addr(21 downto 13) /= "111111111"
+   addr_match <= '1' when addr(21 downto 18) /= "1111"
                      and unsigned(addr) < 131072
                  else '0';
 
