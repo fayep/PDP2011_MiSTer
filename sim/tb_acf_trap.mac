@@ -1,4 +1,4 @@
-	.title	tb_acf_trap - EKBEE1 TESTNO 55 MMR0 bit 12
+	.title	tb_acf_trap - EKBEE1 TESTNO 53/55/60 MMR0 bit 12
 
 ; result(500):
 ;   1  all passed
@@ -10,6 +10,8 @@
 ;  56  TENB ACF 1 read did not take vector 250
 ;  17  ACF 1 read painted page 7 (INT REG 177572)
 ;  11  TENB snap was not 011003 (handler page 1; not held page 4)
+;  60  TENB second 250 while bit 12 already set (TESTNO 60)
+;  61  ACF 4 write with bit 12 preset did not store
 
 CPUERR	= 177766
 MMR0	= 177572
@@ -140,8 +142,30 @@ contt:
 	beq	6$
 	mov	#11.,@#result
 	halt
-6$:	clr	@#MMR0
+6$:
+; TESTNO 60: software-set bit 12 + TENB. ACF 4 write completes
+; (page 4/5 alias) and must not take a second vector 250.
+	mov	#77404,@#KIPDR4
+	mov	#77404,@#KDPDR4
+	mov	#17777,@#120000
+	mov	#11001,@#MMR0		; bit12+TENB+MME
+	clr	@#got250
+	mov	#fail60,@#t250pc
+	clr	@#100000
+	tst	@#got250
+	beq	60a$
+	mov	#60.,@#result
+	halt
+60a$:	tst	@#120000
+	beq	60b$
+	mov	#61.,@#result
+	halt
+60b$:	clr	@#MMR0
 	mov	#1,@#result
+	halt
+
+fail60:
+	mov	#60.,@#result
 	halt
 
 failrd:

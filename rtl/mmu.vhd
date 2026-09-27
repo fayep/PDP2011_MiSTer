@@ -791,8 +791,12 @@ begin
          and ((cpu_rd = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "100"))
            or (cpu_wr = '1' and (pdr(2 downto 0) = "100" or pdr(2 downto 0) = "101")))
       else '0';
+   -- KB11-C / SIMH relocR_test: TENB requests vector 250 only on the
+   -- first setting of bit 12 (0→1). EKBEE1 TESTNO 60 writes MMR0
+   -- 011001 then ACF 4; a second 250 is unexpected. Sticky bit 12
+   -- and PDR A still update. Do not level-trigger while bit 12 is 1.
    trap_mm <=
-      '1' when acf_trap = '1' and sr0(9) = '1'
+      '1' when acf_trap = '1' and sr0(9) = '1' and sr0(12) = '0'
       else '0';
 
 

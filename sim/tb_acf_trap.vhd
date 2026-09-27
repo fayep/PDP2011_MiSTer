@@ -7,6 +7,8 @@
 -- ACF 1 read sets sticky bit 12 with TENB off; TENB then vector 250.
 -- Handler at 20000 so live 6:1 is page 1 (011003). INT REG skip so
 -- reading 177572 is not page 7. Freeze is 15:13 only. No 4→1 mux.
+-- EKBEE1 TESTNO 60: MMR0 011001 then ACF 4 write; TENB is first-trap
+-- only (bit 12 already set → no second vector 250). Store completes.
 --
 -- Run: sim/run_sim.sh tb_acf_trap --ieee-asserts=disable --stop-time=2ms
 
