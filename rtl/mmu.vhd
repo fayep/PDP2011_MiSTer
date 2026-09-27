@@ -752,8 +752,12 @@ begin
          else '0';
 
 -- generate abort readonly
+-- 11/45,11/70 ACF (KB11-C / SIMH relocW_test): write abort RO on
+-- ACF 1 (resident RO, trap on read) and ACF 2 (resident RO).
+-- ACF 0 is NR (abort_nonresident), not RO. EKBEE1 TESTNO 55 writes
+-- KIPDR4=077401 (ACF=1) then @#100000 and expects MMR0 020011.
    abort_readonly <=
-      '1' when have_acf3 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 0) = "000" or pdr(2 downto 0) = "010")
+      '1' when have_acf3 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "010")
       else '1' when have_acf2 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 1) = "00" or pdr(2 downto 1) = "01")
       else '0';
 
@@ -787,23 +791,22 @@ begin
 -- memory interface
 -- addr_p(21:18)="1111" covers the whole top 256 KW (0o17000000-0o17777777).
 -- The top 8 KW, 0o17760000-0o17777777 (addr_p(21:13)="111111111"), is the
--- I/O page. Below that, 0o17000000-0o17757777 is the Unibus window on a
--- 1920 KW machine (have_1920=1: NXM, nothing answers). Model 70 has
--- have_1920=0, so that window is RAM and the size register reports
--- 2044 KW. b406979 must not NXM the I/O page itself.
+-- I/O page. Below that, 0o17000000-0o17757777 is the Unibus window
+-- (KB11-C 22-bit mapping). have_1920=1 (24/44): NXM, nothing answers.
+-- Model 70 keeps have_1920=0 (LOSIZE 177777 / 2044KW DRAM decode);
+-- CPU 22-bit accesses still take the Unibus window: BME uses the map,
+-- else PA bits 17:0 as 18-bit Unibus. EKBEE1 TESTNO 50 stores via
+-- KIPAR4=167777 at VA 100100 (PA 17000000) and fetches via PAR5=0
+-- (PA 0); BME off so 17000000 aliases to 000000 and they meet.
+-- b406979 must not NXM the I/O page itself.
    bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111" and io_page = '0' and have_1920 = 1
 --      else '1' when unibus_busmaster_control_npg = '1'
       else '0';
 
    bus_addr <= ubmmaddr when sr3(5) = '1' and unibus_busmaster_control_npg = '1' and have_ubm = 1
    else "0000" & unibus_busmaster_addr when unibus_busmaster_control_npg = '1'
-   else ubmmaddr when sr3(5) = '1' and sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and have_ubm = 1 and have_1920 = 1
--- Model 70 keeps this window as RAM (have_1920=0). SIMH SET CPU 4096K
--- is 4,186,112 bytes, (MEMSIZE>>6)-1 = 177577, 2044KW: every physical
--- address below the I/O page is memory, including 17000000-17757777.
--- The pack was SYSGENed for that. A real Unibus 11/70 NXMs here
--- (have_1920=1, models 24 and 44). Do not alias the window down into
--- low memory; mister_top's dram covers it as its own rows.
+   else ubmmaddr when sr3(5) = '1' and sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and io_page = '0' and have_ubm = 1
+   else "0000" & addr_p(17 downto 0) when sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and io_page = '0' and have_1920 = 0
    else addr_p;
 
    bus_dato <= mmu_dato when unibus_busmaster_control_npg = '0'
