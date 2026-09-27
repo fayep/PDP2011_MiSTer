@@ -363,8 +363,10 @@ begin
                         if bus_control_dati = '1' then
 --                           bus_dati <= "0111111111111111";           -- 077777 means 1024Kwords
 --                           bus_dati <= "1110111111111111";           -- 167777 means 1920Kwords
-                           bus_dati <= "1111111101111111";           -- 177577 means 2044Kwords
+--                           bus_dati <= "1111111101111111";           -- 177577: SIMH 2044KW, bit 7 clear
+                           bus_dati <= "1111111111111111";           -- 177777: bits 7:0 all ones (EKBEE1 TEST 2)
    --                                   1098765432109876
+                        -- DRAM map is still 2044KW (have_1920=0 / mister_top dram_match).
                         end if;
                      else
                         nxm <= '1';
