@@ -89,6 +89,8 @@ signal cer_rsv : std_logic;
 
 signal ccr : std_logic_vector(5 downto 0);
 
+signal mbrk : std_logic_vector(7 downto 0);
+
 signal kmillhalt : std_logic;
 
 signal lma_fj : std_logic;
@@ -171,6 +173,9 @@ begin
 
 -- ccr
             ccr <= (others => '0');
+
+-- 11/70 microbreak (177770)
+            mbrk <= (others => '0');
 
 -- mr
             kmillhalt <= '0';
@@ -283,10 +288,18 @@ begin
                   when "1100" =>                           -- microbreak register, EK-KB11C-TM-001_1170procMan.pdf
                      if modelcode = 45 or modelcode = 50 or modelcode = 55
                      or modelcode = 60                        -- ??
-                     or modelcode = 70
                      then
                         if bus_control_dati = '1' then
                            bus_dati <= (others => '0');
+                        end if;
+                     elsif modelcode = 70
+                     then
+                        -- SIMH CPU70_wr: ODD_IGN; MBRK = data & 0000377
+                        if bus_control_dati = '1' then
+                           bus_dati <= "00000000" & mbrk;
+                        end if;
+                        if we = '1' then
+                           mbrk <= bus_dato(7 downto 0);
                         end if;
                      else
                         nxm <= '1';
