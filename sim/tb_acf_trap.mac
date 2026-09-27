@@ -1,0 +1,150 @@
+	.title	tb_acf_trap - EKBEE1 TESTNO 55 MMR0 bit 12
+
+; result(500):
+;   1  all passed
+;  55  ACF 1 read did not stick MMR0 bit 12 (TENB off)
+;  13  ACF 1 write did not abort (bit 13)
+;  56  TENB ACF 1 read did not take vector 250
+;  11  TENB snap was not 011011 (page 4, not page 1)
+
+CPUERR	= 177766
+MMR0	= 177572
+MMR3	= 172516
+KIPDR0	= 172300
+KIPAR0	= 172340
+KIPDR4	= 172310
+KIPAR4	= 172350
+KIPAR5	= 172352
+KDPDR4	= 172330
+KDPAR4	= 172370
+KDPAR5	= 172372
+
+	.asect
+
+	.=4
+	.word	t4
+	.word	340
+
+	.=250
+	.word	t250
+	.word	340
+
+	.=500
+result:	.word	0
+cer:	.word	0
+t4pc:	.word	0
+got250:	.word	0
+snap:	.word	0
+mmr0r:	.word	0
+
+	.=1000
+start:
+	mov	#4000,sp
+	jsr	pc,@#idmap
+	mov	#1000,@#KIPAR4
+	mov	#1000,@#KDPAR4
+	mov	#1000,@#KIPAR5
+	mov	#1000,@#KDPAR5
+	mov	#12547,@#120000
+	mov	#77401,@#KIPDR4		; ACF=1
+	mov	#77401,@#KDPDR4
+	clr	@#MMR3
+	mov	#20,@#MMR3		; 22-bit
+	mov	#1,@#MMR0		; MME, TENB off
+
+; ACF 1 write must abort (bit 13). Vector 250; do not RTI-retry.
+	clr	@#got250
+	mov	#contw,@#t250pc
+	mov	#1,@#100000
+	mov	#13.,@#result
+	halt
+contw:
+	bit	#20000,@#MMR0
+	bne	1$
+	mov	#13.,@#result
+	halt
+1$:	mov	#1,@#MMR0		; clear freeze; keep MME; page stays 4
+
+; ACF 1 read: bit 12 without abort, without TENB.
+	clr	@#got250
+	mov	#failrd,@#t250pc
+	mov	@#100000,r1
+	cmp	#12547,r1
+	beq	2$
+	mov	#55.,@#result
+	halt
+2$:	mov	@#MMR0,@#mmr0r
+	tst	@#got250
+	beq	3$
+	mov	#55.,@#result
+	halt
+3$:	bit	#10000,@#mmr0r
+	bne	4$
+	mov	#55.,@#result
+	halt
+4$:
+
+; TENB: same read must take 250. Snap is 011011 (page 4).
+	mov	#1001,@#MMR0
+	clr	@#got250
+	clr	@#snap
+	mov	#contt,@#t250pc
+	mov	@#100000,r1
+	mov	#56.,@#result
+	halt
+contt:
+	tst	@#got250
+	bne	5$
+	mov	#56.,@#result
+	halt
+5$:	cmp	#11011,@#snap
+	beq	6$
+	mov	#11.,@#result
+	halt
+6$:	clr	@#MMR0
+	mov	#1,@#result
+	halt
+
+failrd:
+	mov	#55.,@#result
+	halt
+
+t250pc:	.word	0
+
+idmap:
+	mov	#KIPAR0,r0
+	clr	r1
+	mov	#8.,r2
+7$:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,7$
+	mov	#177600,@#172356
+	mov	#172360,r0
+	clr	r1
+	mov	#8.,r2
+8$:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,8$
+	mov	#177600,@#172376
+	mov	#KIPDR0,r0
+	mov	#8.,r2
+9$:	mov	#77406,(r0)+
+	sob	r2,9$
+	mov	#172320,r0
+	mov	#8.,r2
+10$:	mov	#77406,(r0)+
+	sob	r2,10$
+	rts	pc
+
+t4:
+	mov	@#CPUERR,@#cer
+	mov	@#t4pc,(sp)
+	rti
+
+t250:
+	inc	@#got250
+	mov	@#MMR0,@#snap
+	mov	@#t250pc,(sp)
+	rti
+
+	.end	start

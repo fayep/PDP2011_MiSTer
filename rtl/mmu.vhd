@@ -158,6 +158,7 @@ signal abort_nonresident : std_logic;
 signal abort_pagelength : std_logic;
 signal abort_readonly : std_logic;
 signal mmu_mmuabort : std_logic;
+signal acf_trap : std_logic;
 signal trap_mm : std_logic;
 
 signal oddabort : std_logic;
@@ -777,11 +778,18 @@ begin
    mmuabort <= mmu_mmuabort when oddabort = '0'
       else '0';
 
--- generate mmu trap
-   trap_mm <=
-      '1' when sr0(9) = '1' and sr0(0)= '1'
+-- generate mmu trap (KB11-C / SIMH relocR_test / 11orcam _acf_trap)
+-- ACF 1 or 4 on read, 4 or 5 on write: set MMR0 bit 12 and PDR A, continue.
+-- TENB (bit 9) only requests vector 250 after the instruction.
+-- EKBEE1 TESTNO 55 BIT #10000 with TENB off; 9d1b26c typed MMR0 000017.
+   acf_trap <=
+      '1' when sr0(0) = '1'
          and have_mmutr = 1
-         and ((cpu_rd = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "100")) or (cpu_wr = '1' and (pdr(2 downto 0) = "100" or pdr(2 downto 0) = "101")))
+         and ((cpu_rd = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "100"))
+           or (cpu_wr = '1' and (pdr(2 downto 0) = "100" or pdr(2 downto 0) = "101")))
+      else '0';
+   trap_mm <=
+      '1' when acf_trap = '1' and sr0(9) = '1'
       else '0';
 
 
@@ -1006,9 +1014,19 @@ sr0out_debug <= sr0;
                   sr0(15) <= abort_nonresident;
                   sr0(14) <= abort_pagelength;
                   sr0(13) <= abort_readonly;
-                  sr0(12) <= trap_mm;
+                  -- Bit 12 is sticky until software/INIT clear. Assigning
+                  -- trap_mm every unfrozen cycle cleared it after the ACF
+                  -- access (no freeze; freeze is 15:13 only).
+                  if acf_trap = '1' then
+                     sr0(12) <= '1';
+                  end if;
                   sr0(7) <= sr0_ic;
-                  if (cpu_rd = '1' or cpu_wr = '1') then
+                  -- Page/mode (6:1) on abort or TENB trap, not every
+                  -- reference. MMR0 I/O 177572 is page 7; that is why
+                  -- hardware read 000017 vs 11orcam 000011 (page 4).
+                  if (cpu_rd = '1' or cpu_wr = '1')
+                     and (abort_nonresident = '1' or abort_pagelength = '1'
+                        or abort_readonly = '1' or trap_mm = '1') then
                      sr0(6 downto 5) <= psw_mmumode;
                      sr0(4) <= sr3id;
                      sr0(3 downto 1) <= cpu_addr_v(15 downto 13);
