@@ -1136,7 +1136,10 @@ sr0out_debug <= sr0;
                   ubmo2valid <= '1';
                end if;
 
-            elsif cpu_wr = '1' then
+            elsif cpu_wr = '1' and mmu_mmuabort = '0' then
+               -- EKBEE1 TESTNO 53: CLR through a NR mapped alias of
+               -- KIPAR4. Dest DATO still asserts cpu_wr; do not clock
+               -- PAR/PDR/MMR if the cycle aborts (relocW does not store).
 
                if addr_p(21 downto 7) = "111111111100001" and addr_p(1) = '0' and have_ubm = 1 then
                   if cpu_dw8 = '0' or cpu_addr_v(0) = '0' then       -- word write or even address

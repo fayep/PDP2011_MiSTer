@@ -15,6 +15,7 @@ MMR3	= 172516
 KIPDR0	= 172300
 KIPAR0	= 172340
 KIPDR4	= 172310
+KIPDR5	= 172312
 KIPAR4	= 172350
 KIPAR5	= 172352
 KDPDR4	= 172330
@@ -54,6 +55,26 @@ start:
 	clr	@#MMR3
 	mov	#20,@#MMR3		; 22-bit
 	mov	#1,@#MMR0		; MME, TENB off
+
+; TESTNO 53: CLR (R1) VA 132350 aliases KIPAR4 via KIPAR5=177600.
+; Page 5 ACF=7 NR. Abort must not store (KIPAR4 stays 1000).
+	mov	#177600,@#KIPAR5
+	mov	#77407,@#KIPDR5
+	clr	@#got250
+	mov	#cont53,@#t250pc
+	mov	#132350,r1
+	clr	(r1)
+	mov	#53.,@#result
+	halt
+cont53:
+	cmp	#1000,@#KIPAR4
+	beq	53ok
+	mov	#53.,@#result
+	halt
+53ok:	mov	#1,@#MMR0
+	mov	#1000,@#KIPAR5
+	mov	#77406,@#KIPDR5
+	mov	#1000,@#KDPAR5
 
 ; ACF 1 write must abort (bit 13). Vector 250; do not RTI-retry.
 	clr	@#got250
