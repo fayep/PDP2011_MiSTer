@@ -1,0 +1,128 @@
+	.title	tb_map22_unibus - SIMH e2ecc11 CPU classify
+
+; result(500):
+;   1  all passed
+;  47  I/O miss was not CPUERR 020 (TESTNO 47 / CPUE_TMO)
+;  50  22-bit window 17000000 did not alias to phys 0 (TESTNO 50)
+;  18  18-bit 760000 was not I/O TMO
+;   2  UBMAP 170200 did not stick as registers
+;   4  trap 4 never happened
+
+CPUERR	= 177766
+MMR0	= 177572
+MMR3	= 172516
+KIPDR0	= 172300
+KIPAR0	= 172340
+KIPAR4	= 172350
+KIPAR5	= 172352
+UBMAP0	= 170200
+
+	.asect
+
+	.=4
+	.word	t4
+	.word	340
+
+	.=500
+result:	.word	0
+cer:	.word	0
+t4pc:	.word	0
+
+	.=1000
+start:
+	mov	#4000,sp
+
+; M9312 I/O page, MMU off: must not take the 22-bit Unibus window.
+	mov	@#173000,r0
+
+; UBMAP 170200-170376 are registers (not TMO / not mem NXM).
+	mov	#123456,@#UBMAP0
+	cmp	#123456,@#UBMAP0
+	beq	1$
+	mov	#2,@#result
+	halt
+1$:
+
+; MMU off: VA 160000 lifts to I/O 17760000, no slave -> CPUERR 020.
+	clr	@#CPUERR
+	clr	@#cer
+	mov	#cont47,@#t4pc
+	mov	@#160000,r0
+	mov	#4,@#result
+	halt
+cont47:
+	cmp	#20,@#cer
+	beq	2$
+	mov	#47,@#result
+	halt
+2$:	mov	#20,@#CPUERR		; write-clear
+
+; 18-bit relocate: PAR4=7577, VA 100100 -> 760000 -> I/O TMO.
+	jsr	pc,@#idmap
+	mov	#7577,@#KIPAR4
+	mov	#7577,@#172370		; KDPAR4
+	clr	@#MMR3
+	mov	#1,@#MMR0
+	clr	@#CPUERR
+	clr	@#cer
+	mov	#cont18,@#t4pc
+	mov	@#100100,r0
+	mov	#4,@#result
+	halt
+cont18:
+	clr	@#MMR0
+	cmp	#20,@#cer
+	beq	3$
+	mov	#18.,@#result
+	halt
+3$:	mov	#20,@#CPUERR
+
+; TESTNO 50: 22-bit, BME off, 17000000 -> phys 0.
+	jsr	pc,@#idmap
+	mov	#167777,@#KIPAR4
+	mov	#167777,@#172370
+	clr	@#KIPAR5
+	clr	@#172372		; KDPAR5
+	mov	#20,@#MMR3
+	mov	#1,@#MMR0
+	mov	#17000,@#100100
+	cmp	#17000,@#120000
+	beq	4$
+	clr	@#MMR0
+	mov	#50,@#result
+	halt
+4$:	clr	@#MMR0
+	mov	#1,@#result
+	halt
+
+idmap:
+	mov	#KIPAR0,r0
+	clr	r1
+	mov	#8.,r2
+5$:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,5$
+	mov	#177600,@#172356	; KIPAR7 = I/O page (VA 16xxxx)
+	mov	#172360,r0		; KDPAR0
+	clr	r1
+	mov	#8.,r2
+7$:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,7$
+	mov	#177600,@#172376	; KDPAR7
+	mov	#KIPDR0,r0
+	mov	#8.,r2
+6$:	mov	#77406,(r0)+
+	sob	r2,6$
+	mov	#172320,r0		; KDPDR0
+	mov	#8.,r2
+8$:	mov	#77406,(r0)+
+	sob	r2,8$
+	rts	pc
+
+t4:
+	mov	@#CPUERR,@#cer
+	mov	@#t4pc,(sp)
+	rti
+
+	.end	start

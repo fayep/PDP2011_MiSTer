@@ -1049,9 +1049,10 @@ begin
 	
    greenled  <= not rxrx1 or not txtx1 or not rxrx0 or not txtx0;
 	
-	-- 1920KW: RAM below 17000000. 17000000-17757777 is the Unibus
-	-- window (not core). 17760000-17777777 is the I/O page. SIMH
-	-- e2ecc11 / KB11-C; do not fill the hole with extra DRAM.
+	-- RAM below 17000000. 17000000-17757777 is Unibus (not extra
+	-- DRAM), including a BME output that is still in that window
+	-- (handbook; SIMH 2044K ADDR_IS_MEM would call it RAM). CPU
+	-- map22_unibus remaps first; I/O page is 17760000-17777777.
 	dram_match <= '1' when addr(21 downto 18) /= "1111"
 	         else '0';
    dram_ldqm <= dram_addr(11);

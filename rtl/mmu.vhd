@@ -126,6 +126,9 @@ signal map22 : std_logic;
 signal map18 : std_logic;
 signal top8k : std_logic;
 signal io_page : std_logic;
+signal window_cpu : std_logic;
+signal mapped_io : std_logic;
+signal bus_addr_i : std_logic_vector(21 downto 0);
 signal addr_p24z1 : std_logic_vector(23 downto 0);
 signal addr_p24z5 : std_logic_vector(23 downto 0);
 signal mmu_datain : std_logic_vector(15 downto 0);
@@ -551,7 +554,7 @@ begin
    with modelcode select have_1920 <=  -- for 22-bit, does memory end at 1920KWords
       1 when 24,                             -- kdf11 but not 11/23, I'd speculate
       1 when 44,
-      1 when 70,                             -- Unibus window 17000000-17757777 is not core
+      1 when 70,                             -- window not core; 22-bit remap. MMU-off unused.
       0 when others;
 
    with modelcode select have_mmumm <= -- does the mmu have the maintenance mode bit in sr0
@@ -789,43 +792,61 @@ begin
       else unsigned(ubmo) + unsigned(unibus_busmaster_addr(12 downto 0));
 
 -- memory interface
--- addr_p(21:18)="1111" covers the whole top 256 KW (0o17000000-0o17777777).
--- The top 8 KW, 0o17760000-0o17777777 (addr_p(21:13)="111111111"), is the
--- I/O page. Below that, 0o17000000-0o17757777 is the Unibus window
--- (KB11-C / SIMH e2ecc11 map22_unibus). have_1920=1: that 22-bit PA is
--- not core; mister_top dram_match excludes 21:18=1111. Unmapped or
--- absent accesses NXM (bus_unibus_mapped). CPU 22-bit relocate still
--- takes the window: BME uses UBMAP 170200-170376; BME off uses PA bits
--- 17:0 as 18-bit Unibus (TESTNO 50: 17000000 -> 000000). 24/44 keep a
--- raw 22-bit window PA and NXM. b406979 must not NXM the I/O page.
-   bus_unibus_mapped <= '1' when addr_p(21 downto 18) = "1111" and io_page = '0' and have_1920 = 1
---      else '1' when unibus_busmaster_control_npg = '1'
+-- SIMH e2ecc11 map22_unibus / 11orcam 42670a8: 22-bit PA
+-- 17000000-17757777 is Unibus, not 22-bit core. Remap, then classify
+-- the mapped PA. Do not fill that range with extra DRAM and do not
+-- cer_nxmabort (CPUERR 040) the window PA. I/O slave misses are
+-- cer_ioabort (CPUERR 020).
+-- BME on: UBMAP 170200-170376. BME off: bits 17:0 (TESTNO 50:
+-- 17000000 -> phys 0); 18-bit 760000-777777 lifts to the I/O page.
+-- After the map, a PA still in 17000000-17757777 stays Unibus
+-- (handbook), even if SIMH 2044K ADDR_IS_MEM would call it RAM.
+-- 24/44 keep the raw window PA (no 18-bit alias). b406979 must not
+-- treat the I/O page as the window.
+-- window_cpu is 22-bit MMU only (sr0 enable and sr3 22-bit). MMU-off
+-- 16-bit fetches, including M9312 at 173000, use the pre-existing
+-- top-8K I/O lift (same as 9cde731). Do not apply the Unibus-window
+-- map, have_1920 timeout, or mapped_io to that path.
+   window_cpu <= '1' when sr3(4) = '1' and sr0(0) = '1'
+      and unibus_busmaster_control_npg = '0'
+      and addr_p(21 downto 18) = "1111" and io_page = '0'
       else '0';
 
-   bus_addr <= ubmmaddr when sr3(5) = '1' and unibus_busmaster_control_npg = '1' and have_ubm = 1
+   bus_addr_i <= ubmmaddr when sr3(5) = '1' and unibus_busmaster_control_npg = '1' and have_ubm = 1
    else "0000" & unibus_busmaster_addr when unibus_busmaster_control_npg = '1'
-   else ubmmaddr when sr3(5) = '1' and sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and io_page = '0' and have_ubm = 1
-   else "0000" & addr_p(17 downto 0) when sr3(4) = '1' and sr0(0) = '1' and unibus_busmaster_control_npg = '0' and addr_p(21 downto 18) = "1111" and io_page = '0' and modelcode = 70
+   else ubmmaddr when window_cpu = '1' and sr3(5) = '1' and have_ubm = 1
+   else "111111111" & addr_p(12 downto 0) when window_cpu = '1' and modelcode = 70 and addr_p(17 downto 13) = "11111"
+   else "0000" & addr_p(17 downto 0) when window_cpu = '1' and modelcode = 70
    else addr_p;
+   bus_addr <= bus_addr_i;
+
+   -- I/O only after a 22-bit window remap (BME or 760000 lift). MMU-off
+   -- / 16-bit I/O page (M9312, CSRs) stays on io_page alone, as 9cde731.
+   mapped_io <= '1' when window_cpu = '1' and bus_addr_i(21 downto 13) = "111111111"
+      else '0';
+
+   -- Unibus (not core) after the map. Missing slave -> cer_ioabort.
+   bus_unibus_mapped <= '1' when bus_addr_i(21 downto 18) = "1111" and mapped_io = '0' and have_1920 = 1
+      else '0';
 
    bus_dato <= mmu_dato when unibus_busmaster_control_npg = '0'
       else unibus_busmaster_dato;
 
    bus_control_dati <= '1' when unibus_busmaster_control_npg = '0'
       and cpu_rd = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0' and oddaddress = '0'
-      and io_page = '0'
+      and io_page = '0' and mapped_io = '0'
       else unibus_busmaster_control_dati when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) /= "11111"
       else '0';
 
    bus_control_dato <= '1' when unibus_busmaster_control_npg = '0'
       and cpu_rd = '0' and cpu_wr = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
-      and io_page = '0'
+      and io_page = '0' and mapped_io = '0'
       else unibus_busmaster_control_dato when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) /= "11111"
       else '0';
 
    bus_control_datob <= '1' when unibus_busmaster_control_npg = '0'
       and cpu_rd = '0' and cpu_wr = '1' and cpu_dw8 = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
-      and io_page = '0'
+      and io_page = '0' and mapped_io = '0'
       else unibus_busmaster_control_datob when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) /= "11111"
       else '0';
 
@@ -839,15 +860,16 @@ begin
 -- hence, the addresses that are valid on this bus are io_page.
 
    unibus_addr <= unibus_busmaster_addr when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) = "11111"
+      else bus_addr_i(17 downto 0) when mapped_io = '1'
       else addr_p(17 downto 0);
    unibus_control_dati <= '1' when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) = "11111" and unibus_busmaster_control_dati = '1'
-      else '1' when io_page = '1' and cpu_rd = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0' and oddaddress = '0'
+      else '1' when (io_page = '1' or mapped_io = '1') and cpu_rd = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0' and oddaddress = '0'
       else '0';
    unibus_control_dato <= '1' when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) = "11111" and unibus_busmaster_control_dato = '1'
-      else '1' when io_page = '1' and cpu_rd = '0' and cpu_wr = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
+      else '1' when (io_page = '1' or mapped_io = '1') and cpu_rd = '0' and cpu_wr = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
       else '0';
    unibus_control_datob <= '1' when unibus_busmaster_control_npg = '1' and unibus_busmaster_addr(17 downto 13) = "11111" and unibus_busmaster_control_datob = '1'
-      else '1' when io_page = '1' and cpu_rd = '0' and cpu_wr = '1' and cpu_dw8 = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
+      else '1' when (io_page = '1' or mapped_io = '1') and cpu_rd = '0' and cpu_wr = '1' and cpu_dw8 = '1' and mmu_addr_match = '0' and mmu_mmuabort = '0'
       else '0';
 
 -- drive out word or byte writes onto the bus, taking care of flipping output bytes onto the odd byte of the bus if needed
@@ -920,7 +942,7 @@ begin
       else "0000000000" & sr3out when addr_p24z1 = o"17772516" and have_mmu = 1
       else ubmo2(15 downto 0) when ubmo2valid = '1' and addr_p(1) = '0' and have_ubm = 1
       else "0000000000" & ubmo2(21 downto 16) when ubmo2valid = '1' and addr_p(1) = '1' and have_ubm = 1
-      else unibus_dati when io_page = '1'
+      else unibus_dati when io_page = '1' or mapped_io = '1'
       else bus_dati;
 
 -- generate mmu_addr_match, extremely unelegant but I don't see how else to do this
