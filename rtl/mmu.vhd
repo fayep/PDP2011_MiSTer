@@ -1112,7 +1112,9 @@ sr0out_debug <= sr0;
                         sr0(0) <= mmu_dato(0);
                      end if;
                      if cpu_dw8 = '0' or cpu_addr_v(0) = '1' then   -- word write or odd address
+                        -- KB11-C §9.1.8: software writes 15:13, 12, 9, 8 (WR=171401); merge, do not zero RO 7/6:1
                         sr0(15 downto 13) <= mmu_dato(15 downto 13);
+                        sr0(12) <= mmu_dato(12);        -- trap-MM (EKBEE1 TESTNO 11: 171000, not 161000)
                         sr0(9) <= mmu_dato(9);          -- traps, 45 and 70
                         sr0(8) <= mmu_dato(8);
                      end if;
