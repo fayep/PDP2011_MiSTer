@@ -165,6 +165,9 @@ signal oddabort : std_logic;
 signal oddaddress : std_logic;
 
 signal mmu_addr_match : std_logic;
+-- KB11-C SCCC INT REG: MMR0–2 cycles do not restrobe MMR0 6:1.
+-- PAR/PDR/UBM/MMR3 are not INT REG. Reading 177572 must not become page 7.
+signal int_reg : std_logic;
 
 signal abort_acknowledged : std_logic;
 
@@ -971,6 +974,13 @@ begin
          and have_mmu = 1
       else '0';
 
+   int_reg <=
+      '1' when have_mmu = 1 and (
+            addr_p24z1 = o"17777572"
+            or addr_p24z1 = o"17777574"
+            or addr_p24z1 = o"17777576")
+      else '0';
+
 sr0out_debug <= sr0;
 
 
@@ -1024,12 +1034,11 @@ sr0out_debug <= sr0;
                      sr0(12) <= '1';
                   end if;
                   sr0(7) <= sr0_ic;
-                  -- Page/mode (6:1) on abort or TENB trap, not every
-                  -- reference. MMR0 I/O 177572 is page 7; that is why
-                  -- hardware read 000017 vs 11orcam 000011 (page 4).
-                  if (cpu_rd = '1' or cpu_wr = '1')
-                     and (abort_nonresident = '1' or abort_pagelength = '1'
-                        or abort_readonly = '1' or trap_mm = '1') then
+                  -- KB11-C §9.1.9: 6:1 clock on every memory reference
+                  -- until abort freeze (15:13). Trap/TENB does not freeze.
+                  -- INT REG (MMR0–2) does not restrobe — 9d1b26c painted
+                  -- page 7 on MOV @#177572. Do not mux page 4→1.
+                  if (cpu_rd = '1' or cpu_wr = '1') and int_reg = '0' then
                      sr0(6 downto 5) <= psw_mmumode;
                      sr0(4) <= sr3id;
                      sr0(3 downto 1) <= cpu_addr_v(15 downto 13);

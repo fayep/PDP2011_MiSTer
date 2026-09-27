@@ -8,7 +8,8 @@
 ;  13  ACF 1 write did not abort (bit 13)
 ;  30  ACF 1 write abort also set bit 12 (030011 vs 020011)
 ;  56  TENB ACF 1 read did not take vector 250
-;  11  TENB snap was not 011011 (page 4, not page 1)
+;  17  ACF 1 read painted page 7 (INT REG 177572)
+;  11  TENB snap was not 011003 (handler page 1; not held page 4)
 
 CPUERR	= 177766
 MMR0	= 177572
@@ -113,9 +114,16 @@ contw:
 	bne	4$
 	mov	#55.,@#result
 	halt
-4$:
+4$:	mov	@#mmr0r,r0
+	bic	#177761,r0		; bits 3:1
+	cmp	#16,r0			; page 7 = 000016
+	bne	4a$
+	mov	#17.,@#result
+	halt
+4a$:
 
-; TENB: same read must take 250. Snap is 011011 (page 4).
+; TENB: same read must take 250. After vector 250 the handler is
+; page 1, so live 6:1 reads 011003. Freeze is 15:13 only.
 	mov	#1001,@#MMR0
 	clr	@#got250
 	clr	@#snap
@@ -128,7 +136,7 @@ contt:
 	bne	5$
 	mov	#56.,@#result
 	halt
-5$:	cmp	#11011,@#snap
+5$:	cmp	#11003,@#snap
 	beq	6$
 	mov	#11.,@#result
 	halt
@@ -172,9 +180,10 @@ t4:
 	mov	@#t4pc,(sp)
 	rti
 
+	.=20000
 t250:
+	mov	@#MMR0,@#snap		; insn stream is page 1; INT REG skip
 	inc	@#got250
-	mov	@#MMR0,@#snap
 	mov	@#t250pc,(sp)
 	rti
 

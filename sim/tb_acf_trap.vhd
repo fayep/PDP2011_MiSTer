@@ -4,8 +4,9 @@
 -- abort and not store (KIPAR4 stays 1000). Dest is DATO-only (rs_dw);
 -- gate PAR/PDR/MMR writes on mmu_mmuabort.
 -- EKBEE1 TESTNO 55: ACF 1 write aborts (MMR0 bit 13, 020011 not 030011);
--- ACF 1 read sets sticky bit 12 with TENB off; TENB then vector 250
--- and page field 4 (011011). Do not retarget page 4 to 1.
+-- ACF 1 read sets sticky bit 12 with TENB off; TENB then vector 250.
+-- Handler at 20000 so live 6:1 is page 1 (011003). INT REG skip so
+-- reading 177572 is not page 7. Freeze is 15:13 only. No 4→1 mux.
 --
 -- Run: sim/run_sim.sh tb_acf_trap --ieee-asserts=disable --stop-time=2ms
 
