@@ -59,11 +59,14 @@ entity mister_top is
       rk_sdcard_miso : in std_logic;
 		rk_sdcard_debug: out std_logic_vector (3 downto 0);
 
-      rl_sdcard_cs   : out std_logic;
-      rl_sdcard_mosi : out std_logic;
-      rl_sdcard_sclk : out std_logic;
-      rl_sdcard_miso : in std_logic;
-		rl_sdcard_debug: out std_logic_vector (3 downto 0);
+      rl_sd_lba      : out std_logic_vector(31 downto 0);   -- RL: hps_io disk slot 1, direct
+      rl_sd_rd       : out std_logic;
+      rl_sd_wr       : out std_logic;
+      rl_sd_ack      : in std_logic;
+      rl_sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_addr   : in std_logic_vector(7 downto 0);    -- hps_io buffer bus
+      sd_buff_dout   : in std_logic_vector(15 downto 0);
+      sd_buff_wr     : in std_logic;
 
       rh_sdcard_cs   : out std_logic;
       rh_sdcard_mosi : out std_logic;
@@ -134,11 +137,15 @@ component unibus is
 
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rl_sdcard_cs : out std_logic;
-      rl_sdcard_mosi : out std_logic;
-      rl_sdcard_sclk : out std_logic;
-      rl_sdcard_miso : in std_logic := '0';
-      rl_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rl_sd_lba : out std_logic_vector(31 downto 0);                 -- RL: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rl_sd_rd : out std_logic;
+      rl_sd_wr : out std_logic;
+      rl_sd_ack : in std_logic := '0';
+      rl_sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_addr : in std_logic_vector(7 downto 0) := (others => '0');   -- hps_io buffer bus, shared by all slots
+      sd_buff_dout : in std_logic_vector(15 downto 0) := (others => '0');
+      sd_buff_wr : in std_logic := '0';
+      clk_sd : in std_logic := '0';                                  -- hps_io's clock (clk_100mhz)
 
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -616,11 +623,15 @@ begin
 		kl3_force7bit => 0,
 		
       have_rl => have_rl,
-      rl_sdcard_cs    => rl_sdcard_cs,
-      rl_sdcard_miso  => rl_sdcard_miso,
-      rl_sdcard_mosi  => rl_sdcard_mosi,
-      rl_sdcard_sclk  => rl_sdcard_sclk,
-      rl_sdcard_debug => rl_sdcard_debug,
+      rl_sd_lba       => rl_sd_lba,
+      rl_sd_rd        => rl_sd_rd,
+      rl_sd_wr        => rl_sd_wr,
+      rl_sd_ack       => rl_sd_ack,
+      rl_sd_buff_din  => rl_sd_buff_din,
+      sd_buff_addr    => sd_buff_addr,
+      sd_buff_dout    => sd_buff_dout,
+      sd_buff_wr      => sd_buff_wr,
+      clk_sd          => clk_100,
 
 		have_rk => have_rk,
 		rk_sdcard_cs    => rk_sdcard_cs,
