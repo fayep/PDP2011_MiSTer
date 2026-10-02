@@ -62,6 +62,10 @@ entity vt is
       clk50mhz : in std_logic;                                       -- clk50mhz : used for vga signal timing
       reset : in std_logic                                           -- reset
    );
+   -- No physical-synthesis retiming in the VT terminal (it has its own CPU
+   -- with reset-initialised registers; cpu0|init was retimed).
+   attribute dont_retime : boolean;
+   attribute dont_retime of vt : entity is true;
 end vt;
 
 architecture implementation of vt is
