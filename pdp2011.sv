@@ -362,31 +362,10 @@ wire rl_sd_rd, rl_sd_wr;
 assign sd_rd[1] = rl_sd_rd & vsd_sel_rl;
 assign sd_wr[1] = rl_sd_wr & vsd_sel_rl;
 
-sd_card #(.WIDE(1)) sd_card_rh
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[2]),
-	.sd_rd       (sd_rd[2]),
-	.sd_wr       (sd_wr[2]),
-	.sd_ack      (sd_ack[2]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[2]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (rh_sclk),
-	.ss          (rh_cs | ~vsd_sel_rh),
-	.mosi        (rh_mosi),
-	.miso        (rh_miso)
-
-);
+// RH: rh11 talks to hps_io slot 2 directly through rtl/mister_blkdev.vhd.
+wire rh_sd_rd, rh_sd_wr;
+assign sd_rd[2] = rh_sd_rd & vsd_sel_rh;
+assign sd_wr[2] = rh_sd_wr & vsd_sel_rh;
 
 // TM11: tm11 talks to hps_io slot 3 directly through rtl/mister_blkdev.vhd.
 wire tm_sd_rd, tm_sd_wr;
@@ -413,11 +392,7 @@ wire rk_mosi;
 wire rk_miso;
 wire [3:0]rk_sddebug;
 //
-wire rh_sclk;
-wire rh_cs;
-wire rh_mosi;
-wire rh_miso;
-wire [3:0]rh_sddebug;
+wire [3:0]rh_sddebug = 4'd0;   // RH: no SPI activity bits since mister_blkdev
 //
 wire [3:0]rl_sddebug = 4'd0;   // RL: no SPI activity bits since mister_blkdev
 //
@@ -425,11 +400,9 @@ wire [3:0]tm_sddebug = 4'd0;   // TM: no SPI activity bits since mister_blkdev
 //
 //
 
-///// REAL SD ///
-wire  sdcard_miso = vsd_sel_rh? rh_miso : SD_MISO;
-assign SD_CS   = rh_cs   |  vsd_sel_rh;
-assign SD_SCK  = rh_sclk & ~SD_CS;
-assign SD_MOSI = rh_mosi & ~SD_CS;
+// (The original "real SD" pass-through of RH's SPI to the SD_* pins was never
+// completed -- its MISO path was not connected and status[4:3] unused -- and
+// went with RH's SPI interface. The SD_* pins stay tri-stated, as set above.)
 
 /////////////////////////////// LEDS ////////////////////////////////////////
 wire greenled;
@@ -507,11 +480,11 @@ mister_top mister_top
    .rk_sdcard_debug  (rk_sddebug),
 	
    .have_rh (have_rh),
-   .rh_sdcard_cs   (rh_cs),
-   .rh_sdcard_miso (rh_miso),
-   .rh_sdcard_mosi (rh_mosi),
-   .rh_sdcard_sclk (rh_sclk),
-   .rh_sdcard_debug(rh_sddebug),
+   .rh_sd_lba      (sd_lba[2]),
+   .rh_sd_rd       (rh_sd_rd),
+   .rh_sd_wr       (rh_sd_wr),
+   .rh_sd_ack      (sd_ack[2]),
+   .rh_sd_buff_din (sd_buff_din[2]),
 
    .have_tm (have_tm),
    .tm_img_mounted (tm_img_mounted),
