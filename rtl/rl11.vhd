@@ -46,11 +46,15 @@ entity rl11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);                -- hps_io disk slot (clk_sys), see mister_blkdev.vhd
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_rl : in integer range 0 to 1;
       reset : in std_logic;
@@ -62,14 +66,8 @@ end rl11;
 
 architecture implementation of rl11 is
 
-component sdspi is
+component mister_blkdev is
    port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-
       sdcard_addr : in std_logic_vector(23 downto 0);
 
       sdcard_idle : out std_logic;
@@ -90,7 +88,16 @@ component sdspi is
       enable : in integer range 0 to 1 := 0;
       controller_clk : in std_logic;
       reset : in std_logic;
-      clk50mhz : in std_logic
+
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic
    );
 end component;
 
@@ -119,7 +126,7 @@ signal csr_ba : std_logic_vector(17 downto 16);
 signal csr_fc : std_logic_vector(2 downto 0);
 signal csr_drdy : std_logic;
 
-signal bar : std_logic_vector(15 downto 1);
+signal bar : std_logic_vector(15 downto 1) := (others => '0');
 
 -- dar subfields : read/write
 
@@ -130,15 +137,15 @@ subtype dnca_subtype is std_logic_vector(8 downto 0);
 type dnca_type is array(3 downto 0) of dnca_subtype;
 signal dnca : dnca_type;
 
-signal dar : std_logic_vector(15 downto 0);
+signal dar : std_logic_vector(15 downto 0) := (others => '0');
 
 -- mpr subfields : get status
 signal gs_vc : std_logic;          -- volume changed
 
-signal mpr : std_logic_vector(15 downto 0);
+signal mpr : std_logic_vector(15 downto 0) := (others => '0');
 
 -- mpr subfield; wc is only writeable field, but it is not readable
-signal wcp : std_logic_vector(12 downto 0);               -- positive value of wc
+signal wcp : std_logic_vector(12 downto 0) := (others => '0');  -- positive value of wc
 
 -- others
 
@@ -160,17 +167,17 @@ signal work_bar : std_logic_vector(17 downto 1);
 
 signal sdcard_xfer_clk : std_logic;
 signal sdcard_xfer_addr : integer range 0 to 255;
-signal sdcard_xfer_read : std_logic;
+signal sdcard_xfer_read : std_logic := '0';
 signal sdcard_xfer_out : std_logic_vector(15 downto 0);
-signal sdcard_xfer_write : std_logic;
+signal sdcard_xfer_write : std_logic := '0';
 signal sdcard_xfer_in : std_logic_vector(15 downto 0);
 
 signal sdcard_idle : std_logic;
 signal sdcard_read_start : std_logic;
-signal sdcard_read_ack : std_logic;
+signal sdcard_read_ack : std_logic := '0';
 signal sdcard_read_done : std_logic;
-signal sdcard_write_start : std_logic;
-signal sdcard_write_ack : std_logic;
+signal sdcard_write_start : std_logic := '0';
+signal sdcard_write_ack : std_logic := '0';
 signal sdcard_write_done : std_logic;
 signal sdcard_error : std_logic;
 
@@ -179,6 +186,21 @@ signal sdcard_error : std_logic;
 signal nxm : std_logic;
 signal sectorcounter : std_logic_vector(8 downto 0);            -- counter within sector
 
+-- Two real RL sectors share one 512-byte SD block (see sd_half), but the
+-- block device writes whole blocks. So a write first reads its block and
+-- copies the other sector's half into wsector (busmaster_wpre_*), then
+-- fills the target half from memory and zero-pads the rest of the target
+-- sector only, as a real RL11 (and SIMH's pdp11_rl.c) does on a short
+-- write. Without this, every single-sector write clobbered the sector
+-- sharing its block.
+signal bm_preread_start : std_logic := '0';                    -- busmaster's own block read for a write
+signal blk_read_start : std_logic;                             -- sdcard_read_start or bm_preread_start
+signal wpre_idx : integer range 0 to 255 := 0;
+signal half_first : integer range 0 to 255;                     -- first and last word of the target sector
+signal half_last : integer range 0 to 255;
+signal other_first : integer range 0 to 255;                    -- ... and of the other sector in the block
+signal other_last : integer range 0 to 255;
+
 type busmaster_state_t is (
    busmaster_idle,
    busmaster_read,
@@ -186,6 +208,13 @@ type busmaster_state_t is (
    busmaster_readh2,
    busmaster_read1,
    busmaster_read_done,
+   busmaster_wpre_read,
+   busmaster_wpre_copy_a,
+   busmaster_wpre_copy_b,
+   busmaster_wpre_copy_c,
+   busmaster_wpre_copy_d,
+   busmaster_wpre_ack,
+   busmaster_wgrant,
    busmaster_write1,
    busmaster_write,
    busmaster_writen,
@@ -197,17 +226,13 @@ signal busmaster_state : busmaster_state_t := busmaster_idle;
 
 begin
 
-   sd1: sdspi port map(
-      sdcard_cs => sdcard_cs,
-      sdcard_mosi => sdcard_mosi,
-      sdcard_sclk => sdcard_sclk,
-      sdcard_miso => sdcard_miso,
-      sdcard_debug => sdcard_debug,
+   blk_read_start <= sdcard_read_start or bm_preread_start;
 
+   sd1: mister_blkdev port map(
       sdcard_addr => "000000" & sd_addr,
 
       sdcard_idle => sdcard_idle,
-      sdcard_read_start => sdcard_read_start,
+      sdcard_read_start => blk_read_start,
       sdcard_read_ack => sdcard_read_ack,
       sdcard_read_done => sdcard_read_done,
       sdcard_write_start => sdcard_write_start,
@@ -224,7 +249,16 @@ begin
       enable => have_rl,
       controller_clk => clk,
       reset => reset,
-      clk50mhz => clk50mhz
+
+      sd_lba => sd_lba,
+      sd_rd => sd_rd,
+      sd_wr => sd_wr,
+      sd_ack => sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sys
    );
 
 
@@ -248,8 +282,9 @@ begin
    begin
       if nclk = '1' and nclk'event then
          if reset = '1' then
-
-            if have_rl = 1 then
+            -- unconditional, not inside "if have_rl = 1": have_rl follows the
+            -- OSD mount here, so a reset with no RL image left these at their
+            -- power-up values (mainline 8b76d05)
                csr_fc <= "000";
                csr_ba <= "00";
                csr_ie <= '0';
@@ -288,7 +323,6 @@ begin
                interrupt_trigger <= '0';
                interrupt_state <= i_idle;
 
-            end if;
          else
 
             if have_rl = 1 then
@@ -607,6 +641,10 @@ begin
    sd_index <= unsigned(dn_offset + hs_offset + ca_offset + ("000000000000" & dar(5 downto 0)));
    sd_addr <= '0' & std_logic_vector(sd_index(17 downto 1));
    sd_half <= sd_index(0);
+   half_first <= 0 when sd_half = '0' else 128;
+   half_last <= 127 when sd_half = '0' else 255;
+   other_first <= 128 when sd_half = '0' else 0;
+   other_last <= 255 when sd_half = '0' else 127;
 
 -- busmaster
 
@@ -618,6 +656,10 @@ begin
             npr <= '0';
             sdcard_read_ack <= '0';
             sdcard_write_start <= '0';
+            sdcard_write_ack <= '0';                -- was never reset: the block device only starts a
+            sdcard_xfer_write <= '0';               -- request with both acks low (sdspi's input filter
+            sdcard_xfer_read <= '0';                -- happened to hide an undefined write_ack)
+            bm_preread_start <= '0';
             nxm <= '0';
          else
 
@@ -628,20 +670,7 @@ begin
                   when busmaster_idle =>
                      nxm <= '0';
                      if write_start = '1' then
-                        npr <= '1';
-                        if npg = '1' then
-                           busmaster_state <= busmaster_write1;
-                           work_bar <= csr_ba & bar(15 downto 1);
-                           if unsigned(wcp) >= unsigned'("0000000010000000") then
-                              sectorcounter <= "010000000";
-                           elsif wcp = "0000000000000000" then
-                              sectorcounter <= "000000000";
-                           else
-                              sectorcounter <= '0' & wcp(7 downto 0);
-                           end if;
-
-                           sdcard_xfer_addr <= 0;
-                        end if;
+                        busmaster_state <= busmaster_wpre_read;    -- read the block before taking the bus
                      elsif sdcard_read_done = '1' then
                         npr <= '1';
                         if npg = '1' then
@@ -709,6 +738,59 @@ begin
                      end if;
 
 
+-- write pre-read: fetch the target's SD block and keep the other sector
+
+                  when busmaster_wpre_read =>
+                     bm_preread_start <= '1';
+                     if sdcard_read_done = '1' then
+                        bm_preread_start <= '0';
+                        wpre_idx <= other_first;
+                        busmaster_state <= busmaster_wpre_copy_a;
+                     end if;
+
+                  when busmaster_wpre_copy_a =>                       -- wsector(i) <= rsector(i), i over the other half:
+                     sdcard_xfer_addr <= wpre_idx;                    -- address, then xfer_out follows one clock
+                     sdcard_xfer_write <= '0';                        -- later, then write it back at the same address
+                     busmaster_state <= busmaster_wpre_copy_b;
+
+                  when busmaster_wpre_copy_b =>
+                     busmaster_state <= busmaster_wpre_copy_c;
+
+                  when busmaster_wpre_copy_c =>
+                     sdcard_xfer_in <= sdcard_xfer_out;
+                     sdcard_xfer_write <= '1';
+                     busmaster_state <= busmaster_wpre_copy_d;
+
+                  when busmaster_wpre_copy_d =>
+                     sdcard_xfer_write <= '0';
+                     if wpre_idx = other_last then
+                        busmaster_state <= busmaster_wpre_ack;
+                     else
+                        wpre_idx <= wpre_idx + 1;
+                        busmaster_state <= busmaster_wpre_copy_a;
+                     end if;
+
+                  when busmaster_wpre_ack =>
+                     sdcard_read_ack <= '1';
+                     if sdcard_read_ack = '1' and sdcard_read_done = '0' then
+                        sdcard_read_ack <= '0';
+                        busmaster_state <= busmaster_wgrant;
+                     end if;
+
+                  when busmaster_wgrant =>
+                     npr <= '1';
+                     if npg = '1' then
+                        busmaster_state <= busmaster_write1;
+                        work_bar <= csr_ba & bar(15 downto 1);
+                        if unsigned(wcp) >= unsigned'("0000000010000000") then
+                           sectorcounter <= "010000000";
+                        elsif wcp = "0000000000000000" then
+                           sectorcounter <= "000000000";
+                        else
+                           sectorcounter <= '0' & wcp(7 downto 0);
+                        end if;
+                     end if;
+
                   when busmaster_write1 =>
                      sdcard_xfer_write <= '0';
                      -- packed addressing: an odd real sector (sd_half='1')
@@ -728,7 +810,7 @@ begin
                      -- starting at 127 can reach at most 255, never
                      -- overflowing.
                      if sd_half = '0' then
-                        sdcard_xfer_addr <= 255;
+                        sdcard_xfer_addr <= 255;                     -- wraps to 0 on the first increment
                      else
                         sdcard_xfer_addr <= 127;
                      end if;
@@ -747,7 +829,11 @@ begin
                      if sectorcounter /= "000000000" then
                         sdcard_xfer_in <= bus_master_dati;
                         sdcard_xfer_write <= '1';
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr = 255 then              -- explicit wrap: integer range 0 to 255
+                           sdcard_xfer_addr <= 0;                   -- (GHDL bounds-checks it; mainline ec8d71f)
+                        else
+                           sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        end if;
 
                         if sectorcounter /= "000000001" then
                            work_bar <= work_bar + 1;
@@ -755,7 +841,7 @@ begin
                            bus_master_control_dati <= '1';
                         end if;
                      else
-                        if sdcard_xfer_addr = 255 then
+                        if sdcard_xfer_addr = half_last then
                            busmaster_state <= busmaster_write_wait;
                         else
                            busmaster_state <= busmaster_writen;
@@ -765,13 +851,17 @@ begin
                      end if;
 
 
-                  when busmaster_writen =>
-                     npr <= '0';
-                     if sdcard_xfer_addr = 255 then
+                  when busmaster_writen =>                            -- zero-fill the rest of the target
+                     npr <= '0';                                      -- sector only; the other half is the
+                     if sdcard_xfer_addr = half_last then             -- pre-read copy
                         busmaster_state <= busmaster_write_wait;
                      else
                         sdcard_xfer_in <= (others => '0');
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr = 255 then
+                           sdcard_xfer_addr <= 0;
+                        else
+                           sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        end if;
                         sdcard_xfer_write <= '1';
                      end if;
 
