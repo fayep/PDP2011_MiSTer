@@ -53,11 +53,15 @@ entity rh11 is
       rh70_bus_master_control_dato : out std_logic;
       rh70_bus_master_nxm : in std_logic := '0';
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);                -- hps_io disk slot (clk_sys), see mister_blkdev.vhd
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_rh : in integer range 0 to 1 := 0;
       have_rh70 : in integer range 0 to 1 := 0;
@@ -74,14 +78,8 @@ end rh11;
 architecture implementation of rh11 is
 
 
-component sdspi is
+component mister_blkdev is
    port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-
       sdcard_addr : in std_logic_vector(23 downto 0);
 
       sdcard_idle : out std_logic;
@@ -102,7 +100,16 @@ component sdspi is
       enable : in integer range 0 to 1 := 0;
       controller_clk : in std_logic;
       reset : in std_logic;
-      clk50mhz : in std_logic
+
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic
    );
 end component;
 
@@ -268,17 +275,17 @@ signal write_start : std_logic;
 
 signal sdcard_xfer_clk : std_logic;
 signal sdcard_xfer_addr : integer range 0 to 255;
-signal sdcard_xfer_read : std_logic;
+signal sdcard_xfer_read : std_logic := '0';
 signal sdcard_xfer_out : std_logic_vector(15 downto 0);
-signal sdcard_xfer_write : std_logic;
+signal sdcard_xfer_write : std_logic := '0';
 signal sdcard_xfer_in : std_logic_vector(15 downto 0);
 
 signal sdcard_idle : std_logic;
-signal sdcard_read_start : std_logic;
-signal sdcard_read_ack : std_logic;
+signal sdcard_read_start : std_logic := '0';
+signal sdcard_read_ack : std_logic := '0';
 signal sdcard_read_done : std_logic;
-signal sdcard_write_start : std_logic;
-signal sdcard_write_ack : std_logic;
+signal sdcard_write_start : std_logic := '0';
+signal sdcard_write_ack : std_logic := '0';
 signal sdcard_write_done : std_logic;
 signal sdcard_error : std_logic;
 
@@ -337,13 +344,7 @@ begin
       "0000000000000000" when others;
 
 
-   sd1: sdspi port map(
-      sdcard_cs => sdcard_cs,
-      sdcard_mosi => sdcard_mosi,
-      sdcard_sclk => sdcard_sclk,
-      sdcard_miso => sdcard_miso,
-      sdcard_debug => sdcard_debug,
-
+   sd1: mister_blkdev port map(
       sdcard_addr => sd_addr,
 
       sdcard_idle => sdcard_idle,
@@ -364,7 +365,16 @@ begin
       enable => have_rh,
       controller_clk => clk,
       reset => reset,
-      clk50mhz => clk50mhz
+
+      sd_lba => sd_lba,
+      sd_rd => sd_rd,
+      sd_wr => sd_wr,
+      sd_ack => sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sys
    );
 
 
@@ -780,7 +790,7 @@ begin
 
                end if;
 
-               rmclock <= rmclock + 1;
+               if rmclock = 4095 then rmclock <= 0; else rmclock <= rmclock + 1; end if;  -- 12-bit free-running; explicit wrap for GHDL
                if rmclock = 0 then
                   if rmla_sc = "11111" then
                      rmla_sc <= "00000";
@@ -1284,6 +1294,9 @@ begin
             npr <= '0';
             sdcard_read_ack <= '0';
             sdcard_write_start <= '0';
+            sdcard_write_ack <= '0';                -- was never reset: the block device only starts a
+            sdcard_xfer_write <= '0';               -- request with both acks low (sdspi's input filter
+            sdcard_xfer_read <= '0';                -- happened to hide an undefined write_ack)
             nxm <= '0';
          else
 
@@ -1372,13 +1385,13 @@ begin
                         bus_master_dato <= sdcard_xfer_out;
                         bus_master_control_dato <= '0';
                      end if;
-                     sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                     if sdcard_xfer_addr = 255 then sdcard_xfer_addr <= 0; else sdcard_xfer_addr <= sdcard_xfer_addr + 1; end if;
 
 
                   when busmaster_read =>
                      if sectorcounter /= "000000000" then
                         work_bar <= work_bar + 1;
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr = 255 then sdcard_xfer_addr <= 0; else sdcard_xfer_addr <= sdcard_xfer_addr + 1; end if;
                         sectorcounter <= sectorcounter - 1;
 
                         if have_rh70 = 1 then
@@ -1457,7 +1470,7 @@ begin
                            sdcard_xfer_in <= bus_master_dati;
                         end if;
                         sdcard_xfer_write <= '1';
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr = 255 then sdcard_xfer_addr <= 0; else sdcard_xfer_addr <= sdcard_xfer_addr + 1; end if;
 
                         if sectorcounter /= "000000001" then
                            work_bar <= work_bar + 1;
@@ -1490,7 +1503,7 @@ begin
                         busmaster_state <= busmaster_write_wait;
                      else
                         sdcard_xfer_in <= (others => '0');
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr = 255 then sdcard_xfer_addr <= 0; else sdcard_xfer_addr <= sdcard_xfer_addr + 1; end if;
                         sdcard_xfer_write <= '1';
                      end if;
 

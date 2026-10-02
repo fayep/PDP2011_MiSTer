@@ -58,11 +58,11 @@ entity unibus is
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rh_sdcard_cs : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic := '0';
-      rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rh_sd_lba : out std_logic_vector(31 downto 0);                 -- RH: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rh_sd_rd : out std_logic;
+      rh_sd_wr : out std_logic;
+      rh_sd_ack : in std_logic := '0';
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
       rh_type : in integer range 1 to 7 := 6;                        -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
       rh_noofcyl : in integer range 128 to 8192 := 1024;             -- for RM06 and RP2G: how many cylinders are available
 
@@ -763,11 +763,15 @@ component rh11 is
       rh70_bus_master_control_dato : out std_logic;
       rh70_bus_master_nxm : in std_logic := '0';
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_rh : in integer range 0 to 1 := 0;
       have_rh70 : in integer range 0 to 1 := 0;
@@ -1984,11 +1988,15 @@ begin
       rh70_bus_master_control_dato => rh70_bus_master_control_dato,
       rh70_bus_master_nxm => rh70_bus_master_nxm,
 
-      sdcard_cs => rh_sdcard_cs,
-      sdcard_mosi => rh_sdcard_mosi,
-      sdcard_sclk => rh_sdcard_sclk,
-      sdcard_miso => rh_sdcard_miso,
-      sdcard_debug => rh_sdcard_debug,
+      sd_lba => rh_sd_lba,
+      sd_rd => rh_sd_rd,
+      sd_wr => rh_sd_wr,
+      sd_ack => rh_sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => rh_sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sd,
 
       rh_type => rh_type,
       rh_noofcyl => rh_noofcyl,
