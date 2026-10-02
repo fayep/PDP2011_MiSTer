@@ -28,6 +28,19 @@ set_false_path -from [get_clocks {cpuclk}] \
 set_false_path -from [get_clocks {cpuclk}] \
   -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rl11:rl0|sdspi:sd1|clk}]
 
+# sdspi <-> sd_card (sys/sd_card.sv): sd_card runs on clk_100 and treats
+# SCK as data -- it samples sck on clk_spi and acts on a detected edge
+# (~old_sck & sck), with clk_spi >= 4 x SCK; MOSI/CS are held for half an
+# SPI period (40 ns, 4 clk_100 cycles) around that edge, and sdspi samples
+# MISO on its own SPI clock likewise. The single-cycle sd1|clk <-> divclk
+# checks are not real requirements (they showed -0.05 ns hold): false path.
+foreach sdc_c {rh11:rh0 rk11:rk0 rl11:rl0} {
+   set_false_path -from [get_clocks "emu:emu|mister_top:mister_top|unibus:pdp11|$sdc_c|sdspi:sd1|clk"] \
+      -to [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}]
+   set_false_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
+      -to [get_clocks "emu:emu|mister_top:mister_top|unibus:pdp11|$sdc_c|sdspi:sd1|clk"]
+}
+
 # cpuclk -> divclk: the DRAM FSM samples the CPU's address/data at the
 # edge ending dram_c6 (row address, 5 divclk periods after the cpuclk
 # rise) or dram_c8 (column/data, 7 periods). -setup 5 is the tighter of
