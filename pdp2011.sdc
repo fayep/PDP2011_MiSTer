@@ -51,6 +51,12 @@ set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].
 set_false_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[2].gpll~PLL_OUTPUT_COUNTER|divclk}] \
    -to [get_clocks {cpuclk}]
 
+# hps_io status[] are the OSD settings (model code, serial console,
+# reset, ...): they change only on a user action and are followed by a
+# reset, so their paths into the core (status[6] -> model-dependent
+# memory decode -> dram_addr was the worst, -10.9 ns) are false.
+set_false_path -from [get_registers {emu:emu|hps_io:hps_io|status[*]}]
+
 # ---------------------------------------------------------------------------
 # SDRAM interface (AS4C32M16SA-7 class, CL3, burst 1). SDRAM_CLK is
 # ~clk_100mhz forwarded through a DDIO output (pdp2011.sv), so it is a
