@@ -65,11 +65,15 @@ entity tm11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);                -- hps_io disk slot (clk_sys), see mister_blkdev.vhd
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_tm : in integer range 0 to 1;
       media_change : in std_logic := '0';                       -- toggles when a .tap is (un)mounted -> re-home to BOT
@@ -88,14 +92,8 @@ end tm11;
 
 architecture implementation of tm11 is
 
-component sdspi is
+component mister_blkdev is
    port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-
       sdcard_addr : in std_logic_vector(23 downto 0);
 
       sdcard_idle : out std_logic;
@@ -116,7 +114,16 @@ component sdspi is
       enable : in integer range 0 to 1 := 0;
       controller_clk : in std_logic;
       reset : in std_logic;
-      clk50mhz : in std_logic
+
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic
    );
 end component;
 
@@ -206,13 +213,13 @@ signal res_ill : std_logic;
 -- sdspi interface
 signal sd_addr : std_logic_vector(23 downto 0);
 signal sdcard_xfer_addr : integer range 0 to 255;
-signal sdcard_xfer_read : std_logic;
+signal sdcard_xfer_read : std_logic := '0';
 signal sdcard_xfer_out : std_logic_vector(15 downto 0);
-signal sdcard_xfer_write : std_logic;
+signal sdcard_xfer_write : std_logic := '0';
 signal sdcard_xfer_in : std_logic_vector(15 downto 0);
 signal sdcard_idle : std_logic;
-signal sdcard_read_start : std_logic;
-signal sdcard_read_ack : std_logic;
+signal sdcard_read_start : std_logic := '0';
+signal sdcard_read_ack : std_logic := '0';
 signal sdcard_read_done : std_logic;
 signal sdcard_write_start : std_logic;
 signal sdcard_write_ack : std_logic;
@@ -264,13 +271,13 @@ begin
 
    have_media <= '1' when img_mounted = 1 else '0';
 
-   sd1: sdspi port map(
-      sdcard_cs => sdcard_cs,
-      sdcard_mosi => sdcard_mosi,
-      sdcard_sclk => sdcard_sclk,
-      sdcard_miso => sdcard_miso,
-      sdcard_debug => sdcard_debug,
+   -- read-only drive: the write handshake is never used, but must be low
+   -- (mister_blkdev starts a request only with both acks low)
+   sdcard_write_start <= '0';
+   sdcard_write_ack <= '0';
+   sdcard_xfer_in <= (others => '0');
 
+   sd1: mister_blkdev port map(
       sdcard_addr => sd_addr,
 
       sdcard_idle => sdcard_idle,
@@ -291,7 +298,16 @@ begin
       enable => have_tm,
       controller_clk => clk,
       reset => reset,
-      clk50mhz => clk50mhz
+
+      sd_lba => sd_lba,
+      sd_rd => sd_rd,
+      sd_wr => sd_wr,
+      sd_ack => sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sys
    );
 
 -- regular bus interface

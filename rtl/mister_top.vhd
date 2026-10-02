@@ -75,11 +75,11 @@ entity mister_top is
 		rh_sdcard_debug: out std_logic_vector (3 downto 0);
 
       tm_media_change: in std_logic;
-      tm_sdcard_cs   : out std_logic;
-      tm_sdcard_mosi : out std_logic;
-      tm_sdcard_sclk : out std_logic;
-      tm_sdcard_miso : in std_logic;
-		tm_sdcard_debug: out std_logic_vector (3 downto 0);
+      tm_sd_lba      : out std_logic_vector(31 downto 0);   -- TM: hps_io disk slot 3, direct
+      tm_sd_rd       : out std_logic;
+      tm_sd_wr       : out std_logic;
+      tm_sd_ack      : in std_logic;
+      tm_sd_buff_din : out std_logic_vector(15 downto 0);
 
       -- Ethernet
       xu_cs   : out std_logic;
@@ -169,11 +169,11 @@ component unibus is
       have_tm : in integer range 0 to 1 := 0;
       tm_media_change : in std_logic := '0';
       tm_img_mounted : in integer range 0 to 1 := 0;
-      tm_sdcard_cs : out std_logic;
-      tm_sdcard_mosi : out std_logic;
-      tm_sdcard_sclk : out std_logic;
-      tm_sdcard_miso : in std_logic := '0';
-      tm_sdcard_debug : out std_logic_vector(3 downto 0);
+      tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      tm_sd_rd : out std_logic;
+      tm_sd_wr : out std_logic;
+      tm_sd_ack : in std_logic := '0';
+      tm_sd_buff_din : out std_logic_vector(15 downto 0);
 
 -- xu enc424j600 controller interface
       have_xu : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -650,11 +650,11 @@ begin
       have_tm => have_tm,
       tm_media_change => tm_media_change,
       tm_img_mounted => tm_img_mounted_sync,
-      tm_sdcard_cs => tm_sdcard_cs,
-      tm_sdcard_miso => tm_sdcard_miso,
-      tm_sdcard_mosi => tm_sdcard_mosi,
-      tm_sdcard_sclk => tm_sdcard_sclk,
-      tm_sdcard_debug => tm_sdcard_debug,
+      tm_sd_lba => tm_sd_lba,
+      tm_sd_rd => tm_sd_rd,
+      tm_sd_wr => tm_sd_wr,
+      tm_sd_ack => tm_sd_ack,
+      tm_sd_buff_din => tm_sd_buff_din,
 
       have_xu => have_xu,
 		have_xu_debug => 0,
