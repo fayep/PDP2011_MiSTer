@@ -556,8 +556,9 @@ begin
             end if;
 
             if seconds > have_act_seconds and have_act_seconds > 0 then
-               vga_hsync <= '1';
-               vga_vsync <= '1';
+               -- screen saver: black pixels only. The original also held hsync/vsync
+               -- inactive (DPMS standby on a VGA monitor), but on MiSTer that drops
+               -- the scaler/HDMI frame and the picture did not come back on a key.
                vga_fb <= '0';
                vga_ht <= '0';
             end if;
