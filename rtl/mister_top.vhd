@@ -44,6 +44,7 @@ entity mister_top is
 		vga_cursor_blink : in std_logic;
 		teste          : in std_logic;
 		testf          : in std_logic;
+		vt_saver       : in std_logic;    -- OSD "VT screen saver": '1' = blank after 15 min without keyboard activity
 		
       -- second serial port
       rx1: in std_logic;
@@ -462,6 +463,9 @@ signal cpuresetlength : integer range 0 to 255 := 255;
 -- see a tape before the host's mount handshake has actually landed.
 signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 0;
 
+-- VT screen saver timeout from the OSD (status[13], quasi-static): 0 = never
+signal vt_act_seconds : integer range 0 to 7200;
+
 signal ifetch: std_logic;
 signal iwait: std_logic;
 
@@ -571,6 +575,8 @@ attribute dont_retime of cpuclk, cpureset, cpuresetlength, dram_fsm, dram_wait,
 begin
 
 
+
+   vt_act_seconds <= 900 when vt_saver = '1' else 0;
 
    process(cpuclk)
    begin
@@ -722,7 +728,7 @@ begin
 		ifetch => ifetch,
 		iwait  => iwait,
 
-      have_act_seconds => 900,  -- screen activity counter
+      have_act_seconds => vt_act_seconds,  -- screen saver timeout (OSD), 0 = off
       have_act => have_act,     --Screen activity
 
       cpuclk => cpuclk,

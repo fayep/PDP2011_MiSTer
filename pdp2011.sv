@@ -595,6 +595,7 @@ mister_top mister_top
    .vga_cursor_block(status[11]),
    .vga_cursor_blink(status[12]),
    .teste(status[14]),
+   .vt_saver(status[13]),
    .testf(status[15]),
    .have_act(have_act)
 );
