@@ -51,7 +51,8 @@ rules = [
     ("option", r"option:.*$", ""),
     ("date", r"date\?.*$", "01-OCT-99"),
     ("time", r"time\?.*$", "12:00"),
-    ("start timesharing", r"start timesharing\?.*$", "Y"),
+    # really INIT's Option: prompt with START as the default -- answer the option, not "yes"
+    ("start timesharing", r"start timesharing\?.*$", "START"),
     ("proceed startup", r"proceed with system startup\?.*$", "YES"),
     ("on the air", r"on the air", ""),
     ("user", r"user:\s*$", "1,2"),
