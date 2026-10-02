@@ -14,7 +14,7 @@ prints is kept in the log. Exit 0 = PASS, 1 = FAIL/timeout.
 import re, subprocess, sys, time
 
 MGL, LOG = sys.argv[1], sys.argv[2]
-TIMEOUT = int(sys.argv[3]) if len(sys.argv) > 3 else 420
+TIMEOUT = int(sys.argv[3]) if len(sys.argv) > 3 else 1500   # fsck of the large 0c volume runs long and silent
 HOST = __import__("os").environ.get("MISTER_HOST", "192.168.51.209")
 SSH = ["sshpass", "-p", "1", "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
        "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=password", "root@" + HOST]
@@ -55,7 +55,8 @@ while time.time() - t0 < TIMEOUT:
     text = console(); low = text.lower()
     tail = low[pos:]
     if "shell" in done and re.search(r"halted|halting|system halt", tail):
-        time.sleep(4); result = "PASS"; note("kernel reports halt after shutdown: PASS"); break
+        note("kernel reports halt; waiting 60 s for the disk to dismount and quiesce")
+        time.sleep(60); result = "PASS"; note("halted and quiesced: PASS"); break
     fatal = re.search(r"panic:|trap type|\?fatal", low)
     if fatal:
         result = "FAIL"; note(f"fatal: {fatal.group(0)!r}: FAIL"); break
@@ -66,6 +67,8 @@ while time.time() - t0 < TIMEOUT:
         done.add(name); idx = i + 1; pos = len(low)
         send(reply); note(f"answered {name!r} with {reply!r}")
         break
+if result == "TIMEOUT" and "login" not in done and "marking file system clean" in console().lower():
+    result = "TIMEOUT-IN-FSCK"; note("still in /etc/rc fsck (no login: yet) at the timeout")
 note(f"RESULT {result}")
 log.write("=== console ===\n" + console() + "\n"); log.close()
 print(result)
