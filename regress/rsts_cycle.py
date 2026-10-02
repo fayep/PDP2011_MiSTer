@@ -87,5 +87,6 @@ while time.time() - t0 < TIMEOUT:
         break
 note(f"RESULT {result}")
 log.write("=== console ===\n" + console() + "\n"); log.close()
+ssh("for p in $(pidof pdp_harness); do kill $p; done")   # free ttyS1 for a terminal
 print(result)
 sys.exit(0 if result == "PASS" else 1)
