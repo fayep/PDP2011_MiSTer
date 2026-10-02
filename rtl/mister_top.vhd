@@ -68,11 +68,11 @@ entity mister_top is
       sd_buff_dout   : in std_logic_vector(15 downto 0);
       sd_buff_wr     : in std_logic;
 
-      rh_sdcard_cs   : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic;
-		rh_sdcard_debug: out std_logic_vector (3 downto 0);
+      rh_sd_lba      : out std_logic_vector(31 downto 0);   -- RH: hps_io disk slot 2, direct
+      rh_sd_rd       : out std_logic;
+      rh_sd_wr       : out std_logic;
+      rh_sd_ack      : in std_logic;
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
 
       tm_media_change: in std_logic;
       tm_sd_lba      : out std_logic_vector(31 downto 0);   -- TM: hps_io disk slot 3, direct
@@ -158,11 +158,11 @@ component unibus is
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rh_sdcard_cs : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic := '0';
-      rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rh_sd_lba : out std_logic_vector(31 downto 0);                 -- RH: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rh_sd_rd : out std_logic;
+      rh_sd_wr : out std_logic;
+      rh_sd_ack : in std_logic := '0';
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
       rh_type : in integer range 1 to 7 := 6;
 
 -- tm11 magtape controller
@@ -641,11 +641,11 @@ begin
       rk_sdcard_debug => rk_sdcard_debug,
 
       have_rh => have_rh,
-      rh_sdcard_cs => rh_sdcard_cs,
-      rh_sdcard_miso => rh_sdcard_miso,
-      rh_sdcard_mosi => rh_sdcard_mosi,
-      rh_sdcard_sclk => rh_sdcard_sclk,
-      rh_sdcard_debug => rh_sdcard_debug,
+      rh_sd_lba => rh_sd_lba,
+      rh_sd_rd => rh_sd_rd,
+      rh_sd_wr => rh_sd_wr,
+      rh_sd_ack => rh_sd_ack,
+      rh_sd_buff_din => rh_sd_buff_din,
 
       have_tm => have_tm,
       tm_media_change => tm_media_change,
