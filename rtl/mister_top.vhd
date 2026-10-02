@@ -736,6 +736,8 @@ begin
 
 	
 	
+   rxrx2 <= '1';                      -- KL11 lines 2/3: no connection, hold idle (mark)
+   rxrx3 <= '1';
    rxrx0 <= rx1 when serial_console = '1' else vttx;   
 	rxrx1 <= rx1 when serial_console = '0' else vttx; 
 	
@@ -1049,13 +1051,15 @@ begin
                   dram_fsm <= dram_c12;
 
                when dram_c12 =>
-                  dram_fsm <= dram_c13;
-
-               when dram_c13 =>
-                  -- read, t5-t6
+                  -- read data, CL3 burst 1: valid T0+30.4..T0+37.5 after READA at the
+                  -- edge ending dram_c8; capture at the edge ending this state (T0+40).
+                  -- dram_c13 (T0+50) sampled a bus the chip no longer drove.
                   if dram_match = '1' and control_dati = '1' then
                      dati <= dram_dq;
                   end if;
+                  dram_fsm <= dram_c13;
+
+               when dram_c13 =>
                   dram_fsm <= dram_c14;
 
                when dram_c14 =>
