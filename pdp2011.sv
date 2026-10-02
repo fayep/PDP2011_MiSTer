@@ -210,7 +210,6 @@ localparam CONF_STR = {
 	"O[7:5],PDP-11 Model,20,34,44,45,70,94;",
 	"-;",
 	"O[1],External Ethernet,No,Yes;",
-	"O[4:3],Real SD,RK,RL,RH;",
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
