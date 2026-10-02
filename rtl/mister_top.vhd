@@ -535,6 +535,13 @@ type dram_fsm_type is (
 );
 signal dram_fsm : dram_fsm_type := dram_init;
 
+-- No retiming of this block's reset-initialised and clock/reset generating
+-- registers. Not entity-wide: that would also block the SDRAM pad registers
+-- from being packed into the I/O cells.
+attribute dont_retime : boolean;
+attribute dont_retime of cpuclk, cpureset, cpuresetlength, dram_fsm, dram_wait,
+   dram_refresh_count, sample_cycles, minon_cycles : signal is true;
+
 begin
 
 

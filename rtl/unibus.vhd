@@ -248,6 +248,11 @@ entity unibus is
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
       reset : in std_logic                                           -- active '1' synchronous reset
    );
+   -- No physical-synthesis retiming anywhere in the PDP-11 (cpu, mmu, devices):
+   -- a retimed register only has to match the original's clocked behaviour,
+   -- not its reset value (reset PC 144020 on some placements).
+   attribute dont_retime : boolean;
+   attribute dont_retime of unibus : entity is true;
 end unibus;
 
 architecture implementation of unibus is
