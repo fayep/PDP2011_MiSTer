@@ -388,31 +388,10 @@ sd_card #(.WIDE(1)) sd_card_rh
 
 );
 
-sd_card #(.WIDE(1)) sd_card_tm
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[3]),
-	.sd_rd       (sd_rd[3]),
-	.sd_wr       (sd_wr[3]),
-	.sd_ack      (sd_ack[3]),
-
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[3]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (tm_sclk),
-	.ss          (tm_cs | ~vsd_sel_tm),
-	.mosi        (tm_mosi),
-	.miso        (tm_miso)
-
-);
+// TM11: tm11 talks to hps_io slot 3 directly through rtl/mister_blkdev.vhd.
+wire tm_sd_rd, tm_sd_wr;
+assign sd_rd[3] = tm_sd_rd & vsd_sel_tm;
+assign sd_wr[3] = tm_sd_wr & vsd_sel_tm;
 
 int have_rk;
 int have_rl;
@@ -442,11 +421,7 @@ wire [3:0]rh_sddebug;
 //
 wire [3:0]rl_sddebug = 4'd0;   // RL: no SPI activity bits since mister_blkdev
 //
-wire tm_sclk;
-wire tm_cs;
-wire tm_mosi;
-wire tm_miso;
-wire [3:0]tm_sddebug;
+wire [3:0]tm_sddebug = 4'd0;   // TM: no SPI activity bits since mister_blkdev
 //
 //
 
@@ -541,11 +516,11 @@ mister_top mister_top
    .have_tm (have_tm),
    .tm_img_mounted (tm_img_mounted),
    .tm_media_change (tape_mount_tgl),
-   .tm_sdcard_cs   (tm_cs),
-   .tm_sdcard_miso (tm_miso),
-   .tm_sdcard_mosi (tm_mosi),
-   .tm_sdcard_sclk (tm_sclk),
-   .tm_sdcard_debug(tm_sddebug),
+   .tm_sd_lba      (sd_lba[3]),
+   .tm_sd_rd       (tm_sd_rd),
+   .tm_sd_wr       (tm_sd_wr),
+   .tm_sd_ack      (sd_ack[3]),
+   .tm_sd_buff_din (sd_buff_din[3]),
 	
 	.dram_addr (SDRAM_A),
 	.dram_dq   (SDRAM_DQ),
