@@ -241,8 +241,8 @@ wire [21:0] gamma_bus;
 
 
 wire [31:0] sd_lba[4];
-reg   [3:0] sd_rd;
-reg   [3:0] sd_wr;
+wire  [3:0] sd_rd;
+wire  [3:0] sd_wr;
 wire  [3:0] sd_ack;
 wire [7:0]sd_buff_addr;
 wire [15:0] sd_buff_dout;
@@ -356,31 +356,11 @@ sd_card #(.WIDE(1)) sd_card_rk
 
 );
 
-sd_card #(.WIDE(1)) sd_card_rl
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[1]),
-	.sd_rd       (sd_rd[1]),
-	.sd_wr       (sd_wr[1]),
-	.sd_ack      (sd_ack[1]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[1]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (rl_sclk),
-	.ss          (rl_cs | ~vsd_sel_rl),
-	.mosi        (rl_mosi),
-	.miso        (rl_miso)
-
-);
+// RL: rl11 talks to hps_io slot 1 directly through rtl/mister_blkdev.vhd
+// (no SPI SD-card emulation). Requests only while an image is mounted.
+wire rl_sd_rd, rl_sd_wr;
+assign sd_rd[1] = rl_sd_rd & vsd_sel_rl;
+assign sd_wr[1] = rl_sd_wr & vsd_sel_rl;
 
 sd_card #(.WIDE(1)) sd_card_rh
 (
@@ -460,11 +440,7 @@ wire rh_mosi;
 wire rh_miso;
 wire [3:0]rh_sddebug;
 //
-wire rl_sclk;
-wire rl_cs;
-wire rl_mosi;
-wire rl_miso;
-wire [3:0]rl_sddebug;
+wire [3:0]rl_sddebug = 4'd0;   // RL: no SPI activity bits since mister_blkdev
 //
 wire tm_sclk;
 wire tm_cs;
@@ -539,11 +515,14 @@ mister_top mister_top
 	.xu_miso  (xu_miso),
 	
    .have_rl (have_rl),
-   .rl_sdcard_cs    (rl_cs),
-   .rl_sdcard_miso  (rl_miso),
-   .rl_sdcard_mosi  (rl_mosi),
-   .rl_sdcard_sclk  (rl_sclk),
-   .rl_sdcard_debug (rl_sddebug),
+   .rl_sd_lba      (sd_lba[1]),
+   .rl_sd_rd       (rl_sd_rd),
+   .rl_sd_wr       (rl_sd_wr),
+   .rl_sd_ack      (sd_ack[1]),
+   .rl_sd_buff_din (sd_buff_din[1]),
+   .sd_buff_addr   (sd_buff_addr),
+   .sd_buff_dout   (sd_buff_dout),
+   .sd_buff_wr     (sd_buff_wr),
 	
    .have_rk  (have_rk),
 	.rk_sdcard_cs     (rk_cs),

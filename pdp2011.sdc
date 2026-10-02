@@ -13,10 +13,10 @@ create_generated_clock -name cpuclk \
    -edges {1 15 29} \
    [get_registers {emu:emu|mister_top:mister_top|cpuclk}]
 
-# rh11/rk11/rl11/tm11 still run their own sdspi SPI clocks in this core.
+# rh11/rk11/tm11 still run their own sdspi SPI clocks in this core; rl11 talks to
+# hps_io directly through rtl/mister_blkdev.vhd (clk_100 <-> cpuclk, no SPI clock).
 create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|rh11:rh0|sdspi:sd1|clk
 create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|rk11:rk0|sdspi:sd1|clk
-create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|rl11:rl0|sdspi:sd1|clk
 create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|tm11:tm0|sdspi:sd1|clk
 
 derive_pll_clocks -use_net_name
@@ -27,8 +27,6 @@ set_false_path -from [get_clocks {cpuclk}] \
 set_false_path -from [get_clocks {cpuclk}] \
   -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rk11:rk0|sdspi:sd1|clk}]
 set_false_path -from [get_clocks {cpuclk}] \
-  -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rl11:rl0|sdspi:sd1|clk}]
-set_false_path -from [get_clocks {cpuclk}] \
   -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|tm11:tm0|sdspi:sd1|clk}]
 
 # sdspi <-> sd_card (sys/sd_card.sv): sd_card runs on clk_100 and treats
@@ -37,7 +35,7 @@ set_false_path -from [get_clocks {cpuclk}] \
 # SPI period (40 ns, 4 clk_100 cycles) around that edge, and sdspi samples
 # MISO on its own SPI clock likewise. The single-cycle sd1|clk <-> divclk
 # checks are not real requirements (they showed -0.05 ns hold): false path.
-foreach sdc_c {rh11:rh0 rk11:rk0 rl11:rl0 tm11:tm0} {
+foreach sdc_c {rh11:rh0 rk11:rk0 tm11:tm0} {
    set_false_path -from [get_clocks "emu:emu|mister_top:mister_top|unibus:pdp11|$sdc_c|sdspi:sd1|clk"] \
       -to [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}]
    set_false_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
