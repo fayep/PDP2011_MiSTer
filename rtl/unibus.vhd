@@ -70,11 +70,11 @@ entity unibus is
       have_tm : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       tm_media_change : in std_logic := '0';                         -- toggles on .tap (un)mount -> re-home to BOT
       tm_img_mounted : in integer range 0 to 1 := 1;                 -- is a tape image actually mounted (see tm11's img_mounted)
-      tm_sdcard_cs : out std_logic;
-      tm_sdcard_mosi : out std_logic;
-      tm_sdcard_sclk : out std_logic;
-      tm_sdcard_miso : in std_logic := '0';
-      tm_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      tm_sd_rd : out std_logic;
+      tm_sd_wr : out std_logic;
+      tm_sd_ack : in std_logic := '0';
+      tm_sd_buff_din : out std_logic_vector(15 downto 0);
 
 -- xu enc424j600 controller interface
       have_xu : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -667,11 +667,15 @@ component tm11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_tm : in integer range 0 to 1;
       media_change : in std_logic := '0';
@@ -1887,11 +1891,15 @@ begin
       bus_master_control_dato => tm0_control_dato,
       bus_master_nxm => busmaster_nxmabort,
 
-      sdcard_cs => tm_sdcard_cs,
-      sdcard_mosi => tm_sdcard_mosi,
-      sdcard_sclk => tm_sdcard_sclk,
-      sdcard_miso => tm_sdcard_miso,
-      sdcard_debug => tm_sdcard_debug,
+      sd_lba => tm_sd_lba,
+      sd_rd => tm_sd_rd,
+      sd_wr => tm_sd_wr,
+      sd_ack => tm_sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => tm_sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sd,
 
       have_tm => have_tm,
       media_change => tm_media_change,

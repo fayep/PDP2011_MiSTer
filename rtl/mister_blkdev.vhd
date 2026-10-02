@@ -96,9 +96,15 @@ type hps_state_t is (
 );
 signal hps_state : hps_state_t := hps_quiesce;
 
+signal rd_r, wr_r : std_logic := '0';                           -- sd_rd/sd_wr, defined from power-up
+signal lba_r : std_logic_vector(31 downto 0) := (others => '0');
+
 begin
 
    sdcard_error <= '0';
+   sd_rd <= rd_r;
+   sd_wr <= wr_r;
+   sd_lba <= lba_r;
 
 -- controller side
 
@@ -148,8 +154,8 @@ begin
             idle <= '0';
             read_done <= '0';
             write_done <= '0';
-            sd_rd <= '0';
-            sd_wr <= '0';
+            rd_r <= '0';
+            wr_r <= '0';
             hps_state <= hps_quiesce;
          else
             case hps_state is
@@ -170,20 +176,20 @@ begin
                   if read_done = '0' and write_done = '0' and read_ack_s = '0' and write_ack_s = '0' then
                      if read_start_s = '1' then
                         idle <= '0';
-                        sd_lba <= x"00" & sdcard_addr;
-                        sd_rd <= '1';
+                        lba_r <= x"00" & sdcard_addr;
+                        rd_r <= '1';
                         hps_state <= hps_read_req;
                      elsif write_start_s = '1' then
                         idle <= '0';
-                        sd_lba <= x"00" & sdcard_addr;
-                        sd_wr <= '1';
+                        lba_r <= x"00" & sdcard_addr;
+                        wr_r <= '1';
                         hps_state <= hps_write_req;
                      end if;
                   end if;
 
                when hps_read_req =>
                   if sd_ack = '1' then
-                     sd_rd <= '0';
+                     rd_r <= '0';
                      hps_state <= hps_read_xfer;
                   end if;
 
@@ -195,7 +201,7 @@ begin
 
                when hps_write_req =>
                   if sd_ack = '1' then
-                     sd_wr <= '0';
+                     wr_r <= '0';
                      hps_state <= hps_write_xfer;
                   end if;
 
