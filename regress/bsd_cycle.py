@@ -71,5 +71,6 @@ if result == "TIMEOUT" and "login" not in done and "marking file system clean" i
     result = "TIMEOUT-IN-FSCK"; note("still in /etc/rc fsck (no login: yet) at the timeout")
 note(f"RESULT {result}")
 log.write("=== console ===\n" + console() + "\n"); log.close()
+ssh("for p in $(pidof pdp_harness); do kill $p; done")   # free ttyS1 for a terminal
 print(result)
 sys.exit(0 if result == "PASS" else 1)
