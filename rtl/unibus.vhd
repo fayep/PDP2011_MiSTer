@@ -70,6 +70,9 @@ entity unibus is
       have_tm : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       tm_media_change : in std_logic := '0';                         -- toggles on .tap (un)mount -> re-home to BOT
       tm_img_mounted : in integer range 0 to 1 := 1;                 -- is a tape image actually mounted (see tm11's img_mounted)
+      rk_img_mounted : in integer range 0 to 1 := 1;                 -- disk image mounted behind the controller (drive online)
+      rl_img_mounted : in integer range 0 to 1 := 1;
+      rh_img_mounted : in integer range 0 to 1 := 1;
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
       tm_sd_rd : out std_logic;
       tm_sd_wr : out std_logic;
@@ -633,6 +636,7 @@ component rl11 is
       clk_sys : in std_logic;
 
       have_rl : in integer range 0 to 1;
+      img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -725,6 +729,7 @@ component rk11 is
       clk_sys : in std_logic;
 
       have_rk : in integer range 0 to 1;
+      img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       have_rk_num : in integer range 1 to 8;
       reset : in std_logic;
       clk50mhz : in std_logic;
@@ -778,6 +783,7 @@ component rh11 is
       clk_sys : in std_logic;
 
       have_rh : in integer range 0 to 1 := 0;
+      img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       have_rh70 : in integer range 0 to 1 := 0;
       rh_type : in integer range 1 to 7 := 6;              -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
       rh_noofcyl : in integer range 128 to 8192 := 1024;   -- for RM06 and RP2G: how many cylinders are available
@@ -1867,6 +1873,7 @@ begin
       clk_sys => clk_sd,
 
       have_rl => have_rl,
+      img_mounted => rl_img_mounted,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       nclk => nclk,
@@ -1955,6 +1962,7 @@ begin
       clk_sys => clk_sd,
 
       have_rk => have_rk,
+      img_mounted => rk_img_mounted,
       have_rk_num => have_rk_num,
       reset => cpu_init,
       clk50mhz => clk50mhz,
@@ -2010,6 +2018,7 @@ begin
       rh_noofcyl => rh_noofcyl,
 
       have_rh => have_rh,
+      img_mounted => rh_img_mounted,
       have_rh70 => have_rh70,
       reset => cpu_init,
       clk50mhz => clk50mhz,

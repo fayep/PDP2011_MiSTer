@@ -64,6 +64,7 @@ entity rh11 is
       clk_sys : in std_logic;
 
       have_rh : in integer range 0 to 1 := 0;
+      img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       have_rh70 : in integer range 0 to 1 := 0;
       rh_type : in integer range 1 to 7 := 6;              -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
       rh_noofcyl : in integer range 128 to 8192 := 1024;   -- for RM06 and RP2G: how many cylinders are available
@@ -176,6 +177,8 @@ signal rmds_pgm : std_logic;                                         -- programm
 signal rmds_dpr : std_logic;                                         -- drive preset
 signal rmds_dry : std_logic;                                         -- drive ready
 signal rmds_vv : std_logic;                                          -- volume valid
+signal rh_online : std_logic;                                        -- image mounted (img_mounted): medium online
+signal rh_online_d : std_logic := '0';
 signal rmds_om : std_logic;                                          --
 
 -- rmer1  17 776 714                                            -- error status 1
@@ -389,6 +392,7 @@ begin
 
 -- specific logic for the device
 
+   rh_online <= '1' when img_mounted = 1 else '0';
    rmcs1_sc <= '1' when rmcs1_tre = '1' or rmcs1_mcpe = '1'-- FIXME, others?
       else '0';
    rmcs1_tre <= '1' when rmcs2_dlt = '1' or rmcs2_wce = '1' or rmcs2_pe = '1' or rmcs2_ned = '1'
@@ -821,6 +825,17 @@ begin
                   rmer1_par <= '1';
                end if;
 
+               -- medium online follows the mounted image; volume valid is lost when the
+               -- image goes away and set again when one is mounted (as the reset value
+               -- always did), so no OS needs a pack acknowledge for a mounted image
+               rh_online_d <= rh_online;
+               rmds_mol <= rh_online;
+               if rh_online = '0' then
+                  rmds_vv <= '0';
+               elsif rh_online_d = '0' then
+                  rmds_vv <= '1';
+               end if;
+
                if rmcs1_go = '1' then
 
                   rmcs1_mcpe <= '0';
@@ -835,8 +850,13 @@ begin
                   rmcs2_pge <= '0';
                   rmcs2_mdpe <= '0';
 
-                  if (rmds_vv = '0' or rmds_dry = '0')
-                  and rmcs1_fnc /= "01000" and rmcs1_fnc /= "01001" then
+                  if rh_online = '0' and rmcs1_fnc /= "00000" and rmcs1_fnc /= "00100" then
+                     rmer1_uns <= '1';                                -- no medium: drive unsafe (as SIMH for an unattached drive)
+                     rmcs1_go <= '0';
+                     rmds_ataset <= '1';
+                  elsif (rmds_vv = '0' or rmds_dry = '0')
+                  and rmcs1_fnc /= "01000" and rmcs1_fnc /= "01001"
+                  and rmcs1_fnc /= "00000" and rmcs1_fnc /= "00100" then  -- nop and drive clear need no volume valid
                      rmer2_ivc <= '1';
                      rmcs1_go <= '0';
                      rmds_ataset <= '1';
@@ -1154,13 +1174,13 @@ begin
                   rmds_ata <= '0';
 --                  rmds_err <= '0';
                   rmds_pip <= '0';
-                  rmds_mol <= '1';                                   -- medium is online
+                  rmds_mol <= rh_online;                             -- medium online = image mounted
                   rmds_wrl <= '0';
                   rmds_lst <= '0';
                   rmds_pgm <= '0';
                   rmds_dpr <= '1';                                   -- drive is available to this controller, there is no other controller
                   rmds_dry <= '1';                                   -- FIXME, set according to sdcard state?
-                  rmds_vv <= '1';                                    -- FIXME, set according to sdcard state?
+                  rmds_vv <= rh_online;                              -- volume valid when an image is mounted
                   rmds_om <= '0';
 
 -- rmmr1  17 776 724                                             -- maintenance register

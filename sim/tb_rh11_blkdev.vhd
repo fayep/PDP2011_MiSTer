@@ -54,6 +54,7 @@ architecture sim of tb_rh11_blkdev is
    signal nclk    : std_logic := '1';
    signal clk_sys : std_logic := '0';
    signal reset   : std_logic := '1';
+   signal img     : integer range 0 to 1 := 1;                  -- image mounted (drive online)
 
    signal b_addr  : std_logic_vector(17 downto 0) := (others => '0');
    signal b_dato  : std_logic_vector(15 downto 0) := (others => '0');
@@ -134,6 +135,7 @@ begin
       sd_buff_wr => sd_buff_wr,
       clk_sys => clk_sys,
       have_rh => 1,
+      img_mounted => img,
       have_rh70 => RH70,
       rh_type => 6,
       reset => reset,
@@ -326,6 +328,8 @@ begin
          ok(tag & " (" & integer'image(bad) & " wrong)", bad = 0);
       end procedure;
 
+      variable v  : std_logic_vector(15 downto 0);
+      variable n0 : integer;
    begin
       wait until img_init_done;
       cyc(5);
@@ -366,6 +370,47 @@ begin
       check_mem("read back sector 5", 8#50000#, 5, 0, 255);
       check_mem("read back sector 6", 8#50000# + 256, 6, 0, 255);
       check_mem("read back sector 7", 8#50000# + 512, 7, 0, 255);
+
+      -- No image mounted: the controller is still there, the drive shows no
+      -- medium (MOL) and no volume valid, a read is refused with UNS and
+      -- attention and no disk activity, drive clear clears it, pack acknowledge
+      -- cannot validate an empty drive, and after the image is mounted again
+      -- MOL and VV are back and a read works.
+      img <= 0;
+      cyc(10);
+      reg_read("00101", v);
+      ok("offline: RMDS MOL clear", v(12) = '0');
+      ok("offline: RMDS VV clear", v(6) = '0');
+      n0 := sd_reads;
+      reg_write(RMDC, x"0000");
+      reg_write(RMDA, x"0005");
+      reg_write(RMBA, conv_std_logic_vector(8#50000# * 2, 16));
+      reg_write(RMWC, conv_std_logic_vector(65536 - 256, 16));
+      reg_write(RMCS1, GO_READ);
+      cyc(200);
+      reg_read("00110", v);
+      ok("offline: read refused with RMER1 UNS", v(14) = '1');
+      reg_read("00101", v);
+      ok("offline: RMDS ERR and ATA", v(14) = '1' and v(15) = '1');
+      reg_read(RMCS1, v);
+      ok("offline: GO clear, controller ready", v(0) = '0' and v(7) = '1');
+      ok("offline: no disk transfer started", sd_reads = n0);
+      reg_write(RMCS1, x"0009");                                     -- drive clear
+      cyc(200);
+      reg_read("00110", v);
+      ok("offline: drive clear clears RMER1", v = x"0000");
+      reg_write(RMCS1, GO_PACKACK);
+      cyc(200);
+      reg_read("00101", v);
+      ok("offline: pack acknowledge cannot set VV", v(6) = '0');
+      reg_write(RMCS1, x"0009");                                     -- drive clear
+      cyc(200);
+      img <= 1;
+      cyc(10);
+      reg_read("00101", v);
+      ok("remounted: RMDS MOL and VV set", v(12) = '1' and v(6) = '1');
+      rh_cmd(GO_READ, 5, 256, 8#50000#, "remounted: read sector 5");
+      check_mem("remounted: data", 8#50000#, 5, 0, 255);
 
       cyc(10);
       report "tb_rh11_blkdev: RH70=" & integer'image(RH70) & ": " & integer'image(pass_count) & " checks passed, "
