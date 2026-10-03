@@ -49,6 +49,7 @@ architecture implementation of kw11l is
 
 signal lc_monitor : std_logic;
 signal lc_ie : std_logic;
+signal lc_irq : std_logic := '0';                  -- a tick is owed an interrupt (one per tick)
 signal lineclk : std_logic;
 
 signal lc_clk_old : std_logic;
@@ -91,6 +92,7 @@ begin
                lc_clk_old <= lineclk;
                lc_monitor <= '1';                -- EK-KDJ1B-UG_KDJ11-B_Nov86.pdf, table 1-23, pg. 1-45
                lc_ie <= '0';
+               lc_irq <= '0';
             end if;
 
          else
@@ -101,21 +103,22 @@ begin
                   when i_idle =>
 
                      br <= '0';
-                     if lc_ie = '1' and lc_monitor = '1' then
+                     if lc_ie = '1' and lc_irq = '1' then
                         interrupt_state <= i_req;
                         br <= '1';
                      end if;
 
-                  when i_req =>
-                     lc_monitor <= '0';
-                     br <= '1';
-                     if lc_ie = '1' then
-                        if bg = '1' then
+                  when i_req =>                         -- the monitor bit is NOT cleared here: on the
+                     br <= '1';                         -- 11/70 (as in SIMH) bit 7 stays set until the
+                     if lc_ie = '1' then                -- program writes it 0, so software can still
+                        if bg = '1' then                -- see the tick after the interrupt
                            int_vector <= ivec;
                            br <= '0';
+                           lc_irq <= '0';
                            interrupt_state <= i_wait;
                         end if;
                      else
+                        lc_irq <= '0';
                         interrupt_state <= i_idle;
                      end if;
 
@@ -139,14 +142,22 @@ begin
 
                if base_addr_match = '1' and bus_control_dato = '1' then
                   if bus_control_datob = '0' or (bus_control_datob = '1' and bus_addr(0) = '0') then
-                     lc_monitor <= bus_dato(7);
+                     if bus_dato(7) = '0' then          -- the program can clear bit 7, not set it
+                        lc_monitor <= '0';
+                     end if;
                      lc_ie <= bus_dato(6);
+                     if bus_dato(6) = '0' then
+                        lc_irq <= '0';
+                     end if;
                   end if;
                end if;
 
                lc_clk_old <= lineclk;
                if lineclk /= lc_clk_old and lineclk = '1' then
                   lc_monitor <= '1';
+                  if lc_ie = '1' then
+                     lc_irq <= '1';
+                  end if;
                end if;
             end if;
 
