@@ -522,7 +522,7 @@ wire [7:0] vga_blue;
 
 
 assign vttype  = status[10] ? 105 : 100; 
-assign have_act = status[13];
+assign have_act = 2'd2;   // VT screen saver: only keyboard activity wakes the screen (1 = keyboard or serial)
 assign color=status[9:8];
 
 
