@@ -35,6 +35,9 @@ entity mister_top is
 		have_rh        : in integer;
 		have_tm        : in integer;
 		tm_img_mounted : in integer;
+		rk_img_mounted : in integer;
+		rl_img_mounted : in integer;
+		rh_img_mounted : in integer;
 		have_xu        : in integer;
 		
 		-- VT settings
@@ -169,6 +172,9 @@ component unibus is
       have_tm : in integer range 0 to 1 := 0;
       tm_media_change : in std_logic := '0';
       tm_img_mounted : in integer range 0 to 1 := 0;
+      rk_img_mounted : in integer range 0 to 1 := 1;
+      rl_img_mounted : in integer range 0 to 1 := 1;
+      rh_img_mounted : in integer range 0 to 1 := 1;
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
       tm_sd_rd : out std_logic;
       tm_sd_wr : out std_logic;
@@ -470,6 +476,13 @@ signal cpuresetlength : integer range 0 to 255 := 255;
 -- see a tape before the host's mount handshake has actually landed.
 signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 0;
 
+-- rk/rl/rh_img_mounted: the disk controllers are always present; these say
+-- whether an image is mounted behind each one (drive online), from the
+-- clk_100 vsd_sel flags, 2-FF synchronised on cpuclk like tm_img_mounted.
+signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 0;
+signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 0;
+signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 0;
+
 -- VT screen saver timeout from the OSD (status[13], quasi-static): 0 = never
 signal vt_act_seconds : integer range 0 to 7200;
 
@@ -589,6 +602,9 @@ begin
    begin
       if cpuclk'event and cpuclk = '1' then
          tm_img_mounted_meta <= tm_img_mounted;  tm_img_mounted_sync <= tm_img_mounted_meta;
+         rk_img_mounted_meta <= rk_img_mounted;  rk_img_mounted_sync <= rk_img_mounted_meta;
+         rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
+         rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
       end if;
    end process;
 
@@ -650,6 +666,9 @@ begin
       have_tm => have_tm,
       tm_media_change => tm_media_change,
       tm_img_mounted => tm_img_mounted_sync,
+      rk_img_mounted => rk_img_mounted_sync,
+      rl_img_mounted => rl_img_mounted_sync,
+      rh_img_mounted => rh_img_mounted_sync,
       tm_sd_lba => tm_sd_lba,
       tm_sd_rd => tm_sd_rd,
       tm_sd_wr => tm_sd_wr,

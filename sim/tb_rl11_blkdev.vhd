@@ -50,6 +50,7 @@ architecture sim of tb_rl11_blkdev is
    signal nclk   : std_logic := '1';
    signal clk_sys : std_logic := '0';
    signal reset  : std_logic := '1';
+   signal img    : integer range 0 to 1 := 1;                   -- image mounted (drive online)
 
    signal b_addr  : std_logic_vector(17 downto 0) := (others => '0');
    signal b_dato  : std_logic_vector(15 downto 0) := (others => '0');
@@ -125,6 +126,7 @@ begin
       sd_buff_wr => sd_buff_wr,
       clk_sys => clk_sys,
       have_rl => 1,
+      img_mounted => img,
       reset => reset,
       clk50mhz => clk_sys,
       nclk => nclk,
@@ -269,6 +271,8 @@ begin
 
       variable blk, half : integer;
       variable good : boolean;
+      variable v  : std_logic_vector(15 downto 0);
+      variable n0 : integer;
 
       procedure check_block(tag : string; b : integer; lo, hi : integer; expect_orig : boolean; base : integer) is
          -- words lo..hi of block b: original data, or base+i written from memory, checked word by word
@@ -366,6 +370,44 @@ begin
       rl_cmd(FC_READ, 13, 256, 8#60000#, "read back sectors 13-14");
       check_mem("read back sector 13", 8#60000#, 6, 128, 255);
       check_mem("read back sector 14", 8#60000# + 256, 7, 0, 127);
+
+      -- No image mounted: the controller is still there, the drive is not
+      -- ready, Get Status still works and reports the load state, a read ends
+      -- at once with OPI and no disk activity, and after the image is mounted
+      -- again a read works.
+      img <= 0;
+      cyc(10);
+      reg_read(RLCS, v);
+      ok("offline: RLCS DRDY clear", v(0) = '0');
+      reg_write(RLDA, x"0003");                                      -- get status: marker + GS
+      reg_write(RLCS, x"0004");                                      -- function 2, go
+      for i in 1 to 200 loop
+         cyc(10);
+         reg_read(RLCS, v);
+         exit when v(7) = '1';
+      end loop;
+      ok("offline: get status completes without error", v(7) = '1' and v(15) = '0');
+      reg_read(RLMP, v);
+      ok("offline: get status reports load state", v(4 downto 0) = "00000");
+      n0 := sd_reads;
+      reg_write(RLBA, conv_std_logic_vector(8#50000#, 16));
+      reg_write(RLDA, x"0001");
+      reg_write(RLMP, conv_std_logic_vector(65536 - 128, 16));
+      reg_write(RLCS, FC_READ);
+      for i in 1 to 200 loop
+         cyc(10);
+         reg_read(RLCS, v);
+         exit when v(7) = '1';
+      end loop;
+      ok("offline: read completes (CRDY)", v(7) = '1');
+      ok("offline: read ends with ERR + OPI", v(15) = '1' and v(12 downto 10) = "001");
+      ok("offline: no disk transfer started", sd_reads = n0);
+      img <= 1;
+      cyc(10);
+      reg_read(RLCS, v);
+      ok("remounted: RLCS DRDY set", v(0) = '1');
+      rl_cmd(FC_READ, 1, 128, 8#50000#, "remounted: read sector 1");
+      check_mem("remounted: data", 8#50000#, 0, 128, 255);
 
       cyc(10);
       report "tb_rl11_blkdev: " & integer'image(pass_count) & " checks passed, " & integer'image(fail_count)
