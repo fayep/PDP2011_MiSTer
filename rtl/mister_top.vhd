@@ -468,6 +468,11 @@ end component;
 signal cpuclk : std_logic;
 signal cpureset : std_logic := '1';
 signal cpuresetlength : integer range 0 to 255 := 255;
+-- cpureset is made in the clk_100 domain by the DRAM state machine, on the
+-- same edge that raises cpuclk; re-synchronised here so every cpuclk register
+-- in the CPU and devices sees reset change on a clean cpuclk edge.
+signal cpureset_s1 : std_logic := '1';
+signal cpureset_cpu : std_logic := '1';
 
 -- tm_img_mounted: pdp2011.sv's vsd_sel_tm "tape image mounted" flag
 -- (clk_100 domain), 2-FF synchronised on cpuclk. tm11 reports "no tape"
@@ -589,7 +594,7 @@ signal dram_fsm : dram_fsm_type := dram_init;
 -- registers. Not entity-wide: that would also block the SDRAM pad registers
 -- from being packed into the I/O cells.
 attribute dont_retime : boolean;
-attribute dont_retime of cpuclk, cpureset, cpuresetlength, dram_fsm, dram_wait,
+attribute dont_retime of cpuclk, cpureset, cpuresetlength, cpureset_s1, cpureset_cpu, dram_fsm, dram_wait,
    dram_refresh_count, sample_cycles, minon_cycles : signal is true;
 
 begin
@@ -601,6 +606,7 @@ begin
    process(cpuclk)
    begin
       if cpuclk'event and cpuclk = '1' then
+         cpureset_s1 <= cpureset;  cpureset_cpu <= cpureset_s1;
          tm_img_mounted_meta <= tm_img_mounted;  tm_img_mounted_sync <= tm_img_mounted_meta;
          rk_img_mounted_meta <= rk_img_mounted;  rk_img_mounted_sync <= rk_img_mounted_meta;
          rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
@@ -725,7 +731,7 @@ begin
 		
       iwait  => iwait,
       ifetch => ifetch,
-      reset => cpureset,
+      reset => cpureset_cpu,
       clk50mhz => clk_50,
       clk => cpuclk
    );
@@ -763,7 +769,7 @@ begin
 
       cpuclk => cpuclk,
       clk50mhz => clk_50,
-      reset => cpureset
+      reset => cpureset_cpu
    );
 
 	
