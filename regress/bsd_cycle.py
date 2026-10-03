@@ -20,7 +20,16 @@ SSH = ["sshpass", "-p", "1", "ssh", "-o", "StrictHostKeyChecking=no", "-o", "Log
        "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=password", "root@" + HOST]
 
 def ssh(cmd, timeout=60):
-    return subprocess.run(SSH + [cmd], capture_output=True, timeout=timeout).stdout
+    """Run cmd on the MiSTer. A failed connection (refused, dropped, or a login
+    rejected while the MiSTer is busy) is retried; if it never gets through the
+    test stops with an error instead of carrying on as if cmd had run."""
+    for attempt in range(5):
+        r = subprocess.run(SSH + [cmd], capture_output=True, timeout=timeout)
+        err = r.stderr.decode("latin-1")
+        if r.returncode != 255 and "Permission denied" not in err and "Connection" not in err:
+            return r.stdout
+        time.sleep(5)
+    sys.exit("ssh to %s failed 5 times: %s" % (HOST, err.strip()))
 
 def send(text):
     subprocess.run(["nc", "-w", "2", HOST, "7788"], input=("send " + text + "\n").encode(),
