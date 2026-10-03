@@ -13,28 +13,11 @@ create_generated_clock -name cpuclk \
    -edges {1 15 29} \
    [get_registers {emu:emu|mister_top:mister_top|cpuclk}]
 
-# rk11 still runs its own sdspi SPI clock in this core; rh11, rl11 and tm11 talk
-# to hps_io directly through rtl/mister_blkdev.vhd (clk_100 <-> cpuclk, no SPI clock).
-create_clock -period 80.000ns emu:emu|mister_top:mister_top|unibus:pdp11|rk11:rk0|sdspi:sd1|clk
+# All disk and tape controllers (rk11, rl11, rh11, tm11) talk to hps_io directly
+# through rtl/mister_blkdev.vhd (clk_100 <-> cpuclk handshake): no SPI clocks.
 
 derive_pll_clocks -use_net_name
 derive_clock_uncertainty
-
-set_false_path -from [get_clocks {cpuclk}] \
-  -to [get_clocks {emu:emu|mister_top:mister_top|unibus:pdp11|rk11:rk0|sdspi:sd1|clk}]
-
-# sdspi <-> sd_card (sys/sd_card.sv): sd_card runs on clk_100 and treats
-# SCK as data -- it samples sck on clk_spi and acts on a detected edge
-# (~old_sck & sck), with clk_spi >= 4 x SCK; MOSI/CS are held for half an
-# SPI period (40 ns, 4 clk_100 cycles) around that edge, and sdspi samples
-# MISO on its own SPI clock likewise. The single-cycle sd1|clk <-> divclk
-# checks are not real requirements (they showed -0.05 ns hold): false path.
-foreach sdc_c {rk11:rk0} {
-   set_false_path -from [get_clocks "emu:emu|mister_top:mister_top|unibus:pdp11|$sdc_c|sdspi:sd1|clk"] \
-      -to [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}]
-   set_false_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
-      -to [get_clocks "emu:emu|mister_top:mister_top|unibus:pdp11|$sdc_c|sdspi:sd1|clk"]
-}
 
 # cpuclk -> divclk: the DRAM FSM samples the CPU's address/data at the
 # edge ending dram_c6 (row address, 5 divclk periods after the cpuclk
