@@ -48,6 +48,7 @@ architecture sim of tb_rk11_blkdev is
    signal nclk    : std_logic := '1';
    signal clk_sys : std_logic := '0';
    signal reset   : std_logic := '1';
+   signal img     : integer range 0 to 1 := 1;                  -- image mounted (drive online)
 
    signal b_addr  : std_logic_vector(17 downto 0) := (others => '0');
    signal b_dato  : std_logic_vector(15 downto 0) := (others => '0');
@@ -119,6 +120,7 @@ begin
       sd_buff_wr => sd_buff_wr,
       clk_sys => clk_sys,
       have_rk => 1,
+      img_mounted => img,
       have_rk_num => 1,
       reset => reset,
       clk50mhz => clk_sys,
@@ -314,6 +316,8 @@ begin
          ok(tag & " (" & integer'image(bad) & " wrong)", bad = 0);
       end procedure;
 
+      variable v  : std_logic_vector(15 downto 0);
+      variable n0 : integer;
    begin
       wait until img_init_done;
       cyc(5);
@@ -387,6 +391,43 @@ begin
       end loop;
       check_mem("cylinder-crossing read: block 567 (partial)", 8#60000# + 17 * 256, 567, 0, 4502 - 17 * 256 - 1);
       check_guard("cylinder-crossing read: nothing past the end", 8#60000# + 4502, 400);
+
+      -- No image mounted: the controller is still there, the drive is not
+      -- ready, a drive function ends at once with DRE (no disk activity), a
+      -- control reset still works and clears it, and after the image is
+      -- mounted again a read works.
+      img <= 0;
+      cyc(10);
+      reg_write(RKDA, x"0000");
+      reg_read("000", v);
+      ok("offline: RKDS DRY clear", v(7) = '0');
+      ok("offline: RKDS RWS RDY clear", v(6) = '0');
+      n0 := sd_reads;
+      reg_write(RKCS, GO_READ);
+      for i in 1 to 200 loop
+         cyc(10);
+         reg_read(RKCS, v);
+         exit when v(7) = '1';
+      end loop;
+      ok("offline: read completes (RDY)", v(7) = '1');
+      ok("offline: read sets ERR and HE", v(15) = '1' and v(14) = '1');
+      reg_read("001", v);
+      ok("offline: RKER DRE", v(15) = '1' and v(7) = '0');
+      ok("offline: no disk transfer started", sd_reads = n0);
+      reg_write(RKCS, x"0001");                                      -- control reset
+      for i in 1 to 200 loop
+         cyc(10);
+         reg_read(RKCS, v);
+         exit when v(7) = '1';
+      end loop;
+      reg_read("001", v);
+      ok("offline: control reset works and clears DRE", v = x"0000");
+      img <= 1;
+      cyc(10);
+      reg_read("000", v);
+      ok("remounted: RKDS DRY set", v(7) = '1');
+      rh_cmd(GO_READ, 0, 256, 8#60000#, "remounted: read sector 0");
+      check_mem("remounted: data", 8#60000#, 0, 0, 255);
 
       cyc(10);
       report "tb_rk11_blkdev: " & integer'image(pass_count) & " checks passed, "
