@@ -409,6 +409,11 @@ begin
 
    rmcs3_ie <= rmcs1_ie;
 
+   -- write check (and write check header and data) reads the block like a read,
+   -- but must never store it: the controller has no comparator, so the check
+   -- always passes; storing the disk data overwrote the very buffer being checked
+   wcheck <= '1' when rmcs1_fnc = "10100" or rmcs1_fnc = "10101" else '0';
+
    rmds_err <= '1' when  rmer1_dck = '1' or rmer1_uns = '1' or rmer1_opi = '1' or rmer1_dte = '1' or rmer1_wle = '1'
       or rmer1_iae = '1' or rmer1_aoe = '1' or rmer1_hcrc = '1' or rmer1_hce = '1' or rmer1_ech = '1' or rmer1_wcf = '1'
       or rmer1_fer = '1' or rmer1_par = '1' or rmer1_rmr = '1' or rmer1_ilr = '1' or rmer1_ilf = '1'
@@ -1427,11 +1432,11 @@ begin
                      if have_rh70 = 1 then
                         rh70_bus_master_addr <= work_bar & '0';
                         rh70_bus_master_dato <= "110" & rmof_fmt & rmdc(11 downto 0);  -- this is for testing only, so don't need it for rm06/rp2g. But it won't do any harm.
-                        rh70_bus_master_control_dato <= '1';
+                        rh70_bus_master_control_dato <= not wcheck;
                      else
                         bus_master_addr <= work_bar(17 downto 1) & '0';
                         bus_master_dato <= rmdc;
-                        bus_master_control_dato <= '1';
+                        bus_master_control_dato <= not wcheck;
                      end if;
                      work_bar <= work_bar + 1;
                      busmaster_state <= busmaster_readh2;
@@ -1441,11 +1446,11 @@ begin
                      if have_rh70 = 1 then
                         rh70_bus_master_addr <= work_bar & '0';
                         rh70_bus_master_dato <= rmda_ta & rmda_sa;
-                        rh70_bus_master_control_dato <= '1';
+                        rh70_bus_master_control_dato <= not wcheck;
                      else
                         bus_master_addr <= work_bar(17 downto 1) & '0';
                         bus_master_dato <= rmda_ta & rmda_sa;
-                        bus_master_control_dato <= '1';
+                        bus_master_control_dato <= not wcheck;
                      end if;
                      work_bar <= work_bar + 1;
                      busmaster_state <= busmaster_read1;
@@ -1473,12 +1478,12 @@ begin
 
                         if have_rh70 = 1 then
                            rh70_bus_master_control_dati <= '0';
-                           rh70_bus_master_control_dato <= '1';
+                           rh70_bus_master_control_dato <= not wcheck;
                            rh70_bus_master_addr <= work_bar & '0';
                            rh70_bus_master_dato <= sdcard_xfer_out;
                         else
                            bus_master_control_dati <= '0';
-                           bus_master_control_dato <= '1';
+                           bus_master_control_dato <= not wcheck;
                            bus_master_addr <= work_bar(17 downto 1) & '0';
                            bus_master_dato <= sdcard_xfer_out;
                         end if;

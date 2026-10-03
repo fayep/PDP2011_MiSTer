@@ -408,6 +408,12 @@ begin
       check_block("abandoned write: block 2 untouched", 2, true, 0);
       check_block("abandoned write: block 15 untouched", 15, true, 0);
 
+      -- 4. write check does not store into memory
+      for i in 0 to 255 loop memw(8#50000# + i, x"3c3c"); end loop;
+      start(x"0029", 3, 256, 8#50000#);                              -- write check data + GO
+      wait_rdy("write check");
+      check_mem_const("write check: memory not overwritten", 8#50000#, 256, x"3c3c");
+
       cyc(10);
       report "tb_rh11_abort: RH70=" & integer'image(RH70) & ": " & integer'image(pass_count) & " checks passed, "
            & integer'image(fail_count) & " failed";
