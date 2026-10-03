@@ -607,7 +607,20 @@ begin
 
                if base_addr_match = '1' and bus_control_dato = '1' then
 
-                  if rmcs1_go = '1' and bus_addr(5 downto 1) /= "00111" and bus_addr(5 downto 1) /= "01010" then
+                  -- While the drive is busy (GO), only writes to the DRIVE's registers are
+                  -- refused (RMR), as in SIMH's split between the RH70 (pdp11_rh.c) and the
+                  -- drive (pdp11_rp.c rp_mbwr) and on real hardware: the controller's own
+                  -- registers -- WC, BA, CS2, DB, BAE, CS3 -- always take the write, and so
+                  -- does the controller half of CS1 (see below). AS, and MR as before, are
+                  -- never refused. RSTS 10.1 DSKINT writes a controller register during a
+                  -- transfer; refusing it with RMR failed the install ("Disk error during
+                  -- DSKINT build phase").
+                  if rmcs1_go = '1'
+                  and bus_addr(5 downto 1) /= "00000" and bus_addr(5 downto 1) /= "00001"     -- CS1 (split below), WC
+                  and bus_addr(5 downto 1) /= "00010" and bus_addr(5 downto 1) /= "00100"     -- BA, CS2
+                  and bus_addr(5 downto 1) /= "01001" and bus_addr(5 downto 1) /= "10100"     -- DB, BAE
+                  and bus_addr(5 downto 1) /= "10101" and bus_addr(5 downto 1) /= "11110"     -- CS3, BAE alias
+                  and bus_addr(5 downto 1) /= "00111" and bus_addr(5 downto 1) /= "01010" then -- AS, MR
                      rmer1_rmr <= '1';
                   else
 
@@ -616,13 +629,17 @@ begin
                         case bus_addr(5 downto 1) is
 -- rmcs1 17 776 700 - control/status 1
                            when "00000" =>
-                              rmcs1_rdyset <= bus_dato(7);
+                              rmcs1_rdyset <= bus_dato(7);             -- controller half: always
                               rmcs1_ie <= bus_dato(6);
-                              rmcs1_fnc <= bus_dato(5 downto 1);
-                              if rmcs1_sc = '0' then
-                                 rmcs1_go <= bus_dato(0);
-                                 if rmds_err = '0' then
-                                    rmds_ata <= '0';
+                              if rmcs1_go = '1' then                   -- drive half (function, GO) while
+                                 rmer1_rmr <= '1';                     -- busy: refused, as SIMH rp_mbwr
+                              else
+                                 rmcs1_fnc <= bus_dato(5 downto 1);
+                                 if rmcs1_sc = '0' then
+                                    rmcs1_go <= bus_dato(0);
+                                    if rmds_err = '0' then
+                                       rmds_ata <= '0';
+                                    end if;
                                  end if;
                               end if;
 
