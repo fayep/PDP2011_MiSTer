@@ -53,11 +53,11 @@ entity mister_top is
 		cts1:in std_logic;
 
       -- sd card
-      rk_sdcard_cs   : out std_logic;
-      rk_sdcard_mosi : out std_logic;
-      rk_sdcard_sclk : out std_logic;
-      rk_sdcard_miso : in std_logic;
-		rk_sdcard_debug: out std_logic_vector (3 downto 0);
+      rk_sd_lba      : out std_logic_vector(31 downto 0);   -- RK: hps_io disk slot 0, direct
+      rk_sd_rd       : out std_logic;
+      rk_sd_wr       : out std_logic;
+      rk_sd_ack      : in std_logic;
+      rk_sd_buff_din : out std_logic_vector(15 downto 0);
 
       rl_sd_lba      : out std_logic_vector(31 downto 0);   -- RL: hps_io disk slot 1, direct
       rl_sd_rd       : out std_logic;
@@ -150,11 +150,11 @@ component unibus is
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       have_rk_num : in integer range 1 to 8 := 8;                    -- active number of drives on the controller; set to < 8 to save core
-      rk_sdcard_cs : out std_logic;
-      rk_sdcard_mosi : out std_logic;
-      rk_sdcard_sclk : out std_logic;
-      rk_sdcard_miso : in std_logic := '0';
-      rk_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rk_sd_lba : out std_logic_vector(31 downto 0);                 -- RK: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rk_sd_rd : out std_logic;
+      rk_sd_wr : out std_logic;
+      rk_sd_ack : in std_logic := '0';
+      rk_sd_buff_din : out std_logic_vector(15 downto 0);
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -634,11 +634,11 @@ begin
       clk_sd          => clk_100,
 
 		have_rk => have_rk,
-		rk_sdcard_cs    => rk_sdcard_cs,
-      rk_sdcard_mosi  => rk_sdcard_mosi,
-      rk_sdcard_sclk  => rk_sdcard_sclk,
-      rk_sdcard_miso  => rk_sdcard_miso,
-      rk_sdcard_debug => rk_sdcard_debug,
+      rk_sd_lba       => rk_sd_lba,
+      rk_sd_rd        => rk_sd_rd,
+      rk_sd_wr        => rk_sd_wr,
+      rk_sd_ack       => rk_sd_ack,
+      rk_sd_buff_din  => rk_sd_buff_din,
 
       have_rh => have_rh,
       rh_sd_lba => rh_sd_lba,

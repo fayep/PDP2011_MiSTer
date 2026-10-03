@@ -329,31 +329,10 @@ always @(posedge clk_100mhz) begin
 	end
 end
 
-sd_card #(.WIDE(1)) sd_card_rk
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[0]),
-	.sd_rd       (sd_rd[0]),
-	.sd_wr       (sd_wr[0]),
-	.sd_ack      (sd_ack[0]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[0]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (rk_sclk),
-	.ss          (rk_cs | ~vsd_sel_rk),
-	.mosi        (rk_mosi),
-	.miso        (rk_miso)
-
-);
+// RK: rk11 talks to hps_io slot 0 directly through rtl/mister_blkdev.vhd.
+wire rk_sd_rd, rk_sd_wr;
+assign sd_rd[0] = rk_sd_rd & vsd_sel_rk;
+assign sd_wr[0] = rk_sd_wr & vsd_sel_rk;
 
 // RL: rl11 talks to hps_io slot 1 directly through rtl/mister_blkdev.vhd
 // (no SPI SD-card emulation). Requests only while an image is mounted.
@@ -385,11 +364,7 @@ assign have_tm = 1;  // controller presence is a build-time choice, not tied to
 assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 
 //
-wire rk_sclk;
-wire rk_cs;
-wire rk_mosi;
-wire rk_miso;
-wire [3:0]rk_sddebug;
+wire [3:0]rk_sddebug = 4'd0;   // RK: no SPI activity bits since mister_blkdev
 //
 wire [3:0]rh_sddebug = 4'd0;   // RH: no SPI activity bits since mister_blkdev
 //
@@ -472,11 +447,11 @@ mister_top mister_top
    .sd_buff_wr     (sd_buff_wr),
 	
    .have_rk  (have_rk),
-	.rk_sdcard_cs     (rk_cs),
-   .rk_sdcard_mosi   (rk_mosi),
-   .rk_sdcard_sclk   (rk_sclk),
-   .rk_sdcard_miso   (rk_miso),
-   .rk_sdcard_debug  (rk_sddebug),
+   .rk_sd_lba      (sd_lba[0]),
+   .rk_sd_rd       (rk_sd_rd),
+   .rk_sd_wr       (rk_sd_wr),
+   .rk_sd_ack      (sd_ack[0]),
+   .rk_sd_buff_din (sd_buff_din[0]),
 	
    .have_rh (have_rh),
    .rh_sd_lba      (sd_lba[2]),

@@ -50,11 +50,11 @@ entity unibus is
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       have_rk_num : in integer range 1 to 8 := 8;                    -- active number of drives on the controller; set to < 8 to save core
-      rk_sdcard_cs : out std_logic;
-      rk_sdcard_mosi : out std_logic;
-      rk_sdcard_sclk : out std_logic;
-      rk_sdcard_miso : in std_logic := '0';
-      rk_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rk_sd_lba : out std_logic_vector(31 downto 0);                 -- RK: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rk_sd_rd : out std_logic;
+      rk_sd_wr : out std_logic;
+      rk_sd_ack : in std_logic := '0';
+      rk_sd_buff_din : out std_logic_vector(15 downto 0);
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -714,11 +714,15 @@ component rk11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_rk : in integer range 0 to 1;
       have_rk_num : in integer range 1 to 8;
@@ -1940,11 +1944,15 @@ begin
       bus_master_control_dato => rk0_control_dato,
       bus_master_nxm => busmaster_nxmabort,
 
-      sdcard_cs => rk_sdcard_cs,
-      sdcard_mosi => rk_sdcard_mosi,
-      sdcard_sclk => rk_sdcard_sclk,
-      sdcard_miso => rk_sdcard_miso,
-      sdcard_debug => rk_sdcard_debug,
+      sd_lba => rk_sd_lba,
+      sd_rd => rk_sd_rd,
+      sd_wr => rk_sd_wr,
+      sd_ack => rk_sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => rk_sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sd,
 
       have_rk => have_rk,
       have_rk_num => have_rk_num,
