@@ -371,6 +371,44 @@ begin
       check_mem("read back sector 6", 8#50000# + 256, 6, 0, 255);
       check_mem("read back sector 7", 8#50000# + 512, 7, 0, 255);
 
+      -- Register writes during a transfer (SIMH's controller/drive split): the
+      -- controller's registers (CS2 here) take the write with no RMR; the drive's
+      -- registers (DA) and the function/GO half of CS1 are refused with RMR. The
+      -- transfer itself always completes with the right data.
+      reg_write(RMDC, x"0000");
+      reg_write(RMDA, x"0000");
+      reg_write(RMBA, conv_std_logic_vector(8#60000# * 2, 16));
+      reg_write(RMWC, conv_std_logic_vector(65536 - 1024, 16));   -- 4 sectors
+      reg_write(RMCS1, GO_READ);
+      cyc(4);
+      reg_read(RMCS1, v);
+      ok("busy: GO still set while we write", v(0) = '1');
+      reg_write(RMCS2, x"0000");                                    -- controller register, same unit
+      reg_read("00110", v);
+      ok("busy: CS2 write is not refused (no RMR)", v(2) = '0');
+      wait_rdy("busy: read 4 sectors with a CS2 write during it");
+      check_mem("busy: data after CS2 write", 8#60000#, 0, 0, 255);
+      check_mem("busy: data after CS2 write, sector 3", 8#60000# + 768, 3, 0, 255);
+      reg_write(RMDA, x"0000");
+      reg_write(RMBA, conv_std_logic_vector(8#60000# * 2, 16));
+      reg_write(RMWC, conv_std_logic_vector(65536 - 1024, 16));
+      reg_write(RMCS1, GO_READ);
+      cyc(4);
+      reg_write(RMDA, x"0007");                                     -- drive register while busy
+      reg_read("00110", v);
+      ok("busy: DA write is refused with RMR", v(2) = '1');
+      for i in 1 to 4000 loop
+         cyc(20);
+         reg_read(RMCS1, v);
+         exit when v(7) = '1';
+      end loop;
+      reg_read(RMDA, v);
+      ok("busy: refused DA write did not land", v(4 downto 0) /= "00111");
+      reg_write(RMCS1, x"0009");                                    -- drive clear
+      cyc(200);
+      reg_read("00110", v);
+      ok("drive clear clears RMR", v = x"0000");
+
       -- No image mounted: the controller is still there, the drive shows no
       -- medium (MOL) and no volume valid, a read is refused with UNS and
       -- attention and no disk activity, drive clear clears it, pack acknowledge
