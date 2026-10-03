@@ -29,7 +29,6 @@ set_global_assignment -name VHDL_FILE rtl/rh11.vhd
 set_global_assignment -name VHDL_FILE rtl/rk11.vhd
 set_global_assignment -name VHDL_FILE rtl/rl11.vhd
 set_global_assignment -name VHDL_FILE rtl/tm11.vhd
-set_global_assignment -name VHDL_FILE rtl/sdspi.vhd
 set_global_assignment -name VHDL_FILE rtl/mister_blkdev.vhd
 set_global_assignment -name VHDL_FILE rtl/unibus.vhd
 set_global_assignment -name VHDL_FILE rtl/vga.vhd
