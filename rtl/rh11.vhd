@@ -300,6 +300,9 @@ signal hs_offset : std_logic_vector(23 downto 0);
 signal ca_offset : std_logic_vector(23 downto 0);
 signal dn_offset : std_logic_vector(23 downto 0);
 signal sd_addr : std_logic_vector(23 downto 0);
+signal sd_addr_lat : std_logic_vector(23 downto 0) := (others => '0');   -- block of the sector in flight, fixed at its start
+signal xfer_orphan : std_logic := '0';                          -- a controller clear abandoned the sector in flight
+signal wcheck : std_logic;                                       -- write check function: compare, never store
 
 type busmaster_state_t is (
    busmaster_idle,
@@ -348,7 +351,7 @@ begin
 
 
    sd1: mister_blkdev port map(
-      sdcard_addr => sd_addr,
+      sdcard_addr => sd_addr_lat,
 
       sdcard_idle => sdcard_idle,
       sdcard_read_start => sdcard_read_start,
@@ -435,6 +438,7 @@ begin
 
             sdcard_read_start <= '0';
             write_start <= '0';
+            xfer_orphan <= '0';
             rmcs1_rdy <= '1';
             rmcs1_rdyset <= '0';
 
@@ -853,6 +857,28 @@ begin
                   rmds_vv <= '1';
                end if;
 
+               -- A controller clear does not stop a block that hps_io is already
+               -- reading or writing.  Its handshake is finished here, with no
+               -- register updates and no DMA (see the busmaster); a new data
+               -- transfer waits for it (the read/write cases below).  The old
+               -- controller let a retried transfer count the abandoned block as
+               -- its own first sector.
+               if xfer_orphan = '1' then
+                  if sdcard_read_start = '1' then
+                     if sdcard_read_ack = '1' and sdcard_read_done = '0' then
+                        sdcard_read_start <= '0';
+                        xfer_orphan <= '0';
+                     end if;
+                  elsif write_start = '1' then
+                     if sdcard_write_ack = '1' and sdcard_write_done = '0' then
+                        write_start <= '0';
+                        xfer_orphan <= '0';
+                     end if;
+                  else
+                     xfer_orphan <= '0';
+                  end if;
+               end if;
+
                if rmcs1_go = '1' then
 
                   rmcs1_mcpe <= '0';
@@ -997,7 +1023,9 @@ begin
                         when "11000" | "11001" =>             -- write data, write header/data
                            rmcs1_rdy <= '0';
                            rmds_om <= '0';
-                           if sdcard_idle = '1' and write_start = '0' then
+                           if xfer_orphan = '1' then
+                              null;                                      -- an abandoned block is still in flight
+                           elsif sdcard_idle = '1' and write_start = '0' then
                               if v_iae = '1' then
                                  rmer1_iae <= '1';
                                  rmcs1_go <= '0';
@@ -1012,6 +1040,7 @@ begin
                                  rmcs1_rdyset <= '1';
                               else
                                  write_start <= '1';
+                                 sd_addr_lat <= sd_addr;
                                  if rmcs1_fnc(0) = '1' and unsigned(wcp) >= unsigned'("0000000000000010") then
                                     wcp <= wcp - 2;
                                  end if;
@@ -1070,7 +1099,9 @@ begin
 
                         when "11100" | "11101" | "10100" | "10101" =>             -- read data, read header/data, write check, write check header/data
                            rmcs1_rdy <= '0';
-                           if sdcard_idle = '1' and sdcard_read_start = '0' and sdcard_read_done = '0' then
+                           if xfer_orphan = '1' then
+                              null;                                      -- an abandoned block is still in flight
+                           elsif sdcard_idle = '1' and sdcard_read_start = '0' and sdcard_read_done = '0' then
                               if v_iae = '1' then
                                  rmer1_iae <= '1';
                                  rmcs1_go <= '0';
@@ -1079,6 +1110,7 @@ begin
                                  rmds_ataset <= '1';
                               else
                                  sdcard_read_start <= '1';
+                                 sd_addr_lat <= sd_addr;
                                  if rmcs1_fnc(0) = '1' and unsigned(wcp) >= unsigned'("0000000000000010") then
                                     wcp <= wcp - 2;
                                  end if;
@@ -1149,6 +1181,10 @@ begin
 
 -- reset controller and disks
                if rmcs2_clr = '1' then
+
+                  if write_start = '1' or sdcard_read_start = '1' then
+                     xfer_orphan <= '1';                             -- finish its handshake, discard it
+                  end if;
 
 -- rmcs1 17 776 700 - control/status 1
                   rmcs1_rdy <= '1';
@@ -1343,7 +1379,11 @@ begin
 
                   when busmaster_idle =>
                      nxm <= '0';
-                     if write_start = '1' then
+                     if write_start = '1' and xfer_orphan = '1' then     -- abandoned before its DMA: write nothing,
+                        busmaster_state <= busmaster_write_done;          -- just complete the handshake
+                     elsif sdcard_read_done = '1' and xfer_orphan = '1' then -- abandoned read: no DMA of its data
+                        busmaster_state <= busmaster_read_done;
+                     elsif write_start = '1' then
                         npr <= '1';
                         if npg = '1' then
                            busmaster_state <= busmaster_write1;
