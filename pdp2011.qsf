@@ -307,8 +307,3 @@ set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_
 # retimed register keeps its clocked behaviour but not its reset/power-up
 # value. sys/ (HDMI scaler, OSD) keeps retiming, which its timing needs.
 set_instance_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING OFF -to "emu:emu"
-# Power-up values inside the core (emu) are honoured, not optional: with
-# ALLOW_POWER_UP_DONT_CARE the CPU's r7 (and cpureset) could power up with
-# some 1 bits as 0, and the core started at 164020/144020/005020 instead of
-# the boot ROM at 165020 on some placements.
-set_instance_assignment -name ALLOW_POWER_UP_DONT_CARE OFF -to "emu:emu"
