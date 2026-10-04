@@ -506,6 +506,7 @@ mister_top mister_top
    .dram_cs_n (SDRAM_nCS),
 	
 	.greenled (greenled),
+	.panel_lamps (panel_lamps),
 	
 	.ps2k_c(ps2k_c),
 	.ps2k_d(ps2k_d),
@@ -579,12 +580,12 @@ end
 assign CLK_VIDEO = clk_100mhz;
 
 //////////////////////////////////////////////////////////////////
-// On-screen front panel (notes/front-panel-plan.md). Step 1: the panel
-// drawn on clk_100 with the VT's exact timing, lamps fed a demo pattern;
-// OSD "Video" picks the terminal or the panel.
+// On-screen front panel (notes/front-panel-plan.md). The panel drawn on
+// clk_100 with the VT's exact timing; lamps from the CPU's console loom
+// through paneldriver type 4 (step 2); switches still at their defaults.
+// OSD "Video" picks the terminal or the panel, PrintScreen flips it.
 
-reg  [41:0] pv_demo;
-always @(posedge clk_100mhz) pv_demo <= pv_demo + 42'd1;
+wire [49:0] panel_lamps;       // paneldriver (type 4) lamps, already on clk_100
 
 wire        pv_ce, pv_hs, pv_vs, pv_hb, pv_vb;
 wire  [7:0] pv_r, pv_g, pv_b;
@@ -593,9 +594,9 @@ panel_view panel_view
 (
 	.clk    (clk_100mhz),
 	.reset  (reset),
-	.addr_l (pv_demo[41:20]),
-	.data_l (16'h0001 << pv_demo[29:26]),
-	.stat_l (pv_demo[37:26]),
+	.addr_l (panel_lamps[49:28]),
+	.data_l (panel_lamps[27:12]),
+	.stat_l (panel_lamps[11:0]),
 	.sw     (22'o0),
 	.ctl    (7'b0000100),           // ENABLE up
 	.ce_pix (pv_ce),
