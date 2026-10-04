@@ -39,6 +39,7 @@ def build(name, defs):
   print('%s: program %d bytes (0-%o), tape %d bytes' % (name, len(prog), len(prog) - 1, len(tap)))
 build('rhex', '')
 build('rhextm', 'BGTM = 1\n')
+build('rhexw', 'BGTM = 1\nWRT = 1\n')
 blk = bytearray(512)
 with open(os.path.join(out, 'rhpat.dsk'), 'wb') as f:
     for l in range(NPAT):
