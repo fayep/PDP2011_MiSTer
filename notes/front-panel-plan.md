@@ -313,6 +313,34 @@ DRY table 2-1) and RJP04 subsystem maintenance manual DEC11-HRJPA-B-D
 `pdf/dec/disc/rp04_rp05_rp06/` and `pdf/dec/disc/rp04/`. Verify the RK05,
 RL02 and TU10 lamp sets against their own manuals before drawing them.
 
+### 8. Phase C: dashboard view (added 2026-10-04)
+
+Inspiration from the user: one screen with the terminal, the CPU panel,
+the drive buttons and a tape deck together, instead of switching views.
+
+- **Mode:** needs more than 640x480 -- 1280x720@60 (74.25 MHz) or
+  1024x768@60 (65 MHz), from a video PLL output or a clk_100 CE that the
+  scaler accepts. Decide after Phase B (VT on clk_100).
+- **Terminal pane:** the renderer reads the VT's character and attribute
+  buffers through a second read port and draws 80x24 with the existing
+  font ROM (`vgafont`), same colours as the VT's OSD setting.
+- **CPU panel pane:** as steps 1-4, plus styling: cream bezel, `digital`
+  logo, labelled lamp groups, the two rotary knobs drawn. **Palette option:**
+  11/70 (purple / magenta, authentic) or "classic" (red / white / orange,
+  as in the inspiration image and the 11/40-era panels).
+- **Drive buttons:** section 7's drive panel as illuminated push-buttons
+  (RK0, RL0, RH0, MT0 ...), colour = state: green ready, amber busy
+  (transfer in progress, pulse-stretched), red fault / offline, dark = no
+  image. The button doubles as the drive's START/STOP or LOAD switch.
+- **Tape deck:** TM11 reels animated from the TM's motion state (forward,
+  reverse, rewind = fast, stopped), a handful of sprite frames per reel;
+  BOT / EOT / ON-LINE lamps underneath.
+- **Activity graphs:** counted in the FPGA, so no Linux help: blocks/s per
+  controller and hps latency (sd_rd -> sd_ack time, max and average per
+  second), as scrolling bar graphs. These are diagnostics too: they would
+  have shown the install-time hps stalls directly. FPGA temperature would
+  need MiSTer_pdp2011 (Main) to pass it down; later, optional.
+
 ## Timing and fit
 
 - **No new clocks.** All new registers are on `clk_100` or cpuclk, so no SDC
