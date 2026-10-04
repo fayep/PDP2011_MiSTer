@@ -96,6 +96,7 @@ entity mister_top is
       vga_vsync      : out std_logic;
       vga_hblank     : out std_logic;
       vga_vblank     : out std_logic;
+      vga_saver      : out std_logic;   -- VT screen saver active (the panel view blanks too)
 		ce_pix         : out std_logic;
       vga_fb         : out std_logic;
       vga_ht         : out std_logic;
@@ -431,6 +432,7 @@ component vt is
       vga_vsync : out std_logic;                                     -- vertical sync
       vga_hblank : out std_logic;                                    -- horizontal blank
       vga_vblank : out std_logic;                                    -- vertical blank
+      vga_saver : out std_logic;                                      -- '1' while the screen saver blanks the picture
       ce_pix : out std_logic;                                        -- 
       vga_fb : out std_logic;                                        -- output - full
       vga_ht : out std_logic;                                        -- output - half
@@ -749,6 +751,7 @@ begin
       vga_vsync => vga_vsync,
       vga_hblank => vga_hblank,
       vga_vblank => vga_vblank,
+      vga_saver => vga_saver,
 		ce_pix => ce_pix,
       vga_fb => vga_fb,
       vga_ht => vga_ht,
