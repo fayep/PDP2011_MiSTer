@@ -1185,8 +1185,10 @@ signal rom0_dati : std_logic_vector(15 downto 0);
 
 -- Boot device register at 165776 (last word of the m9312 low rom, read-only):
 -- the low rom's last act reads it and jumps there. Auto = 173000 (the hi
--- rom's probe, as before); a chosen device = its go routine in the hi rom
--- once an image is mounted behind it, 0 until then (the rom waits). The go
+-- rom's probe, as before) once any image is mounted -- 0 until then, so an
+-- empty machine waits instead of falling through to an absent RP; a chosen
+-- device = its go routine in the hi rom once an image is mounted behind it,
+-- 0 until then (the rom waits). The go
 -- addresses are labels in roms/m9312h47 (see its .lst); keep them in step.
 signal bootsel_dati : std_logic_vector(15 downto 0);
 
@@ -1640,12 +1642,13 @@ begin
       clk => nclk
    );
 
-   bootsel_dati <= x"F600" when boot_sel = 0                          -- 173000 auto: hi rom probe
+   bootsel_dati <= x"F600" when (boot_sel = 0 or boot_sel > 4)        -- 173000 auto: hi rom probe, once
+         and (tm_img_mounted = 1 or rk_img_mounted = 1                   -- anything is mounted to boot from
+           or rl_img_mounted = 1 or rh_img_mounted = 1)                  -- (else 0: the rom keeps waiting)
       else x"F6AE" when boot_sel = 1 and tm_img_mounted = 1           -- 173256 mtgo
       else x"F736" when boot_sel = 2 and rk_img_mounted = 1           -- 173466 rkgo
       else x"F6D2" when boot_sel = 3 and rl_img_mounted = 1           -- 173322 rlgo
       else x"F76C" when boot_sel = 4 and rh_img_mounted = 1           -- 173554 rpgo
-      else x"F600" when boot_sel > 4                                  -- unused values: auto
       else x"0000";                                                   -- chosen drive has no image yet
 
    bootrom0: m9312l port map(
