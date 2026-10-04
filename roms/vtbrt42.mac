@@ -186,6 +186,8 @@ g0set:   .byte 0                  ; set0
 g1set:   .byte 0                  ; set1
 chrset:  .byte 0                  ; current
 schrst:  .byte 0                  ; saved char set
+shftst:  .byte 0                  ; shift state: 0 = G0 in use (SI), 1 = G1 in use (SO)
+sshfst:  .byte 0                  ; saved shift state (DECSC/DECRC)
 ;
 ; scroll window
 ;
@@ -324,6 +326,8 @@ t42:
          movb #chrasc,g0set       ; set g0 set to ascii default too
          movb #chrasc,g1set       ; set g1 set to ascii default too
          movb #chrasc,schrst      ; init saved char set
+         clrb shftst              ; G0 in use
+         clrb sshfst              ; saved: G0 in use
          mov #dtmarg,tmarg        ; default scroll window from line 1
          mov #dbmarg,bmarg        ; to 24
          mov #dwsize,wsize        ; init wsize
@@ -1433,6 +1437,7 @@ esc7:
          mov curc,scurc
          movb lcf,slcf
          movb chrset,schrst
+         movb shftst,sshfst
          movb atth,satth
          rts pc
 ;
@@ -1445,6 +1450,7 @@ esc8:
          mov scurc,curc
          movb slcf,lcf
          movb schrst,chrset
+         movb sshfst,shftst
          movb satth,atth
          jsr pc,fba
          rts pc
@@ -2737,6 +2743,7 @@ ccr:
 ; cso - so handler
 ;
 cso:
+         movb #1,shftst           ; G1 in use
          movb g1set,chrset
          rts pc
 ;
@@ -2745,6 +2752,7 @@ cso:
 ; csi - si handler
 ;
 csi:
+         clrb shftst              ; G0 in use
          movb g0set,chrset
          rts pc
 ;
@@ -2914,16 +2922,20 @@ lsei:
          jsr pc,decdwl
          br 90$
 20$:
-         cmpb eichar,#50          ; 50, ( means font g0 switch
+         cmpb eichar,#50          ; 50, ( designates g0
          bne 30$
          movb r1,g0set            ; store
-         movb r1,chrset           ; and activate too
+         tstb shftst              ; G0 the set in use (SI)?
+         bne 90$                  ; no: it takes effect at the next SI
+         movb r1,chrset           ; yes: in effect now
          br 90$
 30$:
-         cmpb eichar,#51          ; 51, ) means font g1 switch
+         cmpb eichar,#51          ; 51, ) designates g1
          bne 40$
-         movb r1,g1set            ; store
-         movb r1,chrset           ; and activate too
+         movb r1,g1set            ; store -- e.g. EDT's ESC ) 0 loads line drawing here
+         tstb shftst              ; G1 the set in use (SO)?
+         beq 90$                  ; no: it takes effect at the next SO, not before
+         movb r1,chrset           ; yes: in effect now
          br 90$
 40$:
          cmpb eichar,#131         ; Y; VT52 direct cursor address
