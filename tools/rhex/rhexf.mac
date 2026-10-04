@@ -96,11 +96,34 @@ start:	mov	#1000,sp
 	clr	sk
 	call	xfer
 	tst	r0
-	bne	2$
+	bne	12$
 	call	verify
 	tst	r0
+	beq	11$
+12$:	mov	r0,why			; say why the last block did not check out
+	mov	#mlast,r0
+	call	puts
+	mov	why,r0
+	call	puts
+	call	crlf
+	call	regs
+	cmp	why,#mdat
 	bne	2$
-	mov	#mfquick,r0
+	mov	#mbad,r0
+	call	puts
+	mov	badadr,r0
+	call	puto
+	mov	#mexp,r0
+	call	puts
+	mov	badexp,r0
+	call	puto
+	mov	#mgot,r0
+	call	puts
+	mov	badgot,r0
+	call	puto
+	call	crlf
+	br	2$
+11$:	mov	#mfquick,r0
 	call	puts
 	mov	#WCYL,ncf
 	br	3$
@@ -760,6 +783,7 @@ mffull:	.asciz	/formatting the whole pack/<15><12>
 mfquick:.asciz	/pack already formatted: rewriting cylinders 0-3/<15><12>
 mcyl:	.asciz	/  cylinder/
 mfdone:	.asciz	/format done/<15><12>
+mlast:	.asciz	/last block check: /
 mfail:	.asciz	/*** format write failed/<15><12>
 mstat:	.asciz	/xfers/
 merr:	.asciz	/  errors/
