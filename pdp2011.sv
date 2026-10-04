@@ -455,6 +455,7 @@ mister_top mister_top
    .modelcode    (modelcode),
 	.serial_console (status[2]),
 	.line_50hz      (status[18]),
+	.kl1_silo_off   (status[17] & ~status[2]),  // TU58 on line 1: DL11 without the receive silo
 	
    .tx1  (UART_TXD),
    .rx1  (UART_RXD),

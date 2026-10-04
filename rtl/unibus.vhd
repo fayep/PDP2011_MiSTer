@@ -263,6 +263,7 @@ entity unibus is
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
       line_50hz : in std_logic := '0';                               -- KW11-L at 50 Hz instead of kw11l_hz (OSD)
+      kl1_silo_off : in std_logic := '0';                            -- line 1 without receive silo (OSD: TU58 on line 1)
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
       reset : in std_logic                                           -- active '1' synchronous reset
    );
@@ -559,6 +560,7 @@ component kl11 is
       rx : in std_logic;
       rts : out std_logic;
       cts : in std_logic;
+      silo_off : in std_logic := '0';
 
       have_kl11 : in integer range 0 to 1;
       have_kl11_force7bit : in integer range 0 to 1;
@@ -1745,6 +1747,7 @@ begin
       rx => rx1,
       rts => rts1,
       cts => cts1,
+      silo_off => kl1_silo_off,
       have_kl11_bps => kl1_bps,
       have_kl11_force7bit => kl1_force7bit,
       have_kl11_rtscts => kl1_rtscts,
