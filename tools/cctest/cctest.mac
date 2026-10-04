@@ -1,0 +1,242 @@
+	.title	cctest - condition codes across RTS/JSR (and friends)
+;
+; Standalone, booted from tape (boot ROM: record 1 -> address 0).
+; RSX-11M-PLUS SAV does  JSR PC,sub / sub: CMP a,b / RTS PC  then BEQ in
+; the caller; RTS must leave the condition codes alone. This checks, for
+; each of the 16 NZVC combinations: RTS PC and RTS R5 preserve them, JSR
+; PC and JSR R5 preserve them, and SAV's exact sequence -- in kernel mode
+; with the MMU off, then in user mode with the MMU on (identity mapping).
+; Prints one line per failure, then a summary.
+;
+	.asect
+	.enabl	ama
+	. = 0
+	jmp	@#start
+	. = 4
+	.word	trap4, 340
+	.word	trap10, 340
+	. = 34
+	.word	trapem, 340		; TRAP from user mode: back to kernel
+	. = 250
+	.word	trapmm, 340
+;
+tps	= 177564
+tpb	= 177566
+psw	= 177776
+mmr0	= 177572
+mmr3	= 172516
+uipdr	= 177600
+uipar	= 177640
+kipdr	= 172300
+kipar	= 172340
+;
+	. = 1000
+start:	mov	#1000,sp
+	reset
+	mov	#hello,r0
+	call	puts
+	clr	errs
+	mov	#mkern,r0
+	call	puts
+	call	tests			; kernel, MMU off
+	call	mmuon
+	mov	#muser,r0
+	call	puts
+	mov	#030000,@#psw		; previous mode = user, to set the user SP
+	mov	#ustack,-(sp)
+	mtpi	sp
+	mov	#140000,-(sp)		; user mode
+
+	mov	#utests,-(sp)
+	rtt				; -> user mode at utests
+back:	mov	#1000,sp		; TRAP from user lands here (via trapem)
+	clr	@#mmr0
+	mov	#mdone,r0
+	call	puts
+	mov	errs,r0
+	call	puto
+	call	crlf
+	halt
+	br	start
+;
+utests:	call	tests			; same code, in user mode, MMU on
+	trap	0
+;
+; tests: all 16 NZVC settings through each sequence
+	.enabl	lsb			; one local block across the s1-s3 patch labels
+tests:	clr	cc
+1$:	call	arm			; RTS PC
+	ccc
+s1:	nop				; <- SEx with the wanted NZVC (patched by arm)
+	call	rtspc
+	call	getcc
+	cmp	r0,cc
+	beq	2$
+	mov	#mrtspc,r1
+	call	bad
+2$:	call	arm			; RTS R5
+	ccc
+s2:	nop
+	jsr	r5,rtsr5
+	call	getcc
+	cmp	r0,cc
+	beq	3$
+	mov	#mrtsr5,r1
+	call	bad
+3$:	call	arm			; JSR PC: the subroutine reads the PSW first
+	ccc
+s3:	nop
+	jsr	pc,injsr
+	cmp	r0,cc
+	beq	4$
+	mov	#mjsrpc,r1
+	call	bad
+4$:	inc	cc
+	cmp	cc,#20
+	blo	1$
+	mov	#140,r2			; SAV's sequence: CMP equal in a subroutine, BEQ after RTS
+	mov	#140,r3
+	call	savsub
+	beq	5$
+	mov	#msav1,r1
+	call	bad
+5$:	mov	#141,r3			; not equal: BNE must follow
+	call	savsub
+	bne	6$
+	mov	#msav2,r1
+	call	bad
+6$:	return
+	.dsabl	lsb
+;
+; arm: patch s1/s2/s3 to SEx with the NZVC bits in cc (000260 ! cc; 000260 = NOP)
+arm:	mov	cc,r1
+	bis	#260,r1
+	mov	r1,s1
+	mov	r1,s2
+	mov	r1,s3
+	return
+;
+rtspc:	return				; RTS PC, condition codes untouched
+rtsr5:	rts	r5
+injsr:	mov	@#psw,r0		; PSW read before anything changes it
+	bic	#177760,r0
+	return
+savsub:	tstb	flag
+	beq	1$
+	nop
+1$:	cmp	r2,r3
+	return
+;
+; getcc: r0 := condition codes now (by branching, so it works in any mode)
+getcc:	mov	@#psw,r0		; read first: the MOV's own flags come after
+	bic	#177760,r0
+	return
+;
+bad:	inc	errs			; r1 -> what, cc expected, r0 got
+	mov	r0,-(sp)
+	mov	r1,r0
+	call	puts
+	mov	#mexp,r0
+	call	puts
+	mov	cc,r0
+	call	puto
+	mov	#mgot,r0
+	call	puts
+	mov	(sp)+,r0
+	call	puto
+	call	crlf
+	return
+;
+mmuon:	clr	r1			; identity map: kernel and user I pages 0-7
+	clr	r0
+	mov	#8.,r2
+2$:	mov	r0,kipar(r1)
+	mov	r0,uipar(r1)
+	mov	#77406,kipdr(r1)	; 4K, read/write
+	mov	#77406,uipdr(r1)
+	add	#200,r0
+	add	#2,r1
+	sob	r2,2$
+	mov	#177600,kipar+16	; kernel page 7 -> I/O page
+	mov	#177600,uipar+16	; user page 7 -> I/O page (console)
+	mov	#20,@#mmr3		; 22-bit
+	mov	#1,@#mmr0
+	return
+;
+trapem:	jmp	back
+trapmm:	mov	#mmm,r0
+	call	puts
+	halt
+trap4:	mov	#mt4,r0
+	br	trapx
+trap10:	mov	#mt10,r0
+trapx:	call	puts
+	mov	(sp),r0
+	call	puto
+	call	crlf
+	halt
+;
+putc:	tstb	@#tps
+	bpl	putc
+	movb	r0,@#tpb
+	return
+puts:	mov	r0,r1
+1$:	movb	(r1)+,r0
+	beq	2$
+	call	putc
+	br	1$
+2$:	return
+crlf:	mov	#15,r0
+	call	putc
+	mov	#12,r0
+	jmp	putc
+puto:	mov	r0,-(sp)
+	mov	#40,r0
+	call	putc
+	mov	(sp)+,r1
+	mov	#6,r2
+	clr	r0
+	asl	r1
+	rol	r0
+	br	2$
+1$:	clr	r0
+	asl	r1
+	rol	r0
+	asl	r1
+	rol	r0
+	asl	r1
+	rol	r0
+2$:	add	#'0,r0
+	mov	r1,-(sp)
+	mov	r2,-(sp)
+	call	putc
+	mov	(sp)+,r2
+	mov	(sp)+,r1
+	sob	r2,1$
+	return
+;
+errs:	.word	0
+cc:	.word	0
+flag:	.word	0
+hello:	.byte	15,12
+	.asciz	|cctest: condition codes across RTS/JSR, kernel and user mode|<15><12>
+mkern:	.asciz	/kernel mode, MMU off/<15><12>
+muser:	.asciz	/user mode, MMU on/<15><12>
+mdone:	.asciz	/cctest done, failures/
+mrtspc:	.asciz	/  RTS PC changed the condition codes/
+mrtsr5:	.asciz	/  RTS R5 changed the condition codes/
+mjsrpc:	.asciz	/  JSR PC changed the condition codes/
+msav1:	.asciz	/  SAV sequence: equal compare, BEQ not taken after RTS/
+msav2:	.asciz	/  SAV sequence: unequal compare, BNE not taken after RTS/
+mexp:	.asciz	/ expected/
+mgot:	.asciz	/ got/
+mmm:	.byte	15,12
+	.asciz	/MMU trap/
+mt4:	.byte	15,12
+	.asciz	/trap 4, pc/
+mt10:	.byte	15,12
+	.asciz	/trap 10, pc/
+	.even
+	. = . + 400
+ustack:
+	.end
