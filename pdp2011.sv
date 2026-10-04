@@ -213,7 +213,7 @@ localparam CONF_STR = {
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
 	"H0O[17],Line 1 (176500),Serial port,TU58 DECtape II;",
 	"O[18],Line clock,60 Hz,50 Hz;",
-	"O[21:19],Boot device,Auto,TM11 tape,RK11,RL11,RH70 (RP/RM);",
+	"O[24:22],Boot device,Auto,TM11 tape,RK11,RL11,RH70 (RP/RM);",
 	"O[16],Video,Terminal,Front panel;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -392,7 +392,7 @@ assign have_tm = 1;  // controller presence is a build-time choice, not tied to
                       // mount state -- see tm11's img_mounted for "no tape"
 assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 assign rk_img_mounted = vsd_sel_rk ? 1 : 0;
-assign boot_sel = status[21:19];   // 0 auto, 1 mt, 2 rk, 3 rl, 4 rh (5-7 = auto)
+assign boot_sel = status[24:22];   // 0 auto, 1 mt, 2 rk, 3 rl, 4 rh (5-7 = auto); 19-21 avoided: old configs have bit 21 set
 assign rl_img_mounted = vsd_sel_rl ? 1 : 0;
 assign rh_img_mounted = vsd_sel_rh ? 1 : 0;
 
