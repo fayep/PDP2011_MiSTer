@@ -94,7 +94,8 @@ wire [2:0] grp   = (bitn >= 5'd21) ? 3'd7 : (bitn >= 5'd18) ? 3'd6 : (bitn >= 5'
                    (bitn >= 5'd12) ? 3'd4 : (bitn >= 5'd9)  ? 3'd3 : (bitn >= 5'd6)  ? 3'd2 :
                    (bitn >= 5'd3)  ? 3'd1 : 3'd0;
 
-// distance from the column centre and from a row centre
+// ---- stage 1 (clock after the pixel advances): distances, squares, lamp bits ----
+// col/row/ci/cx hold for 4 clocks per pixel, so each stage gets one clock.
 wire signed [6:0] dx = $signed({2'b0, cx}) - 7'sd13;
 function automatic [7:0] sq(input signed [6:0] v);
 	reg [6:0] a;
@@ -108,12 +109,37 @@ wire signed [10:0] dy_dat = dyof(y, Y_DAT);
 wire signed [10:0] dy_sta = dyof(y, Y_STA);
 wire signed [10:0] dy_sw  = dyof(y, Y_SW);
 wire signed [10:0] dy_ctl = dyof(y, Y_CTL);
-wire near_adr = (dy_adr > -11'sd10) && (dy_adr < 11'sd10);
-wire near_dat = (dy_dat > -11'sd10) && (dy_dat < 11'sd10);
-wire near_sta = (dy_sta > -11'sd10) && (dy_sta < 11'sd10);
-wire [7:0] r2_adr = sq(dx) + sq(dy_adr[6:0]);
-wire [7:0] r2_dat = sq(dx) + sq(dy_dat[6:0]);
-wire [7:0] r2_sta = sq(dx) + sq(dy_sta[6:0]);
+
+reg        s1_pic, s1_incol, s1_strip, s1_band;
+reg        s1_nadr, s1_ndat, s1_nsta, s1_nsw, s1_nctl;
+reg  [7:0] s1_r2a, s1_r2d, s1_r2s;
+reg        s1_la, s1_ld, s1_ls, s1_sw, s1_ct, s1_ctlp;
+reg        s1_swup, s1_swdn, s1_ctup, s1_ctdn;
+
+always @(posedge clk) if (div == 2'd2) begin
+	s1_pic   <= pic;
+	s1_incol <= incol;
+	s1_strip <= (y == Y_ADR + 10'd14) || (y == Y_DAT + 10'd14);
+	s1_band  <= grp[0];
+	s1_nadr  <= (dy_adr > -11'sd10) && (dy_adr < 11'sd10);
+	s1_ndat  <= (dy_dat > -11'sd10) && (dy_dat < 11'sd10) && (bitn < 5'd16);
+	s1_nsta  <= (dy_sta > -11'sd10) && (dy_sta < 11'sd10) && (bitn < 5'd12);
+	s1_nsw   <= (dy_sw > -11'sd34) && (dy_sw < 11'sd34) && (cx >= 5'd5) && (cx <= 5'd20);
+	s1_nctl  <= (ci <= 5'd6) && (dy_ctl > -11'sd20) && (dy_ctl < 11'sd20) && (cx >= 5'd6) && (cx <= 5'd19);
+	s1_r2a   <= sq(dx) + sq(dy_adr[6:0]);
+	s1_r2d   <= sq(dx) + sq(dy_dat[6:0]);
+	s1_r2s   <= sq(dx) + sq(dy_sta[6:0]);
+	s1_la    <= addr_l[bitn];
+	s1_ld    <= data_l[bitn[3:0]];
+	s1_ls    <= stat_l[(bitn < 5'd12) ? bitn[3:0] : 4'd0];
+	s1_sw    <= sw[bitn];
+	s1_ct    <= ctl[3'd6 - ci[2:0]];
+	s1_ctlp  <= (ci == 5'd4 || ci == 5'd5);          // ENABLE/HALT, S INST: latching
+	s1_swup  <= dy_sw < -11'sd14;
+	s1_swdn  <= dy_sw >  11'sd14;
+	s1_ctup  <= dy_ctl < -11'sd8;
+	s1_ctdn  <= dy_ctl >  11'sd8;
+end
 
 // ---- colours -------------------------------------------------------------------
 localparam [23:0] C_BG    = 24'h141018;     // panel black
@@ -131,32 +157,28 @@ function automatic [23:0] lamp(input on, input [7:0] r2);
 	       (r2 <= 8'd72)  ? C_RIM : C_BG;
 endfunction
 
-wire [23:0] band = grp[0] ? C_MAG : C_PURP;
-
-reg [23:0] px;
-always @(*) begin
-	px = C_BG;
-	if (incol) begin
-		// thin colour strip under each lamp row and behind the switches
-		if ((y == Y_ADR + 10'd14) || (y == Y_DAT + 10'd14)) px = band;
-		if (near_adr) px = lamp(addr_l[bitn], r2_adr);
-		else if (near_dat && bitn < 5'd16) px = lamp(data_l[bitn], r2_dat);
-		else if (near_sta && bitn < 5'd12) px = lamp(stat_l[bitn], r2_sta);
-		else if ((dy_sw > -11'sd34) && (dy_sw < 11'sd34) && (cx >= 5'd5) && (cx <= 5'd20)) begin
+// ---- stage 2: the pixel colour ----------------------------------------------------
+reg [23:0] s2_px;
+reg        s2_pic;
+always @(posedge clk) if (div == 2'd3) begin
+	s2_pic <= s1_pic;
+	s2_px  <= C_BG;
+	if (s1_incol) begin
+		if (s1_strip) s2_px <= s1_band ? C_MAG : C_PURP;
+		if (s1_nadr) s2_px <= lamp(s1_la, s1_r2a);
+		else if (s1_ndat) s2_px <= lamp(s1_ld, s1_r2d);
+		else if (s1_nsta) s2_px <= lamp(s1_ls, s1_r2s);
+		else if (s1_nsw) begin
 			// switch paddle in its group colour; the lever end shows the position
-			px = band;
-			if (sw[bitn]  && (dy_sw < -11'sd14)) px = C_LEVER;
-			if (!sw[bitn] && (dy_sw >  11'sd14)) px = C_LEVER;
+			s2_px <= ( s1_sw && s1_swup) || (!s1_sw && s1_swdn) ? C_LEVER : (s1_band ? C_MAG : C_PURP);
 		end
-		else if (ci <= 5'd6 && (dy_ctl > -11'sd20) && (dy_ctl < 11'sd20) && (cx >= 5'd6) && (cx <= 5'd19)) begin
-			px = (ci == 5'd4 || ci == 5'd5) ? C_PURP : C_MAG;   // ENABLE/HALT, S INST: latching
-			if (ctl[3'd6 - ci[2:0]]  && (dy_ctl < -11'sd8)) px = C_LEVER;
-			if (!ctl[3'd6 - ci[2:0]] && (dy_ctl >  11'sd8)) px = C_LEVER;
+		else if (s1_nctl) begin
+			s2_px <= ( s1_ct && s1_ctup) || (!s1_ct && s1_ctdn) ? C_LEVER : (s1_ctlp ? C_PURP : C_MAG);
 		end
 	end
 end
 
-// ---- outputs: registered once per pixel, sync/blank exactly as the VT -----
+// ---- outputs: once per pixel; sync/blank exactly as the VT, picture from stage 2 ----
 always @(posedge clk) begin
 	ce_pix <= div[1];
 	if (adv) begin
@@ -164,7 +186,7 @@ always @(posedge clk) begin
 		vsync  <= !(row >= 10'd489 && row < 10'd491);
 		hblank <= (col < 10'd96) || (row >= 10'd491);
 		vblank <= 1'b0;
-		{r, g, b} <= pic ? px : 24'h000000;
+		{r, g, b} <= s2_pic ? s2_px : 24'h000000;
 	end
 end
 
