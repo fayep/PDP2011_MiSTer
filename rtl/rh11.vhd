@@ -130,7 +130,8 @@ signal interrupt_state : interrupt_state_type := i_idle;
 
 -- rmcs1 17 776 700                                             -- control/status 1
 signal rmcs1_sc : std_logic;                                         -- special condition
-signal rmcs1_tre : std_logic;                                        -- transfer error
+signal rmcs1_tre : std_logic;
+signal sc_but_pge : std_logic;                                       -- SC from anything but CS2.PGE                                        -- transfer error
 signal rmcs1_mcpe : std_logic;                                       -- mass control parity error
 signal rmcs1_dva : std_logic;                                        -- device available
 signal rmcs1_psel : std_logic;                                       -- port select
@@ -398,6 +399,11 @@ begin
    rh_online <= '1' when img_mounted = 1 else '0';
    rmcs1_sc <= '1' when rmcs1_tre = '1' or rmcs1_mcpe = '1'-- FIXME, others?
       else '0';
+   -- PGE records a command that was refused; it does not stop the next one
+   -- (SIMH clears CS2's errors when it accepts a transfer)
+   sc_but_pge <= '1' when rmcs1_mcpe = '1' or rmcs2_dlt = '1' or rmcs2_wce = '1' or rmcs2_pe = '1' or rmcs2_ned = '1'
+      or rmcs2_nem = '1' or rmcs2_mxf = '1' or rmcs2_mdpe = '1' or rmer1_iae = '1' or rmer2_ivc = '1'
+      else '0';
    rmcs1_tre <= '1' when rmcs2_dlt = '1' or rmcs2_wce = '1' or rmcs2_pe = '1' or rmcs2_ned = '1'
       or rmcs2_nem = '1' or rmcs2_mxf = '1' or rmcs2_pge = '1' or rmcs2_mdpe = '1'
       or rmer1_iae = '1' or rmer2_ivc = '1'
@@ -644,11 +650,22 @@ begin
                            when "00000" =>
                               rmcs1_rdyset <= bus_dato(7);             -- controller half: always
                               rmcs1_ie <= bus_dato(6);
-                              if rmcs1_go = '1' then                   -- drive half (function, GO) while
+                              if bus_dato(14) = '1' then               -- TRE written 1: error clear
+                                 rmcs2_pge <= '0';
+                              end if;
+                              if bus_dato(0) = '1' and unsigned(bus_dato(5 downto 1)) >= 20 and rmcs1_rdy = '0' then
+                                 rmcs2_pge <= '1';                     -- a data transfer while the controller is
+                                                                       -- busy: program error, and the command
+                                                                       -- never reaches the drive (RJP04 manual
+                                                                       -- 3.4, SIMH mba_wr)
+                              elsif rmcs1_go = '1' then                -- drive half (function, GO) while
                                  rmer1_rmr <= '1';                     -- busy: refused, as SIMH rp_mbwr
                               else
+                                 if bus_dato(0) = '1' and unsigned(bus_dato(5 downto 1)) >= 20 then
+                                    rmcs2_pge <= '0';                  -- transfer accepted: clear the old one
+                                 end if;
                                  rmcs1_fnc <= bus_dato(5 downto 1);
-                                 if rmcs1_sc = '0' then
+                                 if sc_but_pge = '0' then
                                     rmcs1_go <= bus_dato(0);
                                     if rmds_err = '0' then
                                        rmds_ata <= '0';
@@ -899,8 +916,7 @@ begin
                   --rmcs2_ned <= '0';
                   rmcs2_nem <= '0';
                   rmcs2_mxf <= '0';
-                  rmcs2_pge <= '0';
-                  rmcs2_mdpe <= '0';
+                  rmcs2_mdpe <= '0';                 -- (PGE: cleared when a transfer is accepted, see CS1)
 
                   if rh_online = '0' and rmcs1_fnc /= "00000" and rmcs1_fnc /= "00100" then
                      rmer1_uns <= '1';                                -- no medium: drive unsafe (as SIMH for an unattached drive)
