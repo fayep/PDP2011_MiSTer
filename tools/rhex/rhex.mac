@@ -22,6 +22,12 @@
 ; checked against this program's code (01000-02777) in memory; the status
 ; line adds tape operations, tape errors (MTC.ERR) and tape data mismatches.
 ;
+; With WRT defined (rhexw.tap): every 4th transfer is a WRITE of 1..13
+; blocks to the scratch area (blocks NPAT..NPAT+NSCR-1), same command
+; sequence with WRITE+GO, data = the pattern with word 1 = a per-transfer
+; salt and words 2..255 XORed with it (salt table at SALTAB), then the
+; same blocks are read back into a new buffer and checked like any read.
+;
 	.asect
 	.enabl	ama			; absolute addressing: no linker, so nothing PC-relative
 	. = 0
@@ -55,6 +61,8 @@ mtcma	= 172526
 TMBUF	= 140000
 ;
 NPAT	= 19000.
+NSCR	= 2000.			; scratch blocks after the pattern (WRT)
+SALTAB	= 150000		; salt per scratch block (WRT)
 MAXN	= 13.
 SENT	= 125125
 ;
@@ -95,14 +103,58 @@ loop:	add	#1,iterl
 	mov	nblk,r1			; bytes = blocks * 512.
 	ash	#9.,r1
 	mov	r1,nbytes
-	mov	buf,r2			; sentinel over buffer and guards
+	mov	#71,fnc			; read
+	clr	wmode
+	.if	df,WRT
+	mov	iterl,r1		; every 4th transfer: write scratch blocks, then read them back
+	bic	#177774,r1
+	cmp	r1,#3
+	bne	rdset
+	inc	wmode
+	mov	#61,fnc			; write
+	call	rand
+	clr	r0
+	div	#NSCR-MAXN,r0
+	add	#NPAT,r1
+	mov	r1,lbn
+	call	rand
+	bis	#1,r1			; salt: never 0
+	mov	r1,salt
+	mov	buf,r2			; data to write
+	mov	lbn,r4
+	mov	nblk,r3
+20$:	mov	r4,(r2)+
+	mov	salt,(r2)+
+	mov	r4,r5
+	swab	r5
+	clrb	r5
+	mov	#2,r0
+21$:	mov	r5,r1
+	bis	r0,r1
+	mov	#125252,-(sp)
+	xor	r1,(sp)
+	mov	salt,r1
+	xor	r1,(sp)
+	mov	(sp)+,(r2)+
+	inc	r0
+	cmp	r0,#400
+	blo	21$
+	mov	r4,r1			; remember this block's salt
+	sub	#NPAT,r1
+	asl	r1
+	mov	salt,SALTAB(r1)
+	inc	r4
+	sob	r3,20$
+	jmp	xseq
+	.endc
+rdset:	mov	buf,r2			; sentinel over buffer and guards
 	sub	#4,r2
 	mov	nbytes,r3
 	asr	r3
 	add	#4,r3
 2$:	mov	#SENT,(r2)+
 	sob	r3,2$
-	mov	lbn,r1			; cylinder, track, sector
+xseq:	mov	lbn,r1			; cylinder, track, sector
 	call	chs
 	mov	r0,cyl
 	mov	r2,trkse
@@ -133,7 +185,7 @@ loop:	add	#1,iterl
 	neg	r0
 	mov	r0,@#rhwc
 	call	delay
-	mov	#71,@#rhcs1		; read + GO
+	mov	fnc,@#rhcs1		; read (or write) + GO
 	call	tmkick
 ;
 	clr	r3			; wait for RDY: ~100 x 65536 polls
@@ -182,7 +234,19 @@ loop:	add	#1,iterl
 	beq	12$
 11$:	mov	#mda,r0
 	jmp	fail
-12$:	mov	buf,r2			; guards
+12$:	.if	df,WRT
+	tst	wmode			; the write passed its checks: read the blocks back
+	beq	121$
+	clr	wmode
+	inc	writes
+	mov	#71,fnc
+	call	rand			; into a new buffer
+	bic	#100001,r1
+	add	#20000,r1
+	mov	r1,buf
+	jmp	rdset
+121$:	.endc
+	mov	buf,r2			; guards
 	cmp	-4(r2),#SENT
 	bne	13$
 	cmp	-2(r2),#SENT
@@ -201,16 +265,26 @@ loop:	add	#1,iterl
 15$:	mov	r4,r1			; word 0
 	cmp	(r2)+,r1
 	bne	17$
-	com	r1			; word 1
-	cmp	(r2)+,r1
+	clr	salt			; pattern block: word 1 = ~lbn, no salt
+	com	r1
+	cmp	r4,#NPAT
+	blo	151$
+	mov	r4,r1			; scratch block: word 1 = its salt
+	sub	#NPAT,r1
+	asl	r1
+	mov	SALTAB(r1),r1
+	mov	r1,salt
+151$:	cmp	(r2)+,r1		; word 1
 	bne	17$
-	mov	r4,r5			; words 2..255: ((lbn&377)<<8 ! w) ^ 125252
+	mov	r4,r5			; words 2..255: ((lbn&377)<<8 ! w) ^ 125252 ^ salt
 	swab	r5
 	clrb	r5
 	mov	#2,r0
 16$:	mov	r5,r1
 	bis	r0,r1
 	mov	#125252,-(sp)
+	xor	r1,(sp)
+	mov	salt,r1
 	xor	r1,(sp)
 	mov	(sp)+,r1
 	cmp	(r2)+,r1
@@ -246,6 +320,12 @@ next:	call	tmkick
 	call	puts
 	mov	ticks,r0
 	call	puto
+	.if	df,WRT
+	mov	#mwr,r0
+	call	puts
+	mov	writes,r0
+	call	puto
+	.endc
 	.if	df,BGTM
 	mov	#mtm,r0
 	call	puts
@@ -457,6 +537,10 @@ iterl:	.word	0
 iterh:	.word	0
 errs:	.word	0
 ticks:	.word	0
+fnc:	.word	71
+wmode:	.word	0
+salt:	.word	0
+writes:	.word	0
 tmst:	.word	2			; first kick starts with a rewind
 tmvld:	.word	0			; 1: a read of record 1 is in flight
 tmops:	.word	0
@@ -481,6 +565,7 @@ mstat:	.asciz	/xfers/
 merr:	.asciz	/  errors/
 mtick:	.asciz	/  ticks/
 mtm:	.asciz	/  tm ops err bad/
+mwr:	.asciz	/  writes/
 merrh:	.asciz	/*** /
 miter:	.byte	15,12
 	.asciz	/    xfer/
