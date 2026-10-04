@@ -525,6 +525,7 @@ mister_top mister_top
    .vga_vsync(vga_vsync),
    .vga_hblank(vga_hblank),
    .vga_vblank(vga_vblank),
+   .vga_saver(vga_saver),
    .ce_pix(ce_pix_vt),
    .vga_fb(vga_fb),
    .vga_ht(vga_ht),
@@ -545,6 +546,7 @@ wire [7:0] video;
 wire vga_vsync;
 wire vga_hsync;
 wire vga_vblank;
+wire vga_saver;
 wire vga_hblank;
 wire vga_fb;
 wire vga_ht;
@@ -628,6 +630,13 @@ always @(posedge clk_100mhz) begin
 		pv_flip <= ~pv_flip;
 end
 wire panel_on = status[16] ^ pv_flip;
+
+// VT screen saver (OSD, keyboard wakes it): the panel view blanks with it.
+reg [1:0] saver_s;
+always @(posedge clk_100mhz) saver_s <= {saver_s[0], vga_saver};
+wire [7:0] pv_r_s = saver_s[1] ? 8'd0 : pv_r;
+wire [7:0] pv_g_s = saver_s[1] ? 8'd0 : pv_g;
+wire [7:0] pv_b_s = saver_s[1] ? 8'd0 : pv_b;
 wire ce_pix = panel_on ? pv_ce : ce_pix_vt;
 
 video_mixer video_mixer
@@ -636,9 +645,9 @@ video_mixer video_mixer
         .freeze_sync(),
         .scandoubler(1'b0),
         .hq2x(),
-        .R(panel_on ? pv_r : vga_red),
-        .G(panel_on ? pv_g : vga_green),
-		  .B(panel_on ? pv_b : vga_blue),
+        .R(panel_on ? pv_r_s : vga_red),
+        .G(panel_on ? pv_g_s : vga_green),
+		  .B(panel_on ? pv_b_s : vga_blue),
         .HSync(panel_on ? pv_hs : vga_hsync),
         .VSync(panel_on ? pv_vs : vga_vsync),
         .HBlank(panel_on ? pv_hb : vga_hblank),
