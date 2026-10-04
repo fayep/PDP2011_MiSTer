@@ -62,6 +62,7 @@ entity vga is
       vga_vsync : out std_logic;                                     -- vertical sync
       vga_hblank: out std_logic;                                     -- horizontal blank
       vga_vblank: out std_logic;                                     -- vertical blank
+      vga_saver : out std_logic;                                      -- '1' while the screen saver blanks the picture
       ce_pix : out std_logic;
       vga_fb : out std_logic;                                        -- monochrome output full on
       vga_ht : out std_logic;                                        -- monochrome output half strength for shading
@@ -555,7 +556,9 @@ begin
 					vga_hblank <= '1';
             end if;
 
+            vga_saver <= '0';
             if seconds > have_act_seconds and have_act_seconds > 0 then
+               vga_saver <= '1';
                -- screen saver: black pixels only. The original also held hsync/vsync
                -- inactive (DPMS standby on a VGA monitor), but on MiSTer that drops
                -- the scaler/HDMI frame and the picture did not come back on a key.
