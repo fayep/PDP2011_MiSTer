@@ -211,6 +211,8 @@ localparam CONF_STR = {
 	"-;",
 	"O[1],External Ethernet,No,Yes;",
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
+	"H0O[17],Line 1 (176500),Serial port,TU58 DECtape II;",
+	"O[18],Line clock,60 Hz,50 Hz;",
 	"O[16],Video,Terminal,Front panel;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -265,6 +267,7 @@ hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(4),.PS2DIV(3125)) hps_io
    .gamma_bus(gamma_bus),
 	.buttons(buttons),
 	.status(status),
+	.status_menumask({15'd0, status[2]}),   // H0: line 1 is on the UART only with the VT console
 	
 	.sd_lba(sd_lba),
    .sd_rd(sd_rd),
@@ -451,6 +454,7 @@ mister_top mister_top
 	.clk_50 (clk_50mhz),
    .modelcode    (modelcode),
 	.serial_console (status[2]),
+	.line_50hz      (status[18]),
 	
    .tx1  (UART_TXD),
    .rx1  (UART_RXD),

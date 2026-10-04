@@ -262,6 +262,7 @@ entity unibus is
 
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
+      line_50hz : in std_logic := '0';                               -- KW11-L at 50 Hz instead of kw11l_hz (OSD)
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
       reset : in std_logic                                           -- active '1' synchronous reset
    );
@@ -591,6 +592,7 @@ component kw11l is
 
       have_kw11l : in integer range 0 to 1;
       kw11l_hz : in integer range 50 to 800;
+      line_50hz : in std_logic := '0';
 
       reset : in std_logic;
       clk50mhz : in std_logic;
@@ -1683,6 +1685,7 @@ begin
 
       have_kw11l => have_kw11l,
       kw11l_hz => kw11l_hz,
+      line_50hz => line_50hz,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       clk => nclk
