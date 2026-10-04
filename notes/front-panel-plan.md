@@ -318,9 +318,16 @@ RL02 and TU10 lamp sets against their own manuals before drawing them.
 Inspiration from the user: one screen with the terminal, the CPU panel,
 the drive buttons and a tape deck together, instead of switching views.
 
-- **Mode:** needs more than 640x480 -- 1280x720@60 (74.25 MHz) or
-  1024x768@60 (65 MHz), from a video PLL output or a clk_100 CE that the
-  scaler accepts. Decide after Phase B (VT on clk_100).
+- **Mode (user, 2026-10-04): 1920x1080 if doable, else 1280x720.**
+  Preferred route: the **MiSTer framebuffer** (`MISTER_FB`, `FB_EN/FB_BASE/
+  FB_WIDTH/...` in pdp2011.sv; DDRAM_* is unused in this core today). The
+  core renders into DDR3 only when something changes (a lamp, a character,
+  a reel frame) and the scaler shows it at full HDMI resolution: no
+  148.5 MHz pixel pipeline to close timing on. Fallback: native 1280x720@60
+  (74.25 MHz pixel clock from a video PLL output).
+- **Layout (user): picture-in-picture.** One view full screen (terminal by
+  default, at a crisp native size), the others as windows; a hotkey cycles
+  which is large. Simpler than a fixed dashboard grid.
 - **Terminal pane:** the renderer reads the VT's character and attribute
   buffers through a second read port and draws 80x24 with the existing
   font ROM (`vgafont`), same colours as the VT's OSD setting.
