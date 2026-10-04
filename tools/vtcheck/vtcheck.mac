@@ -1,0 +1,86 @@
+	.title	vtcheck - VT100 character set handling on the built-in terminal
+;
+; Standalone, booted from tape (boot ROM: record 1 -> address 0). Writes test
+; lines to KL11 line 1 (176500) -- the on-screen VT when the console is on the
+; serial port -- then "vtcheck done" on the console (177560). Each line says
+; what a VT100 shows; compare with a screenshot.
+;   G0/G1: ESC ( x designates G0, ESC ) x designates G1, SO selects G1,
+;   SI selects G0; DECSC/DECRC save and restore the shift state.
+;   'lqqk' in DEC Special Graphics is a box top-left corner, two lines, corner.
+;
+	.asect
+	.enabl	ama
+	. = 0
+	jmp	@#start
+	. = 4
+	.word	halt4, 340
+;
+xcsr1	= 176504		; line 1 transmitter
+xbuf1	= 176506
+tps	= 177564		; console transmitter
+tpb	= 177566
+;
+	. = 1000
+start:	mov	#1000,sp
+	reset
+	mov	#vtseq,r0
+	mov	#xcsr1,r1
+	call	puts
+	mov	#done,r0
+	mov	#tps,r1
+	call	puts
+	halt
+;
+; puts: r0 -> NUL-terminated string, r1 -> transmitter CSR (buffer at +2)
+puts:	movb	(r0)+,r2
+	beq	9$
+1$:	tstb	(r1)
+	bpl	1$
+	movb	r2,2(r1)
+	br	puts
+9$:	return
+;
+halt4:	halt
+;
+ESC	= 33
+SO	= 16
+SI	= 17
+CR	= 15
+LF	= 12
+;
+vtseq:	.byte	ESC
+	.ascii	/[2J/
+	.byte	ESC
+	.ascii	/[H/
+	.ascii	/vtcheck: VT100 character sets/<CR><LF><CR><LF>
+	.ascii	/1 ESC ) 0 loads G1 only; want "abc abc":     abc /
+	.byte	ESC
+	.ascii	/)0abc/<CR><LF>
+	.ascii	/2 SO uses G1, SI back; want box-top then abc: /
+	.byte	SO
+	.ascii	/lqqk/
+	.byte	SI
+	.ascii	/ abc/<CR><LF>
+	.ascii	/3 ESC ( 0 is G0, now; want box-top then abc:  /
+	.byte	ESC
+	.ascii	/(0lqqk/
+	.byte	ESC
+	.ascii	/(B abc/<CR><LF>
+	.ascii	/4 DECSC in SO, SI, DECRC; want box-top:        /
+	.byte	SO,ESC
+	.ascii	/7/
+	.byte	SI,ESC
+	.ascii	/8lqqk/
+	.byte	SI
+	.ascii	/ abc/<CR><LF>
+	.ascii	/5 ESC ) B: G1 ASCII again; want "abc abc":    /
+	.byte	ESC
+	.ascii	/)B/
+	.byte	SO
+	.ascii	/abc/
+	.byte	SI
+	.ascii	/ abc/<CR><LF><CR><LF>
+	.asciz	/end of vtcheck/
+done:	.asciz	<CR><LF>/vtcheck done/<CR><LF>
+	.even
+	.end
