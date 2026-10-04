@@ -91,8 +91,18 @@ and it has `paneltype => 0`, which means "no console".
   state machine that generates cpuclk.
 - **cpuclk:** a 140 ns generated clock (`pdp2011.sdc`, edges {1 15 29}).
   Its rise ends `dram_c1` and its fall ends `dram_c8`.
-- **SDC multicycles already in place:** `cpuclk -> divclk` `-setup 5 -hold 4`
-  and `divclk -> cpuclk` `-setup 3 -hold 14`. Both are analyzed paths.
+- **SDC multicycles in place** (honest constraints since release-20261003,
+  every exception says `-start`/`-end`): `cpuclk -> divclk`
+  `-setup -end 5 / -hold -end 4` for all paths, and `divclk -> cpuclk`
+  `-setup -start 3 / -hold -start 2` for the `dati[*]` registers **only**.
+  Everything else `divclk -> cpuclk` must meet a single period or be a
+  false-pathed synchroniser.
+- **Caution, falling edge:** `cpuclk -> divclk -setup -end 5` is right for
+  registers launched on the cpuclk rise. The NPR arbiter and the RH70 run on
+  `nclk` (the fall, the edge ending `dram_c8`), and for those the `dram_c12`
+  sample is only 40 ns away, not 50. It had 11.8 ns to spare on
+  2026-10-03 builds, but the exception over-allows it. Anything new launched
+  on `nclk` needs its own exception.
 - **The only foreign domain is the VT's pixel clock.** `vga.vhd` toggles
   `vgaclk` on `clk_50` (25 MHz). It uses that both as a clock and as
   `ce_pix`, which `CE_PIXEL` then samples in the `clk_100` video path. STA
@@ -154,7 +164,8 @@ of extra latches.
 state, `dram_c8`, 7 divclk periods after the launch.
 
 - **Already covered by the SDC:** this is exactly the relationship the
-  existing `cpuclk -> divclk -setup 5 -hold 4` covers. The row-address
+  existing `cpuclk -> divclk -setup -end 5 / -hold -end 4` covers (for rise-launched
+  registers: keep `vpanel_lamps` off `nclk`). The row-address
   capture at `dram_c6` is the tighter case, so STA checks it with margin and
   no new constraint is needed.
 - **Implementation:** `mister_top` can export a one-cycle `dram_c8` strobe
@@ -173,7 +184,9 @@ from a register that updates only with an enable at the edge ending
 `dram_c12`, the same edge `dati` uses.
 
 - **Constraint:** this is exactly the existing
-  `divclk -> cpuclk -setup 3 -hold 14` relationship. It's 3 periods to the
+  `dati` relationship, but the SDC's `-setup -start 3 / -hold -start 2` names
+  `dati[*]` only, so `vpanel_sw` needs the same pair of exceptions added for
+  its own registers. It's 3 periods to the
   next cpuclk rise, and the hold relaxation is valid because the register
   changes at most once per cpuclk period.
 - **Momentaries:** a key press holds the level for about 100 ms, which also
@@ -251,6 +264,55 @@ two-switch reset combo) could become an OSD item.
   This touches `vga.vhd` (one VT feature at a time), so it must pass the VT
   visual check and the full boot cycles on its own.
 
+### 7. Drive panel (added 2026-10-03)
+
+A row of drive operator panels under the CPU panel, so disk and tape
+activity is visible as it happens. Motivation: chasing the RSTS/E 10.1
+INIT trap, the question "did the RP go not-ready during that overlay load?"
+would have been answered at a glance.
+
+**Lamps come from controller state that already exists** (the always-present
+controllers added per-controller `*_img_mounted` online flags; the RH work
+added GO/RDY/DRY and the block-device handshake). Each controller exports a
+small lamp vector on cpuclk, launched on the **rising** edge (re-register the
+RH's `nclk` signals once on `clk` first), crossing to `clk_100` exactly like
+[A]. Access lamps (READ, WRITE, SEEK) are pulse-stretched in the controller
+to about 50 ms so a single 512-byte block still shows; status lamps (READY,
+ONLINE, PROTECT) are levels.
+
+| Drive | Lamps | Switches (OSD or panel keys, via [B]) |
+|---|---|---|
+| RP06 (RH70) | READY (DRY and MOL), FAULT (DS.ERR / ATA with error), ATTN (ATA), WRITE PROTECT (WRL), READ, WRITE | START/STOP (spin up/down = online), WRITE PROTECT |
+| RK05 (RK11) | PWR, RDY, ON CYL, FAULT, WT PROT, LOAD, WT, RD | RUN/LOAD, WT PROT |
+| RL02 (RL11) | LOAD, READY, FAULT, WRITE PROT | LOAD, WRITE PROT |
+| TU10 (TM11) | SELECT, ON-LINE, LOAD POINT (BOT), END POINT (EOT), WRITE ENABLE, FWD/REV | ON-LINE/OFF-LINE, REWIND |
+
+Unit lamps only for units that exist (one RP, one RK, one RL, one TU today);
+the layout should leave room for more units per controller.
+
+**Switch semantics must match the drives**, not just toggle a bit:
+
+- **RP START/STOP:** going offline = what an unmounted image does today
+  (MOL=0, VV cleared, UNS on commands). Coming back up must behave like a
+  real RP04/06 cycle-up (RJP04 maintenance manual 3.6.8): **set ATA and reset
+  VV**, so the OS sees attention and must pack-acknowledge. Note the current
+  RH sets VV by itself when an image is mounted ("no OS needs a pack
+  acknowledge for a mounted image"); a panel cycle-up should follow the
+  manual instead. Never take a drive offline under a transfer: offline
+  waits for GO to clear (the same bracketing rule as RDY/DRY).
+- **WRITE PROTECT:** RH `rmds_wrl` (DS.WRL; writes fail with WLE), RK and RL
+  equivalents. A level, applied between commands.
+- **TM REWIND / ON-LINE:** only when the drive is not busy.
+- All switch levels cross through [B] and are sampled by the controller only
+  when it is idle (GO clear), so a panel action can never land in the
+  middle of a transaction.
+
+**Reference:** RP05/RP06 DCL maintenance manual EK-RP056-MM-01 (DS bits,
+DRY table 2-1) and RJP04 subsystem maintenance manual DEC11-HRJPA-B-D
+(operator switches 3.6.8, RDY/DRY 4.x), on bitsavers under
+`pdf/dec/disc/rp04_rp05_rp06/` and `pdf/dec/disc/rp04/`. Verify the RK05,
+RL02 and TU10 lamp sets against their own manuals before drawing them.
+
 ## Timing and fit
 
 - **No new clocks.** All new registers are on `clk_100` or cpuclk, so no SDC
@@ -284,8 +346,22 @@ negative slack), pass `check-fit.sh`, and pass `regress/rsts_cycle.py`
    - the cycles pass with the panel never touched.
 4. **Graded brightness** (optional).
 5. **Phase B**, moving the VT onto `clk_100` (optional, separate).
+6. **Drive panel lamps** (section 7): per-controller lamp vectors, pulse
+   stretch, crossing [A], drawn under the CPU panel.
+   *Check:* lamps follow a boot (RP READY drops during transfers, READ
+   flickers), and the cycles pass.
+7. **Drive panel switches:** START/STOP and WRITE PROTECT per drive, via [B],
+   applied only when the controller is idle.
+   *Check:* a stop/start cycle under RSTS gives ATA and needs a pack
+   acknowledge; write protect gives WLE; no transfer is ever cut short.
 
 ## Open questions
+
+- **Drive panel placement:** under the CPU panel in the same view, or a
+  third view (Terminal / CPU panel / Drives)?
+- **Cycle-up VV:** should mounting an image from the OSD also follow the
+  manual (ATA set, VV reset), or keep today's convenience (VV set on mount),
+  with only the panel START switch behaving like the hardware?
 
 - **Artwork:** procedural (mask plus generated bands), or a converted image?
   Is there 11/70 or PiDP-11 panel artwork we're licensed to use?
