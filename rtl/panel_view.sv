@@ -14,8 +14,8 @@
 // (22 paddles, up = 1) and the 7 control switches. Lamps are incandescent
 // circles: lit amber, unlit dark.
 //
-// Inputs are levels; in step 1 pdp2011.sv feeds a demo pattern, later
-// steps the CPU's console loom (paneldriver).
+// Inputs are levels on clk_100 (paneldriver type 4 via mister_top), latched
+// once per frame at the start of vertical blanking.
 //
 module panel_view
 (
@@ -94,6 +94,12 @@ wire [2:0] grp   = (bitn >= 5'd21) ? 3'd7 : (bitn >= 5'd18) ? 3'd6 : (bitn >= 5'
                    (bitn >= 5'd12) ? 3'd4 : (bitn >= 5'd9)  ? 3'd3 : (bitn >= 5'd6)  ? 3'd2 :
                    (bitn >= 5'd3)  ? 3'd1 : 3'd0;
 
+// ---- the lamps and switches, latched once per frame (no half-updated frames) ----
+reg [21:0] fa; reg [15:0] fd; reg [11:0] fs; reg [21:0] fsw; reg [6:0] fct;
+always @(posedge clk) if (adv && col == 10'd0 && row == 10'd480) begin
+	fa <= addr_l; fd <= data_l; fs <= stat_l; fsw <= sw; fct <= ctl;
+end
+
 // ---- stage 1 (clock after the pixel advances): distances, squares, lamp bits ----
 // col/row/ci/cx hold for 4 clocks per pixel, so each stage gets one clock.
 wire signed [6:0] dx = $signed({2'b0, cx}) - 7'sd13;
@@ -129,11 +135,11 @@ always @(posedge clk) if (div == 2'd2) begin
 	s1_r2a   <= sq(dx) + sq(dy_adr[6:0]);
 	s1_r2d   <= sq(dx) + sq(dy_dat[6:0]);
 	s1_r2s   <= sq(dx) + sq(dy_sta[6:0]);
-	s1_la    <= addr_l[bitn];
-	s1_ld    <= data_l[bitn[3:0]];
-	s1_ls    <= stat_l[(bitn < 5'd12) ? bitn[3:0] : 4'd0];
-	s1_sw    <= sw[bitn];
-	s1_ct    <= ctl[3'd6 - ci[2:0]];
+	s1_la    <= fa[bitn];
+	s1_ld    <= fd[bitn[3:0]];
+	s1_ls    <= fs[(bitn < 5'd12) ? bitn[3:0] : 4'd0];
+	s1_sw    <= fsw[bitn];
+	s1_ct    <= fct[3'd6 - ci[2:0]];
 	s1_ctlp  <= (ci == 5'd4 || ci == 5'd5);          // ENABLE/HALT, S INST: latching
 	s1_swup  <= dy_sw < -11'sd14;
 	s1_swdn  <= dy_sw >  11'sd14;
