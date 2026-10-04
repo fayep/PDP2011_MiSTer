@@ -213,6 +213,7 @@ localparam CONF_STR = {
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
 	"H0O[17],Line 1 (176500),Serial port,TU58 DECtape II;",
 	"O[18],Line clock,60 Hz,50 Hz;",
+	"O[21:19],Boot device,Auto,TM11 tape,RK11,RL11,RH70 (RP/RM);",
 	"O[16],Video,Terminal,Front panel;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -380,6 +381,7 @@ int tm_img_mounted;
 int rk_img_mounted;
 int rl_img_mounted;
 int rh_img_mounted;
+int boot_sel;
 
 // Controllers are always present on the bus, as real cards are; only the
 // drive behind each one goes online/offline with its image (img_mounted).
@@ -390,6 +392,7 @@ assign have_tm = 1;  // controller presence is a build-time choice, not tied to
                       // mount state -- see tm11's img_mounted for "no tape"
 assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 assign rk_img_mounted = vsd_sel_rk ? 1 : 0;
+assign boot_sel = status[21:19];   // 0 auto, 1 mt, 2 rk, 3 rl, 4 rh (5-7 = auto)
 assign rl_img_mounted = vsd_sel_rl ? 1 : 0;
 assign rh_img_mounted = vsd_sel_rh ? 1 : 0;
 
@@ -497,6 +500,7 @@ mister_top mister_top
    .rk_img_mounted (rk_img_mounted),
    .rl_img_mounted (rl_img_mounted),
    .rh_img_mounted (rh_img_mounted),
+   .boot_sel       (boot_sel),         // OSD boot device -> register at 165776 for the low rom
    .tm_media_change (tape_mount_tgl),
    .tm_sd_lba      (sd_lba[3]),
    .tm_sd_rd       (tm_sd_rd),

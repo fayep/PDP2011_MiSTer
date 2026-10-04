@@ -73,6 +73,7 @@ entity unibus is
       rk_img_mounted : in integer range 0 to 1 := 1;                 -- disk image mounted behind the controller (drive online)
       rl_img_mounted : in integer range 0 to 1 := 1;
       rh_img_mounted : in integer range 0 to 1 := 1;
+      boot_sel : in integer range 0 to 7 := 0;                       -- OSD boot device: 0 auto, 1 mt, 2 rk, 3 rl, 4 rh
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
       tm_sd_rd : out std_logic;
       tm_sd_wr : out std_logic;
@@ -1182,6 +1183,13 @@ signal mem_dati : std_logic_vector(15 downto 0);
 signal rom0_addr_match : std_logic;
 signal rom0_dati : std_logic_vector(15 downto 0);
 
+-- Boot device register at 165776 (last word of the m9312 low rom, read-only):
+-- the low rom's last act reads it and jumps there. Auto = 173000 (the hi
+-- rom's probe, as before); a chosen device = its go routine in the hi rom
+-- once an image is mounted behind it, 0 until then (the rom waits). The go
+-- addresses are labels in roms/m9312h47 (see its .lst); keep them in step.
+signal bootsel_dati : std_logic_vector(15 downto 0);
+
 signal rom1_addr_match : std_logic;
 signal rom1_dati : std_logic_vector(15 downto 0);
 
@@ -1631,6 +1639,14 @@ begin
       reset => cpu_init,
       clk => nclk
    );
+
+   bootsel_dati <= x"F600" when boot_sel = 0                          -- 173000 auto: hi rom probe
+      else x"F6AE" when boot_sel = 1 and tm_img_mounted = 1           -- 173256 mtgo
+      else x"F736" when boot_sel = 2 and rk_img_mounted = 1           -- 173466 rkgo
+      else x"F6D2" when boot_sel = 3 and rl_img_mounted = 1           -- 173322 rlgo
+      else x"F76C" when boot_sel = 4 and rh_img_mounted = 1           -- 173554 rpgo
+      else x"F600" when boot_sel > 4                                  -- unused values: auto
+      else x"0000";                                                   -- chosen drive has no image yet
 
    bootrom0: m9312l port map(
       base_addr => o"765000",                   -- m9312 lo rom
@@ -2624,6 +2640,7 @@ begin
       else kl3_dati when kl3_addr_match = '1'
       else kw0_dati when kw0_addr_match = '1'
       else csdr_dati when csdr_addr_match = '1'
+      else bootsel_dati when rom0_addr_match = '1' and unibus_addr(8 downto 1) = "11111111"
       else rom0_dati when rom0_addr_match = '1'
       else rom1_dati when rom1_addr_match = '1'
       else rl0_dati when rl0_addr_match = '1'
