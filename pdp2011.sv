@@ -593,7 +593,7 @@ wire  [7:0] pv_r, pv_g, pv_b;
 panel_view panel_view
 (
 	.clk    (clk_100mhz),
-	.reset  (reset),
+	.reset  (1'b0),                // free-running video timing: keep it off the reset net (fanout into the DRAM FSM)
 	.addr_l (panel_lamps[49:28]),
 	.data_l (panel_lamps[27:12]),
 	.stat_l (panel_lamps[11:0]),
