@@ -1,0 +1,802 @@
+	.title	rhexf - RH70/RP06 whole-pack exerciser: seeks, interrupts, reads and writes
+;
+; Standalone, booted from tape like rhex (boot ROM: record 1 -> address 0).
+; Disk: any RP06 image; it is formatted by this program.
+;
+; Pattern, by cylinder c, track t, sector s (no LBNs: the pack has 340670
+; blocks, more than 16 bits):  word 0 = c, word 1 = t<<8 ! s,
+; word w (2..255) = (w<<8 ! (c & 377)) ^ (t<<3 ! s) ^ 052525 ^ salt,
+; salt = 0, except on cylinders 0-3 (the write area), where each block's
+; salt is kept in a table at SALTAB.
+;
+; Start: format the pack (WRITE one whole track, 22 blocks, per command) --
+; skipped if the last block of the pack already checks out, but cylinders
+; 0-3 are always rewritten (salts 0).
+; Then forever, per transfer, with iter = transfer number:
+;   target: random c/t/s anywhere (1..13 blocks, may cross tracks and
+;           cylinders); every 4th transfer (iter&3 = 3) a WRITE to c 0-3
+;           with a new salt, then the blocks are read back and checked.
+;   iter&4: an explicit SEEK to the target first: the controller must stay
+;           ready (RDY), the drive goes busy (DRY 0) and then raises
+;           attention (AS bit 0, cleared by writing it back), no errors.
+;   iter&10: interrupt round: IE set on every command; completion is the
+;           RH interrupt (vector 254), exactly one per command.
+;   the read/write is issued with RSTS/E INIT's register sequence (AS,
+;   DCLR, DT, PACK, DC, OF, DA, DS, DS, CS1, DS, BA, WC, function+GO).
+;   checks: CS1 SC/TRE, CS2 errors, ER1, DS (MOL DRY !ERR), WC = 0, BA
+;   advanced, DC/DA at the block after the transfer, guard words, every
+;   data word, the interrupt count.
+; Console: format progress, a status line every 1024 transfers, a full
+; report for each of the first 20 failures.
+;
+	.asect
+	.enabl	ama			; absolute addressing: no linker
+	. = 0
+	jmp	@#start
+	. = 4
+	.word	trap4, 340
+	.word	trap10, 340
+	. = 100
+	.word	clkint, 340
+	. = 254
+	.word	rhint, 340
+;
+rhcs1	= 176700
+rhwc	= 176702
+rhba	= 176704
+rhda	= 176706
+rhcs2	= 176710
+rhds	= 176712
+rher1	= 176714
+rhas	= 176716
+rhdt	= 176726
+rhof	= 176732
+rhdc	= 176734
+rhbae	= 176750
+lks	= 177546
+tps	= 177564
+tpb	= 177566
+psw	= 177776
+;
+NCYL	= 815.
+NTRK	= 19.
+NSEC	= 22.
+WCYL	= 4			; write area: cylinders 0..WCYL-1
+SALTAB	= 150000		; WCYL*418 words
+FBUF	= 20000			; format track buffer (22 blocks)
+MAXN	= 13.
+SENT	= 125125
+RREAD	= 71			; function codes with GO
+RWRITE	= 61
+RSEEK	= 5
+;
+	. = 1000
+start:	mov	#1000,sp
+	reset
+	mov	#hello,r0
+	call	puts
+	clr	@#rhcs2
+	clr	@#rhbae
+	mov	#100,@#lks		; KW11-L on
+	clr	@#psw
+	clr	r1			; salts of the write area: 0
+	mov	#WCYL*418.,r3
+1$:	clr	SALTAB(r1)
+	add	#2,r1
+	sob	r3,1$
+;
+; format: unless the last block checks out, all cylinders; else only 0..WCYL-1
+	mov	#NCYL-1,c
+	mov	#NTRK-1,t
+	mov	#NSEC-1,s
+	mov	#1,nblk
+	mov	#FBUF,buf
+	mov	#RREAD,fnc
+	clr	ie
+	clr	sk
+	call	xfer
+	tst	r0
+	bne	2$
+	call	verify
+	tst	r0
+	bne	2$
+	mov	#mfquick,r0
+	call	puts
+	mov	#WCYL,ncf
+	br	3$
+2$:	mov	#mffull,r0
+	call	puts
+	mov	#NCYL,ncf
+3$:	clr	c
+4$:	clr	t
+5$:	clr	s			; a whole track
+	clr	salt
+	mov	#FBUF,r2
+	mov	#NSEC,r3
+6$:	call	gen
+	inc	s
+	sob	r3,6$
+	clr	s
+	mov	#NSEC,nblk
+	mov	#FBUF,buf
+	mov	#RWRITE,fnc
+	call	xfer
+	tst	r0
+	beq	7$
+	mov	#mfail,r0		; format write failed
+	call	puts
+	call	regs
+	halt
+7$:	inc	t
+	cmp	t,#NTRK
+	blo	5$
+	bit	#37,c
+	bne	8$
+	mov	#mcyl,r0
+	call	puts
+	mov	c,r0
+	call	puto
+	call	crlf
+8$:	inc	c
+	cmp	c,ncf
+	blo	4$
+	mov	#mfdone,r0
+	call	puts
+;
+; ---- main loop ----
+loop:	add	#1,iterl
+	adc	iterh
+	call	rand			; blocks 1..13
+	swab	r1
+	bic	#177400,r1
+	clr	r0
+	div	#MAXN,r0
+	inc	r1
+	mov	r1,nblk
+	call	rand			; buffer
+	bic	#100001,r1
+	add	#20000,r1
+	mov	r1,buf
+	mov	iterl,r1		; delay: iter & 17 ... as rhex
+	bic	#177760,r1
+	mov	r1,dly
+	clr	ie			; interrupt round?
+	bit	#10,iterl
+	beq	1$
+	mov	#100,ie
+1$:	clr	sk			; explicit seek first?
+	bit	#4,iterl
+	beq	2$
+	inc	sk
+2$:	mov	iterl,r1		; write round?
+	bic	#177774,r1
+	cmp	r1,#3
+	beq	wround
+;
+	call	rand			; read anywhere: c 0..NCYL-2 (keep 13 blocks inside the pack)
+	clr	r0
+	div	#NCYL-1,r0
+	mov	r1,c
+	call	rand
+	clr	r0
+	div	#NTRK,r0
+	mov	r1,t
+	call	rand
+	clr	r0
+	div	#NSEC,r0
+	mov	r1,s
+	br	rround
+;
+wround:	call	rand			; write in the write area
+	clr	r0
+	div	#WCYL-1,r0		; c 0..WCYL-2 (13 blocks stay in the area)
+	mov	r1,c
+	call	rand
+	clr	r0
+	div	#NTRK,r0
+	mov	r1,t
+	call	rand
+	clr	r0
+	div	#NSEC,r0
+	mov	r1,s
+	call	rand			; new salt for these blocks
+	bis	#1,r1
+	mov	r1,nsalt
+	mov	buf,r2
+	mov	c,-(sp)
+	mov	t,-(sp)
+	mov	s,-(sp)
+	mov	nblk,r3
+1$:	call	slot			; record and use the salt
+	mov	nsalt,SALTAB(r1)
+	mov	nsalt,salt
+	call	gen
+	call	nextb
+	sob	r3,1$
+	mov	(sp)+,s
+	mov	(sp)+,t
+	mov	(sp)+,c
+	mov	#RWRITE,fnc
+	call	xfer
+	tst	r0
+	beq	2$
+	jmp	fail
+2$:	inc	writes
+	call	rand			; read it back into a new buffer
+	bic	#100001,r1
+	add	#20000,r1
+	mov	r1,buf
+	clr	sk
+;
+rround:	mov	buf,r2			; sentinel over buffer and guards
+	sub	#4,r2
+	mov	nblk,r3
+	swab	r3
+	clrb	r3
+	add	#4,r3
+1$:	mov	#SENT,(r2)+
+	sob	r3,1$
+	mov	#RREAD,fnc
+	call	xfer
+	tst	r0
+	beq	2$
+	jmp	fail
+2$:	mov	buf,r2			; guards
+	cmp	-4(r2),#SENT
+	bne	3$
+	cmp	-2(r2),#SENT
+	bne	3$
+	mov	nblk,r1
+	swab	r1
+	clrb	r1
+	asl	r1
+	add	r1,r2
+	cmp	(r2),#SENT
+	bne	3$
+	cmp	2(r2),#SENT
+	beq	4$
+3$:	mov	#mgrd,r0
+	jmp	fail
+4$:	call	verify
+	tst	r0
+	beq	next
+	jmp	fail
+;
+next:	mov	#2000,r0		; interrupts: exactly the expected number (none when polled)
+1$:	sob	r0,1$
+	cmp	rhints,expint
+	beq	2$
+	mov	#mint,r0
+	mov	rhints,expint		; resynchronise after reporting
+	jmp	fail
+2$:	bit	#1777,iterl
+	bne	3$
+	mov	#mstat,r0
+	call	puts
+	mov	iterh,r0
+	call	puto
+	mov	iterl,r0
+	call	puto
+	mov	#merr,r0
+	call	puts
+	mov	errs,r0
+	call	puto
+	mov	#mwr,r0
+	call	puts
+	mov	writes,r0
+	call	puto
+	mov	#mskp,r0
+	call	puts
+	mov	seeks,r0
+	call	puto
+	mov	#mints,r0
+	call	puts
+	mov	rhints,r0
+	call	puto
+	mov	#mtick,r0
+	call	puts
+	mov	ticks,r0
+	call	puto
+	call	crlf
+3$:	jmp	loop
+;
+; ---- one command: optional seek, then INIT's sequence and fnc; r0 = 0 ok, else -> reason
+xfer:	call	tocs			; c/t/s -> cylreg, dareg
+	tst	sk
+	beq	2$
+	mov	cylreg,@#rhdc		; explicit seek
+	mov	dareg,@#rhda
+	tst	ie
+	beq	11$
+	inc	expint
+11$:	mov	#RSEEK,r0
+	bis	ie,r0
+	mov	r0,@#rhcs1
+	tstb	@#rhcs1			; controller stays ready during a seek
+	bmi	12$
+	mov	#mskrdy,r0
+	return
+12$:	clr	r3			; wait for the drive: DRY
+	mov	#100.,r4
+13$:	tstb	@#rhds
+	bmi	14$
+	sob	r3,13$
+	sob	r4,13$
+	mov	#msktmo,r0
+	return
+14$:	bit	#1,@#rhas		; attention from drive 0
+	bne	15$
+	mov	#mskata,r0
+	return
+15$:	mov	#1,@#rhas		; clear it
+	bit	#40000,@#rhds		; no error
+	beq	16$
+	mov	#mds,r0
+	return
+16$:	inc	seeks
+	tst	ie			; and its interrupt
+	beq	2$
+	call	waitint
+	tst	r0
+	beq	2$
+	return
+;
+2$:	clr	@#rhas			; INIT's sequence
+	call	delay
+	mov	#11,@#rhcs1		; drive clear + GO
+	call	delay
+	mov	@#rhdt,r0
+	call	delay
+	mov	#23,@#rhcs1		; pack acknowledge + GO
+	call	delay
+	mov	cylreg,@#rhdc
+	call	delay
+	mov	#10000,@#rhof
+	call	delay
+	mov	dareg,@#rhda
+	call	delay
+	mov	@#rhds,r0
+	mov	@#rhds,r0
+	mov	@#rhcs1,r0
+	mov	@#rhds,r0
+	call	delay
+	mov	buf,@#rhba
+	mov	nblk,r0			; WC = -(blocks * 256)
+	swab	r0
+	clrb	r0
+	neg	r0
+	mov	r0,@#rhwc
+	call	delay
+	tst	ie
+	beq	21$
+	inc	expint
+21$:	mov	fnc,r0
+	bis	ie,r0
+	mov	r0,@#rhcs1
+	tst	ie			; wait: interrupt, or poll RDY
+	beq	3$
+	call	waitint
+	tst	r0
+	beq	4$
+	return
+3$:	clr	r3
+	mov	#100.,r4
+31$:	tstb	@#rhcs1
+	bmi	4$
+	sob	r3,31$
+	sob	r4,31$
+	mov	#mtmo,r0
+	return
+4$:	tstb	@#rhcs1			; checks
+	bmi	41$
+	mov	#mrdy,r0
+	return
+41$:	bit	#140000,@#rhcs1
+	beq	5$
+	mov	#mcs1,r0
+	return
+5$:	bit	#177400,@#rhcs2
+	beq	6$
+	mov	#mcs2,r0
+	return
+6$:	tst	@#rher1
+	beq	7$
+	mov	#mer1,r0
+	return
+7$:	mov	@#rhds,r0
+	bic	#^C050200,r0
+	cmp	r0,#010200
+	beq	8$
+	mov	#mds,r0
+	return
+8$:	tst	@#rhwc
+	beq	9$
+	mov	#mwc,r0
+	return
+9$:	mov	nblk,r1			; BA advanced by blocks * 512.
+	swab	r1
+	clrb	r1
+	asl	r1
+	add	buf,r1
+	cmp	@#rhba,r1
+	beq	10$
+	mov	#mba,r0
+	return
+10$:	mov	c,-(sp)			; DC/DA at the block after the transfer
+	mov	t,-(sp)
+	mov	s,-(sp)
+	mov	nblk,r3
+101$:	call	nextb
+	sob	r3,101$
+	call	tocs
+	mov	(sp)+,s
+	mov	(sp)+,t
+	mov	(sp)+,c
+	cmp	@#rhdc,cylreg
+	bne	102$
+	cmp	@#rhda,dareg
+	beq	103$
+102$:	mov	#mda,r0
+	return
+103$:	call	tocs			; (restore cylreg/dareg for reports)
+	clr	r0
+	return
+;
+; wait for the RH interrupt the last command should raise
+waitint:
+	clr	r3
+	mov	#100.,r4
+1$:	mov	rhints,r0		; signed difference: the counters wrap
+	sub	expint,r0
+	bpl	2$
+	sob	r3,1$
+	sob	r4,1$
+	mov	#mitmo,r0
+	return
+2$:	clr	r0
+	return
+;
+; ---- verify nblk blocks at buf from c/t/s; r0 = 0 ok, else reason (badadr/badexp/badgot)
+verify:	mov	c,-(sp)
+	mov	t,-(sp)
+	mov	s,-(sp)
+	mov	buf,r2
+	mov	nblk,r3
+1$:	call	slot
+	clr	salt
+	cmp	c,#WCYL
+	bhis	2$
+	mov	SALTAB(r1),salt
+2$:	mov	c,r1			; word 0
+	cmp	(r2)+,r1
+	bne	9$
+	mov	t,r1			; word 1
+	swab	r1
+	bis	s,r1
+	cmp	(r2)+,r1
+	bne	9$
+	call	key			; r5 = (t<<3 ! s) ^ 052525 ^ salt
+	mov	c,r4
+	bic	#177400,r4
+	mov	#2,r0
+3$:	mov	r0,r1
+	swab	r1
+	bis	r4,r1
+	xor	r5,r1
+	cmp	(r2)+,r1
+	bne	9$
+	inc	r0
+	cmp	r0,#400
+	blo	3$
+	call	nextb
+	sob	r3,1$
+	mov	(sp)+,s
+	mov	(sp)+,t
+	mov	(sp)+,c
+	clr	r0
+	return
+9$:	mov	r2,r0
+	tst	-(r0)
+	mov	r0,badadr
+	mov	r1,badexp
+	mov	(r0),badgot
+	mov	(sp)+,s
+	mov	(sp)+,t
+	mov	(sp)+,c
+	mov	#mdat,r0
+	return
+;
+; generate the block c/t/s with salt at (r2)+
+gen:	mov	c,(r2)+
+	mov	t,r1
+	swab	r1
+	bis	s,r1
+	mov	r1,(r2)+
+	call	key
+	mov	c,r4
+	bic	#177400,r4
+	mov	#2,r0
+1$:	mov	r0,r1
+	swab	r1
+	bis	r4,r1
+	xor	r5,r1
+	mov	r1,(r2)+
+	inc	r0
+	cmp	r0,#400
+	blo	1$
+	return
+;
+key:	mov	t,r5			; r5 = (t<<3 ! s) ^ 052525 ^ salt
+	ash	#3,r5
+	bis	s,r5
+	mov	#052525,r1
+	xor	r1,r5
+	mov	salt,r1
+	xor	r1,r5
+	return
+;
+; r1 = byte offset of c/t/s's salt in SALTAB (only meaningful for c < WCYL)
+slot:	mov	c,r1
+	mul	#418.,r1		; odd register: r1 = low word of c*418
+	mov	r1,-(sp)
+	mov	t,r1
+	mul	#22.,r1
+	add	(sp)+,r1
+	add	s,r1
+	asl	r1			; words -> bytes
+	return
+;
+; next block: s, then t, then c
+nextb:	inc	s
+	cmp	s,#NSEC
+	blo	1$
+	clr	s
+	inc	t
+	cmp	t,#NTRK
+	blo	1$
+	clr	t
+	inc	c
+1$:	return
+;
+; c/t/s -> cylreg (= c), dareg (= t<<8 ! s)
+tocs:	mov	c,cylreg
+	mov	t,r1
+	swab	r1
+	bis	s,r1
+	mov	r1,dareg
+	return
+;
+delay:	mov	dly,r5
+	beq	2$
+1$:	sob	r5,1$
+2$:	return
+;
+rand:	mov	seed,r0
+	mul	#25173.,r0
+	add	#13849.,r1
+	mov	r1,seed
+	return
+;
+clkint:	inc	ticks
+	rti
+rhint:	inc	rhints
+	rti
+;
+; ---- failure: r0 -> reason; report the first 20, clear the controller, go on
+fail:	mov	r0,why
+	inc	errs
+	cmp	errs,#20.
+	bhi	9$
+	mov	#merrh,r0
+	call	puts
+	mov	why,r0
+	call	puts
+	mov	#miter,r0
+	call	puts
+	mov	iterh,r0
+	call	puto
+	mov	iterl,r0
+	call	puto
+	mov	#mcts,r0
+	call	puts
+	mov	c,r0
+	call	puto
+	mov	t,r0
+	call	puto
+	mov	s,r0
+	call	puto
+	mov	#mn,r0
+	call	puts
+	mov	nblk,r0
+	call	puto
+	mov	#mbuf,r0
+	call	puts
+	mov	buf,r0
+	call	puto
+	mov	#mmode,r0
+	call	puts
+	mov	fnc,r0
+	call	puto
+	mov	sk,r0
+	call	puto
+	mov	ie,r0
+	call	puto
+	call	crlf
+	call	regs
+	cmp	why,#mdat
+	bne	9$
+	mov	#mbad,r0
+	call	puts
+	mov	badadr,r0
+	call	puto
+	mov	#mexp,r0
+	call	puts
+	mov	badexp,r0
+	call	puto
+	mov	#mgot,r0
+	call	puts
+	mov	badgot,r0
+	call	puto
+	call	crlf
+9$:	mov	#40,@#rhcs2		; controller clear
+	mov	#1000,r0
+10$:	sob	r0,10$
+	clr	@#rhcs2
+	clr	@#rhbae
+	mov	#1,@#rhas
+	mov	rhints,expint
+	jmp	next
+;
+regs:	mov	#mregs,r0		; CS1 WC BA DA CS2 DS ER1 DC AS
+	call	puts
+	mov	#rhcs1,r1
+	call	puto2
+	mov	#rhwc,r1
+	call	puto2
+	mov	#rhba,r1
+	call	puto2
+	mov	#rhda,r1
+	call	puto2
+	mov	#rhcs2,r1
+	call	puto2
+	mov	#rhds,r1
+	call	puto2
+	mov	#rher1,r1
+	call	puto2
+	mov	#rhdc,r1
+	call	puto2
+	mov	#rhas,r1
+	call	puto2
+	mov	#mints,r0
+	call	puts
+	mov	rhints,r0
+	call	puto
+	mov	expint,r0
+	call	puto
+	jmp	crlf
+;
+trap4:	mov	#mtr4,r0
+	br	trapx
+trap10:	mov	#mtr10,r0
+trapx:	call	puts
+	mov	(sp),r0
+	call	puto
+	call	crlf
+	halt
+;
+putc:	tstb	@#tps
+	bpl	putc
+	movb	r0,@#tpb
+	return
+puts:	mov	r0,r1
+1$:	movb	(r1)+,r0
+	beq	2$
+	call	putc
+	br	1$
+2$:	return
+crlf:	mov	#15,r0
+	call	putc
+	mov	#12,r0
+	jmp	putc
+puto:	mov	r0,-(sp)
+	mov	#40,r0
+	call	putc
+	mov	(sp)+,r1
+	mov	#6,r2
+	clr	r0
+	asl	r1
+	rol	r0
+	br	2$
+1$:	clr	r0
+	asl	r1
+	rol	r0
+	asl	r1
+	rol	r0
+	asl	r1
+	rol	r0
+2$:	add	#'0,r0
+	mov	r1,-(sp)
+	mov	r2,-(sp)
+	call	putc
+	mov	(sp)+,r2
+	mov	(sp)+,r1
+	sob	r2,1$
+	return
+puto2:	mov	(r1),r0
+	jmp	puto
+;
+iterl:	.word	0
+iterh:	.word	0
+errs:	.word	0
+ticks:	.word	0
+rhints:	.word	0
+expint:	.word	0
+writes:	.word	0
+seeks:	.word	0
+seed:	.word	54321
+c:	.word	0
+t:	.word	0
+s:	.word	0
+cylreg:	.word	0
+dareg:	.word	0
+nblk:	.word	0
+buf:	.word	0
+dly:	.word	0
+fnc:	.word	0
+ie:	.word	0
+sk:	.word	0
+salt:	.word	0
+nsalt:	.word	0
+ncf:	.word	0
+why:	.word	0
+badadr:	.word	0
+badexp:	.word	0
+badgot:	.word	0
+;
+hello:	.byte	15,12
+	.ascii	/rhexf: RH70 whole-pack exerciser (seeks, interrupts, reads, writes)/
+	.byte	15,12,0
+mffull:	.asciz	/formatting the whole pack/<15><12>
+mfquick:.asciz	/pack already formatted: rewriting cylinders 0-3/<15><12>
+mcyl:	.asciz	/  cylinder/
+mfdone:	.asciz	/format done/<15><12>
+mfail:	.asciz	/*** format write failed/<15><12>
+mstat:	.asciz	/xfers/
+merr:	.asciz	/  errors/
+mwr:	.asciz	/  writes/
+mskp:	.asciz	/  seeks/
+mints:	.asciz	/  ints/
+mtick:	.asciz	/  ticks/
+merrh:	.asciz	/*** /
+miter:	.byte	15,12
+	.asciz	/    xfer/
+mcts:	.asciz	/ c t s/
+mn:	.asciz	/ n/
+mbuf:	.asciz	/ buf/
+mmode:	.asciz	/ fnc seek ie/
+mregs:	.asciz	/    cs1 wc ba da cs2 ds er1 dc as/
+mbad:	.asciz	/    at/
+mexp:	.asciz	/ expected/
+mgot:	.asciz	/ got/
+mtmo:	.asciz	/timeout waiting for RDY/
+mitmo:	.asciz	/timeout waiting for the RH interrupt/
+mint:	.asciz	/wrong number of RH interrupts/
+mrdy:	.asciz	/interrupt before RDY/
+mcs1:	.asciz	/CS1 SC or TRE set/
+mcs2:	.asciz	/CS2 error bits set/
+mer1:	.asciz	/ER1 not zero/
+mds:	.asciz	/DS not (MOL DRY !ERR)/
+mwc:	.asciz	/WC not zero/
+mba:	.asciz	/BA did not advance by the transfer/
+mda:	.asciz	/DC or DA not at the next block/
+mgrd:	.asciz	/guard word overwritten/
+mdat:	.asciz	/data word wrong/
+mskrdy:	.asciz	/seek: controller not ready (RDY 0)/
+msktmo:	.asciz	/seek: drive never ready (DRY)/
+mskata:	.asciz	/seek: no attention (AS)/
+mtr4:	.byte	15,12
+	.asciz	/trap 4, pc/
+mtr10:	.byte	15,12
+	.asciz	/trap 10, pc/
+	.even
+	.end
