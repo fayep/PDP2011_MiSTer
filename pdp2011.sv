@@ -608,7 +608,16 @@ panel_view panel_view
 	.b      (pv_b)
 );
 
-wire panel_on = status[16];
+// PrintScreen (sent by Main as E0 12 E0 7C; Win+PrintScreen stays Main's
+// screenshot) flips the view; the OSD item sets where it starts.
+reg  pv_flip = 1'b0;
+reg  ps2_key_t = 1'b0;
+always @(posedge clk_100mhz) begin
+	ps2_key_t <= ps2_key[10];
+	if (ps2_key[10] != ps2_key_t && ps2_key[9] && ps2_key[8] && ps2_key[7:0] == 8'h7C)
+		pv_flip <= ~pv_flip;
+end
+wire panel_on = status[16] ^ pv_flip;
 wire ce_pix = panel_on ? pv_ce : ce_pix_vt;
 
 video_mixer video_mixer
