@@ -41,6 +41,7 @@ build('rhex', '')
 build('rhextm', 'BGTM = 1\n')
 build('rhexw', 'BGTM = 1\nWRT = 1\n')
 build('rhexf', '', 'rhexf.mac')
+build('rlex', '', 'rlex.mac')
 blk = bytearray(512)
 with open(os.path.join(out, 'rhpat.dsk'), 'wb') as f:
     for l in range(NPAT):
