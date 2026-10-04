@@ -823,7 +823,7 @@ begin
       minon_cycles => minon_cycles,
 
       clkin => cpuclk,
-      reset => reset
+      reset => cpureset_cpu                               -- (on cpuclk: the synchronised reset)
    );
 
 
