@@ -40,6 +40,7 @@ entity mister_top is
 		rk_img_mounted : in integer;
 		rl_img_mounted : in integer;
 		rh_img_mounted : in integer;
+		boot_sel       : in integer;          -- OSD boot device: 0 auto, 1 mt, 2 rk, 3 rl, 4 rh
 		have_xu        : in integer;
 		
 		-- VT settings
@@ -180,6 +181,7 @@ component unibus is
       rk_img_mounted : in integer range 0 to 1 := 1;
       rl_img_mounted : in integer range 0 to 1 := 1;
       rh_img_mounted : in integer range 0 to 1 := 1;
+      boot_sel : in integer range 0 to 7 := 0;                       -- OSD boot device (0 = auto)
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
       tm_sd_rd : out std_logic;
       tm_sd_wr : out std_logic;
@@ -496,6 +498,8 @@ signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 0;
 signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 0;
 signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 0;
 signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 0;
+-- boot_sel: OSD boot device (quasi-static), synchronised on cpuclk the same way
+signal boot_sel_meta, boot_sel_sync : integer range 0 to 7 := 0;
 
 -- VT screen saver timeout from the OSD (status[13], quasi-static): 0 = never
 signal vt_act_seconds : integer range 0 to 7200;
@@ -621,6 +625,7 @@ begin
          rk_img_mounted_meta <= rk_img_mounted;  rk_img_mounted_sync <= rk_img_mounted_meta;
          rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
          rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
+         boot_sel_meta <= boot_sel;  boot_sel_sync <= boot_sel_meta;
       end if;
    end process;
 
@@ -685,6 +690,7 @@ begin
       rk_img_mounted => rk_img_mounted_sync,
       rl_img_mounted => rl_img_mounted_sync,
       rh_img_mounted => rh_img_mounted_sync,
+      boot_sel => boot_sel_sync,
       tm_sd_lba => tm_sd_lba,
       tm_sd_rd => tm_sd_rd,
       tm_sd_wr => tm_sd_wr,
