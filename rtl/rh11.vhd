@@ -518,7 +518,11 @@ begin
 
 -- rmds  17 776 712                                             -- drive status
                      when "00101" =>
-                        bus_dati <= rmds_ata & rmds_err & rmds_pip & rmds_mol & rmds_wrl & rmds_lst & rmds_pgm & rmds_dpr & rmds_dry & rmds_vv & "00000" & rmds_om;
+                        -- DRY is low while the drive is busy (GO), so DS brackets a command
+                        -- like CS1's RDY does: software that waits for DRY must not start the
+                        -- next command while a transfer is still running (SIMH rp_mbrd, and an
+                        -- RP06's drive ready). rmds_dry itself was never cleared.
+                        bus_dati <= rmds_ata & rmds_err & rmds_pip & rmds_mol & rmds_wrl & rmds_lst & rmds_pgm & rmds_dpr & (rmds_dry and not rmcs1_go) & rmds_vv & "00000" & rmds_om;
 
 -- rmer1 17 776 714                                             -- error status 1
                      when "00110" =>
@@ -909,7 +913,8 @@ begin
                      rmcs1_go <= '0';
                      rmds_ataset <= '1';
                   elsif rmcs2_u /= "000" then
-                   -- nothing - there is one drive only
+                     rmcs1_go <= '0';                -- one drive only: a command to another unit is dropped
+                                                     -- (NED), not left pending to run on drive 0 later
                   else
 
                      if unsigned(rmdc) < unsigned(noofcyl) then
