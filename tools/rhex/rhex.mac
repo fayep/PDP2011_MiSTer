@@ -16,6 +16,12 @@
 ; Console: a status line every 1024 transfers; a full report for each of
 ; the first 20 failures (then counted only).
 ;
+; With BGTM defined (rhextm.tap): the TM11 runs in the background all the
+; time -- rewind, read record 0, read record 1 (this program) to 140000 --
+; overlapping the RH's DMA as during an install. Each read of record 1 is
+; checked against this program's code (01000-02777) in memory; the status
+; line adds tape operations, tape errors (MTC.ERR) and tape data mismatches.
+;
 	.asect
 	.enabl	ama			; absolute addressing: no linker, so nothing PC-relative
 	. = 0
@@ -42,6 +48,11 @@ lks	= 177546
 tps	= 177564
 tpb	= 177566
 psw	= 177776
+mts	= 172520
+mtc	= 172522
+mtbrc	= 172524
+mtcma	= 172526
+TMBUF	= 140000
 ;
 NPAT	= 19000.
 MAXN	= 13.
@@ -123,6 +134,7 @@ loop:	add	#1,iterl
 	mov	r0,@#rhwc
 	call	delay
 	mov	#71,@#rhcs1		; read + GO
+	call	tmkick
 ;
 	clr	r3			; wait for RDY: ~100 x 65536 polls
 	mov	#100.,r4
@@ -217,7 +229,8 @@ loop:	add	#1,iterl
 	mov	#mdat,r0
 	jmp	fail
 ;
-next:	bit	#1777,iterl
+next:	call	tmkick
+	bit	#1777,iterl
 	bne	1$
 	mov	#mstat,r0
 	call	puts
@@ -233,8 +246,61 @@ next:	bit	#1777,iterl
 	call	puts
 	mov	ticks,r0
 	call	puto
+	.if	df,BGTM
+	mov	#mtm,r0
+	call	puts
+	mov	tmops,r0
+	call	puto
+	mov	tmerr,r0
+	call	puto
+	mov	tmbad,r0
+	call	puto
+	.endc
 	call	crlf
 1$:	jmp	loop
+;
+; background tape: start the next TM operation if the TM is free
+tmkick:
+	.if	df,BGTM
+	tstb	@#mtc			; control unit ready?
+	bpl	9$
+	bit	#1,@#mts		; tape unit ready (not rewinding)?
+	beq	9$
+	tst	@#mtc			; previous operation in error?
+	bpl	1$
+	inc	tmerr
+1$:	tst	tmvld			; a read of record 1 just finished: check it
+	beq	3$
+	clr	tmvld
+	mov	#1000,r1
+	mov	#TMBUF+1000,r2
+	mov	#1000,r3		; 01000-02777: 512. words of code
+2$:	cmp	(r1)+,(r2)+
+	bne	21$
+	sob	r3,2$
+	br	3$
+21$:	inc	tmbad
+3$:	inc	tmst			; next: 0 rewind, 1 read record 0, 2 read record 1
+	cmp	tmst,#3
+	blo	4$
+	clr	tmst
+4$:	inc	tmops
+	tst	tmst
+	bne	5$
+	mov	#060017,@#mtc		; rewind + GO
+	br	9$
+5$:	cmp	tmst,#2			; before reading record 1: sentinel over the check area
+	bne	7$
+	mov	#TMBUF+1000,r2
+	mov	#1000,r3
+6$:	mov	#SENT,(r2)+
+	sob	r3,6$
+	inc	tmvld
+7$:	mov	#TMBUF,@#mtcma
+	mov	#-4096.,@#mtbrc
+	mov	#060003,@#mtc		; read + GO
+9$:	.endc
+	return
 ;
 ; failure: r0 -> reason. Report (first 20.), clear the controller, go on.
 fail:	mov	r0,why
@@ -391,6 +457,11 @@ iterl:	.word	0
 iterh:	.word	0
 errs:	.word	0
 ticks:	.word	0
+tmst:	.word	2			; first kick starts with a rewind
+tmvld:	.word	0			; 1: a read of record 1 is in flight
+tmops:	.word	0
+tmerr:	.word	0
+tmbad:	.word	0
 seed:	.word	12345
 lbn:	.word	0
 nblk:	.word	0
@@ -409,6 +480,7 @@ hello:	.ascii	<15><12>/rhex: RH70 exerciser, RSTS 10.1 INIT command sequence/<15
 mstat:	.asciz	/xfers/
 merr:	.asciz	/  errors/
 mtick:	.asciz	/  ticks/
+mtm:	.asciz	/  tm ops err bad/
 merrh:	.asciz	/*** /
 miter:	.byte	15,12
 	.asciz	/    xfer/
