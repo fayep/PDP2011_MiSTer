@@ -306,6 +306,7 @@ component kl11 is
       rx : in std_logic;
       rts : out std_logic;
       cts : in std_logic;
+      silo_off : in std_logic := '0';
 
       have_kl11 : in integer range 0 to 1;
       have_kl11_force7bit : in integer range 0 to 1;
