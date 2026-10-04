@@ -314,6 +314,11 @@ end
 wire por = ~&por_cnt;
 
 wire reset = RESET | status[0] | buttons[1] | por;
+// One register stage before mister_top: the combinational path por_cnt ->
+// reset -> the DRAM state machine's I/O-cell registers had little margin
+// (0.47 ns in 32fd0e7) and failed once more logic shared the area.
+reg  reset_q = 1'b1;
+always @(posedge clk_100mhz) reset_q <= reset;
 
 ///////////////////////// DISKS /////////////////////////////////////////
 
@@ -441,7 +446,7 @@ assign SDRAM_CKE=1'b1;
 
 mister_top mister_top
 (
-   .reset(reset),
+   .reset(reset_q),
    .clk_100(clk_100mhz),
 	.clk_50 (clk_50mhz),
    .modelcode    (modelcode),
