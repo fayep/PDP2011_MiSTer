@@ -30,6 +30,7 @@ entity mister_top is
 		-- PDP settings
 		modelcode      : in integer;
 		serial_console : in std_logic;
+		line_50hz      : in std_logic;
 		have_rk        : in integer;
 		have_rl        : in integer;
 		have_rh        : in integer;
@@ -366,6 +367,7 @@ component unibus is
 
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
+      line_50hz : in std_logic := '0';                               -- KW11-L at 50 Hz instead of kw11l_hz (OSD)
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
       reset : in std_logic                                           -- active '1' synchronous reset
    );
@@ -736,6 +738,7 @@ begin
       iwait  => iwait,
       ifetch => ifetch,
       reset => cpureset_cpu,
+      line_50hz => line_50hz,
       clk50mhz => clk_50,
       clk => cpuclk
    );
