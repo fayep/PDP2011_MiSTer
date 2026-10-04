@@ -17,7 +17,8 @@
 --   * hps was asked for exactly the transfer's LBNs, in order
 --   * every word landed at the right address
 -- And: a GO to a non-existent unit (CS2 unit 1) must not leave the
--- controller busy for the real drive.
+-- controller busy for the real drive; a data transfer issued while the
+-- controller is busy sets CS2.PGE and does not disturb the running one.
 --
 -- Run:  sim/run_tb_rh11_bracket.sh
 --
@@ -255,6 +256,35 @@ begin
       ok("unit 1: non-existent drive (NED)", v(12) = '1');
       reg_write(RMCS2, x"0000");
       init_read(460, 13, 1024, false, "after GO to unit 1");
+
+      -- a data transfer issued while the controller is busy: program error (CS2.PGE),
+      -- not passed to the drive; the running transfer is not disturbed
+      n0 := nreq;
+      reg_write(RMDC, x"0000");
+      reg_write(RMDA, conv_std_logic_vector(3 * 256 + 5, 16));          -- LBN 71
+      reg_write(RMBA, conv_std_logic_vector(2048 * 2, 16));
+      reg_write(RMWC, conv_std_logic_vector(65536 - 4 * 256, 16));
+      reg_write(RMCS1, x"0039");
+      cyc(6);
+      reg_write(RMCS1, x"0039");                                       -- second READ+GO while busy
+      reg_read(RMCS2, v);
+      ok("busy READ+GO: CS2.PGE set", v(10) = '1');
+      reg_read(RMCS1, v);
+      ok("busy READ+GO: CS1.TRE set", v(14) = '1');
+      loop reg_read(RMCS1, v); exit when v(7) = '1'; end loop;
+      wait until npr = '0' and sd_rd = '0' and sd_ack = '0' for 1 ms;
+      cyc(4);
+      reg_read(RMER1, v);
+      ok("busy READ+GO: no RMR (it never reached the drive)", v(2) = '0');
+      ok("busy READ+GO: first transfer read 4 blocks", nreq - n0 = 4);
+      bad := 0;
+      for k in 0 to 4 * 256 - 1 loop
+         if mem(2048 + k) /= orig(71 + k / 256, k mod 256) then bad := bad + 1; end if;
+      end loop;
+      ok("busy READ+GO: first transfer's data intact", bad = 0);
+      init_read(500, 2, 4096, false, "after PGE");
+      reg_read(RMCS2, v);
+      ok("an accepted transfer clears PGE", v(10) = '0');
 
       for i in 1 to NXFER loop
          uniform(s1, s2, r); lba := integer(r * 2000.0);
