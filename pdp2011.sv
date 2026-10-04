@@ -211,6 +211,7 @@ localparam CONF_STR = {
 	"-;",
 	"O[1],External Ethernet,No,Yes;",
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
+	"O[16],Video,Terminal,Front panel;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
@@ -514,7 +515,7 @@ mister_top mister_top
    .vga_vsync(vga_vsync),
    .vga_hblank(vga_hblank),
    .vga_vblank(vga_vblank),
-   .ce_pix(ce_pix),
+   .ce_pix(ce_pix_vt),
    .vga_fb(vga_fb),
    .vga_ht(vga_ht),
    .vga_cursor_block(status[11]),
@@ -529,7 +530,7 @@ mister_top mister_top
 
 //////////////////////////////////////////////////////////////////
 
-wire ce_pix;
+wire ce_pix_vt;
 wire [7:0] video;
 wire vga_vsync;
 wire vga_hsync;
@@ -577,19 +578,52 @@ end
 
 assign CLK_VIDEO = clk_100mhz;
 
+//////////////////////////////////////////////////////////////////
+// On-screen front panel (notes/front-panel-plan.md). Step 1: the panel
+// drawn on clk_100 with the VT's exact timing, lamps fed a demo pattern;
+// OSD "Video" picks the terminal or the panel.
+
+reg  [41:0] pv_demo;
+always @(posedge clk_100mhz) pv_demo <= pv_demo + 42'd1;
+
+wire        pv_ce, pv_hs, pv_vs, pv_hb, pv_vb;
+wire  [7:0] pv_r, pv_g, pv_b;
+
+panel_view panel_view
+(
+	.clk    (clk_100mhz),
+	.reset  (reset),
+	.addr_l (pv_demo[41:20]),
+	.data_l (16'h0001 << pv_demo[29:26]),
+	.stat_l (pv_demo[37:26]),
+	.sw     (22'o0),
+	.ctl    (7'b0000100),           // ENABLE up
+	.ce_pix (pv_ce),
+	.hsync  (pv_hs),
+	.vsync  (pv_vs),
+	.hblank (pv_hb),
+	.vblank (pv_vb),
+	.r      (pv_r),
+	.g      (pv_g),
+	.b      (pv_b)
+);
+
+wire panel_on = status[16];
+wire ce_pix = panel_on ? pv_ce : ce_pix_vt;
+
 video_mixer video_mixer
 (
         .*,
         .freeze_sync(),
         .scandoubler(1'b0),
         .hq2x(),
-        .R(vga_red),
-        .G(vga_green),
-		  .B(vga_blue),
-        .HSync(vga_hsync),
-        .VSync(vga_vsync),
-        .HBlank(vga_hblank),
-        .VBlank(vga_vblank)
+        .R(panel_on ? pv_r : vga_red),
+        .G(panel_on ? pv_g : vga_green),
+		  .B(panel_on ? pv_b : vga_blue),
+        .HSync(panel_on ? pv_hs : vga_hsync),
+        .VSync(panel_on ? pv_vs : vga_vsync),
+        .HBlank(panel_on ? pv_hb : vga_hblank),
+        .VBlank(panel_on ? pv_vb : vga_vblank)
 );
 
 endmodule
