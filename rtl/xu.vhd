@@ -258,6 +258,7 @@ component kw11l is
 
       have_kw11l : in integer range 0 to 1;
       kw11l_hz : in integer range 50 to 800;
+      line_50hz : in std_logic := '0';
 
       reset : in std_logic;
       clk50mhz : in std_logic;
