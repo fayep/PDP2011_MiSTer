@@ -153,7 +153,16 @@ listcr:
 90$:
          cmp   #160000,r4
          blt   10$
-         jmp   @#173000
+;
+; boot: the word at 165776 is not rom but the boot device register, set
+; from the OSD. Auto gives 173000 (the hi rom probes mt, rk, rl, rh); a
+; chosen device gives its go routine in the hi rom, or 0 until an image is
+; mounted behind it -- so wait for that, then boot unit 0 from it.
+;
+95$:     mov   @#165776,r3
+         beq   95$
+         clr   r0
+         jmp   (r3)
 ;
 ; data
 ;
