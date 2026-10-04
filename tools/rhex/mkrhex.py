@@ -13,9 +13,9 @@ RP06 = 174419968
 here = os.path.dirname(os.path.abspath(__file__))
 out = sys.argv[1] if len(sys.argv) > 1 else here
 M11 = os.path.expanduser('~/Source/PDP2011_MiSTer/tools/macro11')
-def build(name, defs):
+def build(name, defs, base='rhex.mac'):
   src = os.path.join(out, name + '.mac')
-  open(src, 'w').write(defs + open(os.path.join(here, 'rhex.mac')).read())
+  open(src, 'w').write(defs + open(os.path.join(here, base)).read())
   obj = os.path.join(out, name + '.obj'); lst = os.path.join(out, name + '.lst')
   subprocess.run([M11, src, '-o', obj, '-l', lst], check=True)
   d = open(obj, 'rb').read()
@@ -40,6 +40,7 @@ def build(name, defs):
 build('rhex', '')
 build('rhextm', 'BGTM = 1\n')
 build('rhexw', 'BGTM = 1\nWRT = 1\n')
+build('rhexf', '', 'rhexf.mac')
 blk = bytearray(512)
 with open(os.path.join(out, 'rhpat.dsk'), 'wb') as f:
     for l in range(NPAT):
