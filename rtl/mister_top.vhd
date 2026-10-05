@@ -92,6 +92,9 @@ entity mister_top is
       xu_mosi : out std_logic;
       xu_sclk : out std_logic;
       xu_miso : in std_logic;
+      fp_bclk : in std_logic;
+      fp_i : in std_logic_vector(99 downto 0);
+      fp_o : out std_logic_vector(85 downto 0);
 		
 		-- vga and ps2
       vga_hsync      : out std_logic;
@@ -196,6 +199,9 @@ component unibus is
       xu_mosi : out std_logic;
       xu_sclk : out std_logic;
       xu_miso : in std_logic := '0';
+      fp_bclk : in std_logic := '0';                                 -- xu frame port (host networking): rtl/xufp.vhd
+      fp_i : in std_logic_vector(99 downto 0) := (others => '0');
+      fp_o : out std_logic_vector(85 downto 0);
       xu_debug_tx : out std_logic;                                   -- rs232, 115200/8/n/1 debug output from microcode
 
 -- kl11, console ports
@@ -709,6 +715,9 @@ begin
       xu_mosi => xu_mosi,
       xu_sclk => xu_sclk,
       xu_miso => xu_miso,
+      fp_bclk => fp_bclk,
+      fp_i => fp_i,
+      fp_o => fp_o,
       xu_debug_tx => open,
 
       cons_load => cons_load,
