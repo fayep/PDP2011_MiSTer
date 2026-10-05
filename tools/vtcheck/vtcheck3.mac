@@ -1,0 +1,135 @@
+	.title	vtcheck3 - VT100 cursor position reports (DSR 6), incl. a width probe
+;
+; Standalone, booted from tape (boot ROM: record 1 -> address 0). For each
+; case it sends a query to KL11 line 1 (the on-screen VT when the console is
+; on the serial port), reads the VT's reply from line 1's receiver and prints
+; it on the console (177560), ESC shown as ^[ , next to the reply a VT100
+; gives. A cursor position report is relative to the scroll region only in
+; origin mode (DECOM); ESC [ 999 C stops at the right margin, so the column
+; reported then is the terminal width.
+;
+	.asect
+	.enabl	ama
+	. = 0
+	jmp	@#start
+	. = 4
+	.word	halt4, 340
+;
+rcsr1	= 176500		; line 1 receiver
+rbuf1	= 176502
+xcsr1	= 176504		; line 1 transmitter
+tps	= 177564		; console transmitter
+;
+	. = 1000
+start:	mov	#1000,sp
+	reset
+	mov	#hello,r0
+	mov	#tps,r1
+	call	puts
+	mov	#tests,r4		; .word query, label ... 0
+1$:	mov	(r4)+,r0
+	beq	9$
+	mov	(r4)+,r3
+	tst	@#rbuf1			; drop anything left in the receiver
+	mov	#xcsr1,r1
+	call	puts			; send the query to the VT
+	mov	r3,r0
+	mov	#tps,r1
+	call	puts			; label on the console
+	call	getrep			; the VT's reply, echoed to the console
+	mov	#crlf,r0
+	call	puts
+	br	1$
+9$:	mov	#done,r0
+	mov	#tps,r1
+	call	puts
+	halt
+;
+; getrep: echo characters from line 1 to the console until 'R' or ~1 s of
+; silence; ESC is shown as ^[ .
+getrep:	mov	#20.,r5			; outer timeout
+1$:	clr	r2
+2$:	tstb	@#rcsr1
+	bmi	3$
+	sob	r2,2$
+	sob	r5,1$
+	mov	#tmo,r0			; nothing more: say so
+	mov	#tps,r1
+	jmp	puts
+3$:	movb	@#rbuf1,r2
+	bic	#177600,r2
+	cmpb	r2,#33
+	bne	4$
+	movb	#'^,r0
+	call	putc
+	movb	#'[,r2
+4$:	mov	r2,r0
+	call	putc
+	cmpb	r2,#'R
+	bne	getrep
+	return
+;
+putc:	tstb	@#tps
+	bpl	putc
+	movb	r0,@#tps+2
+	return
+;
+; puts: r0 -> NUL-terminated string, r1 -> transmitter CSR (buffer at +2)
+puts:	movb	(r0)+,r2
+	beq	9$
+1$:	tstb	(r1)
+	bpl	1$
+	movb	r2,2(r1)
+	br	puts
+9$:	return
+;
+halt4:	halt
+;
+ESC	= 33
+CR	= 15
+LF	= 12
+;
+tests:	.word	q1,l1, q2,l2, q3,l3, q4,l4, 0
+;
+q1:	.byte	ESC
+	.ascii	/[r/
+	.byte	ESC
+	.ascii	/[2J/
+	.byte	ESC
+	.ascii	/[10;15H/
+	.byte	ESC
+	.asciz	/[6n/
+l1:	.asciz	/1 full screen, at 10;15     want ^[[10;15R  got /
+q2:	.byte	ESC
+	.ascii	/[5;20r/
+	.byte	ESC
+	.ascii	/[10;15H/
+	.byte	ESC
+	.asciz	/[6n/
+l2:	.asciz	/2 region 5-20, DECOM off    want ^[[10;15R  got /
+q3:	.byte	ESC
+	.ascii	/[?6h/
+	.byte	ESC
+	.ascii	/[3;7H/
+	.byte	ESC
+	.asciz	/[6n/
+l3:	.asciz	/3 region 5-20, DECOM on 3;7 want ^[[3;7R    got /
+q4:	.byte	ESC
+	.ascii	/[?6l/
+	.byte	ESC
+	.ascii	/[r/
+	.byte	ESC
+	.ascii	/[1;1H/
+	.byte	ESC
+	.ascii	/[999C/
+	.byte	ESC
+	.asciz	/[6n/
+l4:	.asciz	/4 width probe ESC[999C     want ^[[1;80R   got /
+tmo:	.asciz	/(no reply)/
+hello:	.byte	CR,LF
+	.ascii	/vtcheck3: VT100 cursor position reports/
+crlf:	.byte	CR,LF,0
+done:	.ascii	/vtcheck3 done/
+	.byte	CR,LF,0
+	.even
+	.end

@@ -32,7 +32,7 @@ for i in range(0, len(data), 16):
 prog = open(os.path.join(here, 'vtcheck.mac')).read()
 a = prog.index('vtseq:'); b = prog.index('done:')
 prog = prog[:a] + 'vtseq:\n' + '\n'.join(lines) + '\n\t.byte\t0\n' + \
-       "done:\t.asciz\t<CR><LF>/vtcheck2 done/<CR><LF>\n\t.even\n\t.end\n"
+       "done:\t.byte\tCR,LF\n\t.ascii\t/vtcheck2 done/\n\t.byte\tCR,LF,0\n\t.even\n\t.end\n"
 prog = prog.replace('vtcheck - VT100 character set handling', 'vtcheck2 - VT100 scroll region, IL/DL, IND/RI, DECOM')
 src = os.path.join(out, 'vtcheck2.mac'); open(src, 'w').write(prog)
 M11 = os.path.expanduser('~/Source/PDP2011_MiSTer/tools/macro11')

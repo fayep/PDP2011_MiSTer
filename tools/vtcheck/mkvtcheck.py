@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""mkvtcheck.py [outdir] -- build vtcheck.tap: record 0 a label (the boot ROM
-skips it), record 1 the program image from address 0, two tape marks."""
+"""mkvtcheck.py [outdir] [name] -- build <name>.tap (default vtcheck) from
+<name>.mac: record 0 a label (the boot ROM skips it), record 1 the program
+image from address 0, two tape marks."""
 import os, subprocess, sys
 here = os.path.dirname(os.path.abspath(__file__))
 out = sys.argv[1] if len(sys.argv) > 1 else here
 M11 = os.path.expanduser('~/Source/PDP2011_MiSTer/tools/macro11')
-src = os.path.join(here, 'vtcheck.mac')
-obj = os.path.join(out, 'vtcheck.obj'); lst = os.path.join(out, 'vtcheck.lst')
+name = sys.argv[2] if len(sys.argv) > 2 else 'vtcheck'
+src = os.path.join(here, name + '.mac')
+obj = os.path.join(out, name + '.obj'); lst = os.path.join(out, name + '.lst')
 subprocess.run([M11, src, '-o', obj, '-l', lst], check=True)
 d = open(obj, 'rb').read(); img = bytearray(65536); top = 0; i = 0
 while i < len(d):
@@ -19,6 +21,6 @@ while i < len(d):
 prog = bytes(img[:(top + 1) & ~1])
 def rec(b):
     L = len(b).to_bytes(4, 'little'); return L + b + (b'\0' if len(b) & 1 else b'') + L
-tap = rec(b'VTCHECK'.ljust(80, b' ')) + rec(prog) + b'\0' * 8 + b'\xff\xff\xff\xff'
-open(os.path.join(out, 'vtcheck.tap'), 'wb').write(tap)
-print('vtcheck: program %d bytes, tape %d bytes' % (len(prog), len(tap)))
+tap = rec(name.upper().encode().ljust(80, b' ')) + rec(prog) + b'\0' * 8 + b'\xff\xff\xff\xff'
+open(os.path.join(out, name + '.tap'), 'wb').write(tap)
+print(name + ': program %d bytes, tape %d bytes' % (len(prog), len(tap)))
