@@ -50,7 +50,7 @@ ssh(f"""echo 'load_core /media/fat/menu.rbf' > /dev/MiSTer_cmd; sleep 4
 for p in $(pidof pdp_harness); do kill $p; done; sleep 1
 stty -F /dev/ttyS1 19200 cs8 -parenb -cstopb -crtscts clocal -icanon -echo -ixon min 1 time 0
 setsid nohup /media/fat/Scripts/pdp_harness -tcp :7788 > /tmp/pdp_harness_stdout.log 2>&1 < /dev/null &
-sleep 2; echo 'load_core /media/fat/_Debug/{MGL}.mgl' > /dev/MiSTer_cmd""", timeout=60)
+sleep 2; cp /media/fat/_Debug/{MGL}.mgl /tmp/claude_loaded.mgl; echo 'load_core /media/fat/_Debug/{MGL}.mgl' > /dev/MiSTer_cmd""", timeout=60)
 note(f"loaded {MGL}")
 
 CMDS = [

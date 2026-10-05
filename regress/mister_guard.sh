@@ -17,8 +17,9 @@ out=$(sshpass -p 1 ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o PubkeyAu
       -o PreferredAuthentications=password root@$H '
 p=$(pidof MiSTer_pdp2011 MiSTer | tr " " "\n" | head -1)
 echo "core: $(tr "\0" " " < /proc/$p/cmdline)"
-m=$(tr "\0" "\n" < /proc/$p/cmdline | grep "/_Debug/claude_[^/]*\.mgl$")
-[ -n "$m" ] && sed -n "s/.*path=\"\([^\"]*\)\".*/mgl: \1/p" "$m"
+# what our driver loaded: it snapshots the MGL to /tmp/claude_loaded.mgl at
+# load time (the _Debug copy may already hold the next test's MGL)
+[ -f /tmp/claude_loaded.mgl ] && sed -n "s/.*path=\"\([^\"]*\)\".*/mgl: \1/p" /tmp/claude_loaded.mgl
 for f in /proc/$p/fd/*; do readlink "$f"; done 2>/dev/null | grep -E "\.(dsk|DSK|tap|TAP|img|vhd)$" | sed "s/^/open: /"
 ' 2>&1) || { echo "mister_guard: cannot reach the MiSTer: $out"; exit 1; }
 fi
