@@ -14,6 +14,9 @@ lines and error reports. Everything the console prints is kept in the log.
 Exit 0 = at least one pass and no errors, 1 otherwise.
 """
 import re, subprocess, sys, time
+import os as _os, subprocess as _sp, sys as _sys
+if _sp.run(["sh", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mister_guard.sh")]).returncode:
+    _sys.exit("not taking the MiSTer: it may be in use (regress/mister_guard.sh). Ask first.")
 
 MGL, LOG, DIAG = sys.argv[1], sys.argv[2], sys.argv[3].upper()
 RUN = int(sys.argv[4]) if len(sys.argv) > 4 else 240

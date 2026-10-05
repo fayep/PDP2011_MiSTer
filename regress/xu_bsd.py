@@ -67,6 +67,9 @@ CMDS = [
 # last command with BSD still up and the harness running, for interactive use
 # (regress/bsdsh.py), instead of shutting down.
 import os
+import os as _os, subprocess as _sp, sys as _sys
+if _sp.run(["sh", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mister_guard.sh")]).returncode:
+    _sys.exit("not taking the MiSTer: it may be in use (regress/mister_guard.sh). Ask first.")
 if os.environ.get("XU_CMDS"): CMDS = os.environ["XU_CMDS"].strip().split("\n")
 KEEP = os.environ.get("XU_KEEP") == "1"
 if not KEEP and CMDS[-1] != "shutdown -h now": CMDS.append("shutdown -h now")
