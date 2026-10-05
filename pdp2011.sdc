@@ -54,6 +54,10 @@ set_false_path -to [get_registers {*tm11:tm0|mc_e[0] *tm11:tm0|mc_n[0]}]
 # PS/2 keyboard lines from hps_io: an asynchronous serial protocol, sampled
 # by the VT's ps2 filter shift register (ps2_cfilter) on cpuclk.
 set_false_path -from [get_registers {*ps2_device:keyboard|ps2_clk_out *ps2_device:keyboard|ps2_dat_out}] -to [get_clocks {cpuclk}]
+# front panel keyboard (pdp2011.sv): the gate on the VT's PS/2 lines changes only while the line is idle,
+# and the panel switches are quasi-static and 2-FF synchronised on cpuclk (paneldriver also debounces)
+set_false_path -from [get_registers {emu:emu|vt_kbd_off}] -to [get_clocks {cpuclk}]
+set_false_path -to [get_registers {emu:emu|mister_top:mister_top|panel_sw_meta[*]}]
 
 # kl11 receive data (clk_50 domain) is handed to cpuclk through a level
 # handshake with a multi-tap synchroniser: a real false path.
