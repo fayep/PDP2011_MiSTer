@@ -6,7 +6,7 @@
 # Safe when the menu core is loaded (nobody can have a system running; Main
 # may still hold leaked image descriptors from an earlier core), or when the
 # core came from a _Debug/claude_*.mgl and Main has no image open except
-# claude_* scratch images.
+# claude_* scratch images and the images that MGL itself names.
 # Anything else (a user's own MGL, or a user's disk mounted through the OSD)
 # means a person may have a system running: exit 1 and say what is there.
 # There is deliberately no override; ask the user, and let them shut down.
@@ -17,11 +17,16 @@ out=$(sshpass -p 1 ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o PubkeyAu
       -o PreferredAuthentications=password root@$H '
 p=$(pidof MiSTer_pdp2011 MiSTer | tr " " "\n" | head -1)
 echo "core: $(tr "\0" " " < /proc/$p/cmdline)"
+m=$(tr "\0" "\n" < /proc/$p/cmdline | grep "/_Debug/claude_[^/]*\.mgl$")
+[ -n "$m" ] && sed -n "s/.*path=\"\([^\"]*\)\".*/mgl: \1/p" "$m"
 for f in /proc/$p/fd/*; do readlink "$f"; done 2>/dev/null | grep -E "\.(dsk|DSK|tap|TAP|img|vhd)$" | sed "s/^/open: /"
 ' 2>&1) || { echo "mister_guard: cannot reach the MiSTer: $out"; exit 1; }
 fi
 core=$(echo "$out" | sed -n 's/^core: //p')
-bad=$(echo "$out" | sed -n 's/^open: //p' | grep -v '/claude_[^/]*$')
+# images our own scratch MGL mounted (e.g. a test tape) are ours too
+ours=$(echo "$out" | sed -n 's/^mgl: //p')
+bad=$(echo "$out" | sed -n 's/^open: //p' | grep -v '/claude_[^/]*$' | while read -r f; do
+   echo "$ours" | grep -qx "$(basename "$f")" || echo "$f"; done)
 case "$core" in
    *menu.rbf*|"/media/fat/MiSTer"|"/media/fat/MiSTer ") exit 0 ;;   # bare Main = menu (after boot)
    */_Debug/claude_*.mgl*) ;;
