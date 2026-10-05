@@ -23,7 +23,7 @@ fi
 core=$(echo "$out" | sed -n 's/^core: //p')
 bad=$(echo "$out" | sed -n 's/^open: //p' | grep -v '/claude_[^/]*$')
 case "$core" in
-   *menu.rbf*) exit 0 ;;
+   *menu.rbf*|"/media/fat/MiSTer"|"/media/fat/MiSTer ") exit 0 ;;   # bare Main = menu (after boot)
    */_Debug/claude_*.mgl*) ;;
    *) echo "mister_guard: NOT SAFE - core loaded by the user: $core"; exit 1 ;;
 esac
