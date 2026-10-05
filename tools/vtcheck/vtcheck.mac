@@ -81,6 +81,8 @@ vtseq:	.byte	ESC
 	.byte	SI
 	.ascii	/ abc/<CR><LF><CR><LF>
 	.asciz	/end of vtcheck/
-done:	.asciz	<CR><LF>/vtcheck done/<CR><LF>
+done:	.byte	CR,LF			; (an .asciz starting with <CR><LF> assembles as CR, NUL)
+	.ascii	/vtcheck done/
+	.byte	CR,LF,0
 	.even
 	.end
