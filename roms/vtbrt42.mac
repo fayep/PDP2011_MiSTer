@@ -2269,11 +2269,15 @@ csiln:
 ;
 csilr:
          mov parmt,r0             ; pickup first parm
-         tst r0
-         beq 80$
+         bne 1$                   ; empty or 0 means the default: top = 1
+         mov #dtmarg,r0           ; (EDT sends ESC [ ; 21 r -- was taken as 'no region')
+1$:
          mov parmt+2,r1           ; pickup second parm
-         tst r1
-         beq 80$
+         bne 2$                   ; empty or 0 means the default: bottom = 24
+         mov #dbmarg,r1
+2$:
+         cmp r1,#dbmarg           ; bottom beyond the screen?
+         bhi 80$                  ; invalid: defaults
          cmp r0,r1                ; check: top can not be greater or equal than bottom; viewport must have at least two lines
          bhis 80$                 ; if not, set defaults. or maybe ignore instead? FIXME
          mov r0,tmarg             ; store top
