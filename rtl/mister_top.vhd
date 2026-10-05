@@ -502,6 +502,8 @@ signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 0;
 signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 0;
 -- boot_sel: OSD boot device (quasi-static), synchronised on cpuclk the same way
 signal boot_sel_meta, boot_sel_sync : integer range 0 to 7 := 0;
+-- panel_sw: on-screen panel switches (clk_100, from the keyboard), synchronised on cpuclk
+signal panel_sw_meta, panel_sw_sync : std_logic_vector(35 downto 0) := (others => '0');
 
 -- VT screen saver timeout from the OSD (status[13], quasi-static): 0 = never
 signal vt_act_seconds : integer range 0 to 7200;
@@ -628,6 +630,7 @@ begin
          rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
          rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
          boot_sel_meta <= boot_sel;  boot_sel_sync <= boot_sel_meta;
+         panel_sw_meta <= panel_sw;  panel_sw_sync <= panel_sw_meta;
       end if;
    end process;
 
@@ -835,7 +838,7 @@ begin
 
       paneltype => 4,                                  -- MiSTer on-screen panel
       vpanel_lamps => cons_vlamps,
-      vpanel_sw => panel_sw,
+      vpanel_sw => panel_sw_sync,
 
       sample_cycles => sample_cycles,
       minon_cycles => minon_cycles,
