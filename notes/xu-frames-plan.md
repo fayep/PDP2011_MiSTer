@@ -138,11 +138,15 @@ Modelled on `support/next/next_enet.cpp`, using the existing helpers in
 
 ## Order of work
 
-1. xufp + bridge + tb_xufp_bridge  (this commit series starts here)
-2. firmware frame-port path + tb_xu_deuna
-3. plumbing, OSD, SDC, build
-4. Main xu_net.cpp
-5. hardware
+1. xufp + bridge + tb_xufp_bridge: done (f92e1d1). PASS; byte-swap and
+   ring-overrun mutations caught.
+2. firmware frame-port path + tb_xu_deuna: done (02e0e6b). PASS (16
+   interrupts); removing the CRC adjustment fails both MLEN checks.
+3. plumbing, OSD, SDC, build: done (02e0e6b). check-fit OK, worst setup
+   +0.254 ns (HDMI PLL), core clock +0.457, cpuclk +12.43, no negative hold.
+4. Main xu_net.cpp: done (Main e77f754, replaces support/xu). Builds.
+5. hardware: next. First Host network = eth0 with 2.11BSD or XXDP's DEUNA
+   diagnostic, then macvlan and DECnet.
 
 ## Open questions
 
