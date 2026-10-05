@@ -379,8 +379,8 @@ begin
       variable e, off, n, bad, mlen, w2, len : integer;
 
    begin
--- Main is up with its default address before the core starts
-      ddr(W_HOST) := x"8000" & x"563412" & x"2B0008";        -- 08-00-2B-12-34-56
+-- Main starts after the core (it restarts on every core load): no host address yet
+      ddr(W_HOST) := (others => '0');
       wait for 1 us;
       reset <= '0';
       breset <= '0';
@@ -398,7 +398,15 @@ begin
       end loop;
       check(d(3 downto 0) = "0010", "pcsr1 state not ready: " & to_hstring(d));
       check(ddr(W_MAGIC) = x"3130305558504450", "bridge magic missing");
-      check(ddr(W_GUEST) = x"8000" & x"563412" & x"2B0008", "guest word at start-up " & to_hstring(ddr(W_GUEST)));
+      check(ddr(W_GUEST) = x"8000" & x"010000" & x"2B0008", "guest word at start-up (fallback) " & to_hstring(ddr(W_GUEST)));
+
+-- Main comes up: the firmware takes its address without being asked
+      ddr(W_HOST) := x"8000" & x"563412" & x"2B0008";        -- 08-00-2B-12-34-56
+      for t in 0 to 400 loop
+         exit when ddr(W_GUEST) = x"8000" & x"563412" & x"2B0008";
+         wait for 50 us;
+      end loop;
+      check(ddr(W_GUEST) = x"8000" & x"563412" & x"2B0008", "guest word after Main came up " & to_hstring(ddr(W_GUEST)));
 
 -- 2. clear the start-up dni, interrupts on, get pcbb, read default physical address
       wr(8#774511#, x"0800", '1');
