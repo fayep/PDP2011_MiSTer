@@ -7,7 +7,7 @@ always #5 clk = ~clk;
 wire ce, hs, vs, hb, vb; wire [7:0] r, g, b;
 panel_view dut(.clk(clk), .reset(reset),
 	.addr_l(22'o17652301), .data_l(16'o123456), .stat_l(12'b101100100111),
-	.sw(22'o12345670), .ctl(7'b0011010),
+	.sw(22'o12345670), .ctl(7'b0011010), .knob_a(3'd1), .knob_d(2'd2),
 	.ce_pix(ce), .hsync(hs), .vsync(vs), .hblank(hb), .vblank(vb), .r(r), .g(g), .b(b));
 integer f, n, hs_low, de_n, lines, frame_px;
 reg hs_d, vs_d, ce_d;
