@@ -241,9 +241,11 @@ wire  [10:0] ps2_key;
 wire         ps2k_c;
 wire         ps2k_d;
 wire         vt_ps2c, vt_ps2d;     // the VT's PS/2 stream, cut while the front panel has the keyboard
-wire  [35:0] panel_sw;             // on-screen panel switches from the keyboard (paneldriver type 4)
+wire  [40:0] panel_sw;             // on-screen panel knobs & switches from the keyboard (paneldriver type 4)
 wire  [21:0] pv_sw;                // the same switches as panel_view draws them (1 = up)
 wire   [6:0] pv_ctl;
+wire   [2:0] pv_knob_a;            // ADDRESS knob position
+wire   [1:0] pv_knob_d;            // DATA knob position
 wire [21:0] gamma_bus;
 
 
@@ -620,6 +622,8 @@ panel_view panel_view
 	.stat_l (panel_lamps[11:0]),
 	.sw     (pv_sw),
 	.ctl    (pv_ctl),               // LOAD EXAM DEP CONT ENABLE INST START, 1 = up
+	.knob_a (pv_knob_a),
+	.knob_d (pv_knob_d),
 	.ce_pix (pv_ce),
 	.hsync  (pv_hs),
 	.vsync  (pv_vs),
@@ -644,10 +648,14 @@ wire panel_on = status[16] ^ pv_flip;
 // ---- front panel from the keyboard, while the panel view is on screen ----
 //   0-9 toggle switches 0-9, Shift+0-9 switches 10-19, - and = switches 20, 21;
 //   l LOAD ADRS, x EXAM, d DEP, c CONT, s START (held while the key is down,
-//   paneldriver debounces and pulses them); / toggles ENABLE/HALT.
+//   paneldriver debounces and pulses them); / toggles ENABLE/HALT;
+//   [ ] turn the ADDRESS knob (from PROG PHY), ; ' the DATA knob.
 // Toggles act on a key's first make only (PS/2 repeats makes while held).
 reg [21:0] psw_sr = 22'd0;
 reg        psw_halt = 1'b0;
+reg  [2:0] knob_a = 3'd0;           // ADDRESS knob: 0 PROG PHY, 1 CONS PHY, 2 KERNEL D, 3 SUPER D, 4 USER D, 5 USER I, 6 SUPER I, 7 KERNEL I
+reg  [1:0] knob_d = 2'd0;           // DATA knob: 0 DATA PATHS, 1 uADRS, 2 DISPLAY REG, 3 BUS REG (paneldriver's order)
+reg  [3:0] kn_down = 4'd0;          // [ ] ; ' currently down
 reg  [4:0] psw_fn = 5'd0;           // held: 0 LOAD ADRS, 1 EXAM, 2 DEP, 3 CONT, 4 START
 reg [11:0] pk_down = 12'd0;         // 0-9, -, = currently down
 reg        pk_sl = 1'b0, pk_sr = 1'b0, pk_slash = 1'b0;
@@ -680,6 +688,10 @@ always @(posedge clk_100mhz) begin
 			8'h23: psw_fn[2] <= ps2_key[9] & panel_on;   // d  DEP
 			8'h21: psw_fn[3] <= ps2_key[9] & panel_on;   // c  CONT
 			8'h1B: psw_fn[4] <= ps2_key[9] & panel_on;   // s  START
+			8'h54: begin if (ps2_key[9] && !kn_down[0] && panel_on) knob_a <= knob_a - 3'd1; kn_down[0] <= ps2_key[9]; end   // [
+			8'h5B: begin if (ps2_key[9] && !kn_down[1] && panel_on) knob_a <= knob_a + 3'd1; kn_down[1] <= ps2_key[9]; end   // ]
+			8'h4C: begin if (ps2_key[9] && !kn_down[2] && panel_on) knob_d <= knob_d - 2'd1; kn_down[2] <= ps2_key[9]; end   // ;
+			8'h52: begin if (ps2_key[9] && !kn_down[3] && panel_on) knob_d <= knob_d + 2'd1; kn_down[3] <= ps2_key[9]; end   // '
 			8'h4A: begin                                  // /  ENABLE/HALT
 				if (ps2_key[9] && !pk_slash && panel_on) psw_halt <= ~psw_halt;
 				pk_slash <= ps2_key[9];
@@ -692,7 +704,9 @@ end
 // paneldriver type 4 raw words: 3 = {start, inst, halt, cont, dep, exam, load, test}, 2/1 = switch register
 assign pv_sw  = psw_sr;
 assign pv_ctl = {psw_fn[0], psw_fn[1], psw_fn[2], psw_fn[3], ~psw_halt, 1'b0, psw_fn[4]};
-assign panel_sw = {4'b0000, psw_fn[4], 1'b0, psw_halt, psw_fn[3], psw_fn[2], psw_fn[1], psw_fn[0], 1'b0,
+assign pv_knob_a = knob_a;
+assign pv_knob_d = knob_d;
+assign panel_sw = {knob_d, knob_a, 4'b0000, psw_fn[4], 1'b0, psw_halt, psw_fn[3], psw_fn[2], psw_fn[1], psw_fn[0], 1'b0,
                         2'b00, psw_sr[21:12], psw_sr[11:0]};
 
 // While the panel is on screen the keyboard drives it, not the VT. The VT's

@@ -27,6 +27,8 @@ module panel_view
 	input      [11:0] stat_l,       // status lamps
 	input      [21:0] sw,           // switch register (1 = up)
 	input       [6:0] ctl,          // LOAD ADRS, EXAM, DEP, CONT, ENABLE/HALT, S INST, START (1 = up)
+	input       [2:0] knob_a,       // ADDRESS knob position (0 PROG PHY ... 7 KERNEL I)
+	input       [1:0] knob_d,       // DATA knob position
 
 	output reg        ce_pix,
 	output reg        hsync,
@@ -95,9 +97,9 @@ wire [2:0] grp   = (bitn >= 5'd21) ? 3'd7 : (bitn >= 5'd18) ? 3'd6 : (bitn >= 5'
                    (bitn >= 5'd3)  ? 3'd1 : 3'd0;
 
 // ---- the lamps and switches, latched once per frame (no half-updated frames) ----
-reg [21:0] fa; reg [15:0] fd; reg [11:0] fs; reg [21:0] fsw; reg [6:0] fct;
+reg [21:0] fa; reg [15:0] fd; reg [11:0] fs; reg [21:0] fsw; reg [6:0] fct; reg [2:0] fka; reg [1:0] fkd;
 always @(posedge clk) if (adv && col == 10'd0 && row == 10'd480) begin
-	fa <= addr_l; fd <= data_l; fs <= stat_l; fsw <= sw; fct <= ctl;
+	fa <= addr_l; fd <= data_l; fs <= stat_l; fsw <= sw; fct <= ctl; fka <= knob_a; fkd <= knob_d;
 end
 
 // ---- stage 1 (clock after the pixel advances): distances, squares, lamp bits ----
@@ -121,6 +123,8 @@ reg        s1_nadr, s1_ndat, s1_nsta, s1_nsw, s1_nctl;
 reg  [7:0] s1_r2a, s1_r2d, s1_r2s;
 reg        s1_la, s1_ld, s1_ls, s1_sw, s1_ct, s1_ctlp;
 reg        s1_swup, s1_swdn, s1_ctup, s1_ctdn;
+reg        s1_nknb, s1_lk;                // knob position lamps: ADDRESS in columns 9-16, DATA in 18-21
+reg  [7:0] s1_r2k;
 
 always @(posedge clk) if (div == 2'd2) begin
 	s1_pic   <= pic;
@@ -145,6 +149,9 @@ always @(posedge clk) if (div == 2'd2) begin
 	s1_swdn  <= dy_sw >  11'sd14;
 	s1_ctup  <= dy_ctl < -11'sd8;
 	s1_ctdn  <= dy_ctl >  11'sd8;
+	s1_nknb  <= ((ci >= 5'd9 && ci <= 5'd16) || (ci >= 5'd18 && ci <= 5'd21)) && (dy_ctl > -11'sd10) && (dy_ctl < 11'sd10);
+	s1_r2k   <= sq(dx) + sq(dy_ctl[6:0]);
+	s1_lk    <= (ci <= 5'd16) ? (ci - 5'd9 == {2'b00, fka}) : (ci - 5'd18 == {3'b000, fkd});
 end
 
 // ---- colours -------------------------------------------------------------------
@@ -178,6 +185,7 @@ always @(posedge clk) if (div == 2'd3) begin
 			// switch paddle in its group colour; the lever end shows the position
 			s2_px <= ( s1_sw && s1_swup) || (!s1_sw && s1_swdn) ? C_LEVER : (s1_band ? C_MAG : C_PURP);
 		end
+		else if (s1_nknb) s2_px <= lamp(s1_lk, s1_r2k);
 		else if (s1_nctl) begin
 			s2_px <= ( s1_ct && s1_ctup) || (!s1_ct && s1_ctdn) ? C_LEVER : (s1_ctlp ? C_PURP : C_MAG);
 		end
