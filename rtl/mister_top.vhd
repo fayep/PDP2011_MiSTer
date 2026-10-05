@@ -121,6 +121,7 @@ entity mister_top is
 
       -- board peripherals
       panel_lamps    : out std_logic_vector(49 downto 0);   -- on-screen panel lamps, clk_100 (paneldriver type 4)
+      panel_sw       : in std_logic_vector(35 downto 0) := (others => '0');  -- on-screen panel switches from the keyboard (quasi-static; paneldriver debounces)
 
       greenled       : out std_logic
   );
@@ -422,6 +423,7 @@ component paneldriver is
 
       paneltype : in integer range 0 to 4 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons
       vpanel_lamps : out std_logic_vector(49 downto 0);
+      vpanel_sw : in std_logic_vector(35 downto 0) := (others => '0');
 
       cons_reset : out std_logic;                                    -- a request for a reset from the console
 
@@ -833,6 +835,7 @@ begin
 
       paneltype => 4,                                  -- MiSTer on-screen panel
       vpanel_lamps => cons_vlamps,
+      vpanel_sw => panel_sw,
 
       sample_cycles => sample_cycles,
       minon_cycles => minon_cycles,
