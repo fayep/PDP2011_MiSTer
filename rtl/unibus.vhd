@@ -2101,7 +2101,7 @@ begin
       cpuclk => clk,
       nclk => nclk,
       clk50mhz => clk50mhz,
-      reset => reset
+      reset => cpu_init                                              -- bus init stops the deuna, as on a real unibus
    );
 
    dr11c0_ivec1 <= o"300" when have_kl11 = 1

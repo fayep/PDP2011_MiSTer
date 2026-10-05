@@ -24,7 +24,8 @@ signal cpuclk : std_logic := '0';        -- 10 MHz
 signal nclk : std_logic;
 signal clk50 : std_logic := '0';
 signal bclk : std_logic := '0';          -- 100 MHz
-signal reset : std_logic := '1';
+signal reset : std_logic := '1';       -- the xu's: bus init
+signal breset : std_logic := '1';      -- the bridge's: power-up only, as in pdp2011.sv
 signal done : boolean := false;
 
 -- unibus, slave side of the xu
@@ -77,6 +78,7 @@ constant W_TXSLOT : integer := 16#200#;
 constant W_RXSLOT : integer := 16#A00#;
 
 signal interrupts : integer := 0;
+shared variable dma_writes : integer := 0;
 signal errors : integer := 0;
 
 -- guest memory layout (byte addresses)
@@ -111,7 +113,7 @@ begin
       cpuclk => cpuclk, nclk => nclk, clk50mhz => clk50, reset => reset);
 
    br0: entity work.xu_ddr_bridge generic map(CLK_HZ => BCLK_HZ) port map(
-      clk => bclk, reset => reset, enable => '1',
+      clk => bclk, reset => breset, enable => '1',
       b_tx_addr => fp_i(9 downto 0), b_tx_q => fp_o(15 downto 0),
       b_rx_addr => fp_i(19 downto 10), b_rx_d => fp_i(35 downto 20), b_rx_we => fp_i(36),
       tx_req_t => fp_o(16), tx_len => fp_o(27 downto 17), tx_ack_t => fp_i(37),
@@ -131,6 +133,7 @@ begin
          if bm_dato_c = '1' then
             assert bm_addr(17 downto 16) = "00" report "dma write above 64 KB" severity failure;
             gmem(to_integer(unsigned(bm_addr(15 downto 1)))) := bm_dato;
+            dma_writes := dma_writes + 1;
          end if;
       end if;
    end process;
@@ -380,6 +383,7 @@ begin
       ddr(W_HOST) := x"8000" & x"563412" & x"2B0008";        -- 08-00-2B-12-34-56
       wait for 1 us;
       reset <= '0';
+      breset <= '0';
 
 -- 1. firmware comes up: it publishes its address through the frame port, then pcsr1 says ready
 --    (pcsr1 reads ready straight out of reset, before the firmware runs, so that alone proves nothing)
@@ -515,6 +519,37 @@ begin
          if peekb(RBUF + 0 * RSLEN + i) /= pat(13, i) then bad := bad + 1; end if;
       end loop;
       check(bad = 0, "rx after buffer returned: " & integer'image(bad) & " bytes differ");
+
+-- 9. bus init (RESET) while running: the DEUNA stops, nothing more is written to guest
+--    memory while the LAN keeps delivering, and the firmware comes back up
+      for k in 0 to 3 loop rx_own(k); end loop;
+      wait until cpuclk = '1';
+      reset <= '1';
+      wait for 2 us;
+      wait until cpuclk = '1';
+      reset <= '0';
+      for k in 0 to 3 loop
+         pokew(RDR + k * 8 + 6, 16#1234#);         -- marker: a receive would overwrite it
+      end loop;
+      dma_writes := 0;
+      inject(14, 80); inject(15, 90);
+      wait for 3 ms;
+      check(dma_writes = 0, "dma into guest memory after bus init: " & integer'image(dma_writes) & " writes");
+      for k in 0 to 3 loop
+         check(peekw(RDR + k * 8 + 6) = 16#1234#, "rx entry " & integer'image(k) & " written after bus init");
+      end loop;
+      ddr(W_GUEST) := (others => '0');
+      for t in 0 to 2000 loop
+         exit when ddr(W_GUEST)(63) = '1';
+         wait for 50 us;
+      end loop;
+      check(ddr(W_GUEST)(63) = '1', "firmware did not come back after bus init");
+      for t in 0 to 200 loop
+         rd(8#774512#, d);
+         exit when d(3 downto 0) = "0010";
+         wait for 50 us;
+      end loop;
+      check(d(3 downto 0) = "0010", "pcsr1 after bus init not ready: " & to_hstring(d));
 
       check(interrupts > 0, "no interrupts granted");
       report "interrupts granted: " & integer'image(interrupts);
