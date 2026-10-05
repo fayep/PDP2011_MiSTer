@@ -13,6 +13,9 @@ harness is stopped afterwards so ttyS1 is free again.
 Exit 0 = PASS, 1 = TIMEOUT.
 """
 import re, subprocess, sys, time
+import os as _os, subprocess as _sp, sys as _sys
+if _sp.run(["sh", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mister_guard.sh")]).returncode:
+    _sys.exit("not taking the MiSTer: it may be in use (regress/mister_guard.sh). Ask first.")
 
 MGL, LOG, RX = sys.argv[1], sys.argv[2], sys.argv[3]
 TIMEOUT = int(sys.argv[4]) if len(sys.argv) > 4 else 300

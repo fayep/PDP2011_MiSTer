@@ -13,6 +13,9 @@ console prints is kept in the log; the harness is stopped afterwards.
 Exit 0 = PASS, 1 = FAIL/TIMEOUT.
 """
 import re, subprocess, sys, time
+import os as _os, subprocess as _sp, sys as _sys
+if _sp.run(["sh", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mister_guard.sh")]).returncode:
+    _sys.exit("not taking the MiSTer: it may be in use (regress/mister_guard.sh). Ask first.")
 
 MGL, LOG = sys.argv[1], sys.argv[2]
 TIMEOUT = int(sys.argv[3]) if len(sys.argv) > 3 else 300
