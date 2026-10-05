@@ -157,7 +157,10 @@ t45:
          br     10$                    ; see if there is another frame - FIXME, check if there is an owned buffer first?
 20$:
          tst    fport                  ; frame port: there is no chip to check
-         bne    30$
+         beq    21$
+         jsr    pc,fphost              ; but follow Main's default address once it is up
+         br     30$
+21$:
 ;
 ; check if the chip is ok - reading the eidled register; this serves no particular purpose other than checking if we're still talking to the chip
 ; if comms was lost - including removing the chip and reconnecting it - reset it and set it up so it will work again.
@@ -1360,6 +1363,7 @@ initnic:
 10$:
          mov    #1,fport
          mov    #200,chunk
+         clr    hostup
          xascil <frame port: host networking>
          jsr    pc,fpbia
          jsr    pc,fpdlaa
@@ -1385,6 +1389,22 @@ fpdlaa:
          movb   dbia+3,dlaa+3
          movb   dbia+0,dlaa+4
          movb   dbia+1,dlaa+5
+         rts    pc
+;
+; fphost: when Main comes up (csr hostup), take its default address - it
+; usually starts after us, so at start-up we may have had the fallback
+;
+fphost:
+         bit    #4,@#177200
+         beq    8$
+         tst    hostup
+         bne    9$
+         mov    #1,hostup
+         xascil <frame port: host up>
+         jmp    fprpa
+8$:
+         clr    hostup
+9$:
          rts    pc
 ;
 ; fprpa: refresh the default address; follow it unless the host set its own
@@ -2245,6 +2265,7 @@ running: .word 0                       ; if nonzero, then recv/xmit is active
 fport:   .word 0                       ; nonzero: frame port (host networking), not the encx24j600
 chunk:   .word 20                      ; bytes per receive run: 16 through buf, 128 from the frame port
 laaset:  .word 0                       ; nonzero: the host wrote a physical address (fc5)
+hostup:  .word 0                       ; frame port: Main's default address seen
 npp:     .word 0                       ; the next packet pointer in the encx24j600
 flen:    .word 0                       ; frame length in the encx24j600 received frame header
 p0cmd:   .word 0                       ; masked off value of the pcsr0
