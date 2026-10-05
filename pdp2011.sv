@@ -117,10 +117,10 @@ module emu
 	input         DDRAM_BUSY,
 	output  [7:0] DDRAM_BURSTCNT,
 	output [28:0] DDRAM_ADDR,
-	input  [126:0] DDRAM_DOUT,
+	input  [63:0] DDRAM_DOUT,
 	input         DDRAM_DOUT_READY,
 	output        DDRAM_RD,
-	output [126:0] DDRAM_DIN,
+	output [63:0] DDRAM_DIN,
 	output  [7:0] DDRAM_BE,
 	output        DDRAM_WE,
 
@@ -173,7 +173,6 @@ module emu
 ///////// Default values for ports not used in this core /////////
 
 assign ADC_BUS  = 'Z;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;  
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign VGA_SL = 0;
@@ -210,6 +209,7 @@ localparam CONF_STR = {
 	"O[7:5],PDP-11 Model,20,34,44,45,70,94;",
 	"-;",
 	"O[1],External Ethernet,No,Yes;",
+	"O[27:25],Host network,Off,eth0,eth1,macvlan,tap0;",
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
 	"H0O[17],Line 1 (176500),Serial port,TU58 DECtape II;",
 	"O[18],Line clock,60 Hz,50 Hz;",
@@ -426,8 +426,11 @@ assign LED_POWER={1'b1,greenled};
 assign LED_DISK=sddebug[0] | sddebug[2];
 assign LED_USER=sddebug[1] | sddebug[3];
 /////////////////////////////// External Ethernet////////////////////////////
+// The XU (DEUNA) runs for the I/O board's ENC424J600 (O[1]) or for host
+// networking through Main (O[27:25]); host networking takes precedence.
+wire xu_host = status[27:25] != 3'd0;
 int have_xu;
-assign have_xu = status[1]? 1 : 0;
+assign have_xu = (status[1] | xu_host)? 1 : 0;
 
 wire xu_cs; 
 wire xu_mosi;
@@ -438,6 +441,45 @@ assign USER_OUT[0] = xu_mosi;
 assign xu_miso = USER_IN[1];
 assign USER_OUT[6] = xu_sclk;
 assign USER_OUT[3] = xu_cs;
+
+// host networking: frames between the XU's frame port and Main's DDR3 rings
+// (rtl/xufp.vhd, rtl/xu_ddr_bridge.vhd, Main support/pdp2011/xu_net.cpp)
+wire [99:0] fp_i;
+wire [85:0] fp_o;
+assign fp_i[99] = xu_host;
+assign DDRAM_CLK = clk_100mhz;
+
+xu_ddr_bridge xu_ddr_bridge
+(
+	.clk(clk_100mhz),
+	.reset(reset_q),
+	.enable(xu_host),
+	.b_tx_addr(fp_i[9:0]),
+	.b_tx_q(fp_o[15:0]),
+	.b_rx_addr(fp_i[19:10]),
+	.b_rx_d(fp_i[35:20]),
+	.b_rx_we(fp_i[36]),
+	.tx_req_t(fp_o[16]),
+	.tx_len(fp_o[27:17]),
+	.tx_ack_t(fp_i[37]),
+	.rx_rdy_t(fp_i[38]),
+	.rx_len(fp_i[49:39]),
+	.rx_rel_t(fp_o[28]),
+	.pub_t(fp_o[29]),
+	.guest_mac(fp_o[77:30]),
+	.guest_mode(fp_o[85:78]),
+	.host_mac(fp_i[97:50]),
+	.host_valid(fp_i[98]),
+	.ddr_busy(DDRAM_BUSY),
+	.ddr_burstcnt(DDRAM_BURSTCNT),
+	.ddr_addr(DDRAM_ADDR),
+	.ddr_dout(DDRAM_DOUT),
+	.ddr_dout_ready(DDRAM_DOUT_READY),
+	.ddr_rd(DDRAM_RD),
+	.ddr_din(DDRAM_DIN),
+	.ddr_be(DDRAM_BE),
+	.ddr_we(DDRAM_WE)
+);
 ////////////////////////////// The Machine //////////////////////////////////
 
 int modelcode;
@@ -476,6 +518,9 @@ mister_top mister_top
 	.xu_sclk  (xu_sclk),
 	.xu_mosi  (xu_mosi),
 	.xu_miso  (xu_miso),
+	.fp_bclk  (clk_100mhz),
+	.fp_i     (fp_i),
+	.fp_o     (fp_o),
 	
    .have_rl (have_rl),
    .rl_sd_lba      (sd_lba[1]),

@@ -131,7 +131,7 @@ t45:
          jsr    pc,init                ; setup variable values
          jsr    pc,waitabit            ; delay loop
          xascil <Hello, world: xu-cpu [t45] deuna microcode>
-         jsr    pc,initenc             ; contact the encx24j600 and reset it
+         jsr    pc,initnic             ; frame port (host networking) or the encx24j600
 ;
          clr    @#177776               ; clear psw - this enables the watchdog interrupts
 ;
@@ -156,6 +156,8 @@ t45:
          bis    #20000,@#174510        ; set rxi
          br     10$                    ; see if there is another frame - FIXME, check if there is an owned buffer first?
 20$:
+         tst    fport                  ; frame port: there is no chip to check
+         bne    30$
 ;
 ; check if the chip is ok - reading the eidled register; this serves no particular purpose other than checking if we're still talking to the chip
 ; if comms was lost - including removing the chip and reconnecting it - reset it and set it up so it will work again.
@@ -433,6 +435,10 @@ fc1:
 fc2:
          xasciz <fc2 - read default physical address >
          jsr    pc,getpcbb
+         tst    fport
+         beq    1$
+         jsr    pc,fprpa               ; frame port: Main may have supplied it since start-up
+1$:
 ;
 ; the bia is in crazy-chip format
 ;
@@ -489,6 +495,7 @@ fc4:
 fc5:
          xasciz <fc5 - write physical address >
          jsr    pc,getpcbb
+         mov    #1,laaset
          movb   pcbb+2,dlaa+0
          movb   pcbb+3,dlaa+1
          movb   pcbb+4,dlaa+2
@@ -859,6 +866,14 @@ xpl990:
 ; xmitst: do starting things re transmission, amongst others to the chip
 ;
 xmitst:
+         tst    fport
+         beq    1$
+2$:
+         bit    #2,@#177200            ; frame port: wait until the last frame has gone
+         bne    2$
+         clr    xmitlen
+         rts    pc
+1$:
 ;
 ; set egpwr pointer to zero
 ;
@@ -879,6 +894,11 @@ xmitxx:
          beq    10$
          bis    #20000,xdre+4
 10$:
+         tst    fport
+         beq    11$
+         mov    xmitlen,@#177204       ; frame port: send it
+         rts    pc
+11$:
          mov    xmitlen,wetxlen+2
          xubl   wetxlen,40
 ;
@@ -898,6 +918,10 @@ wetxlen: .byte wcru,etxlen,0,0
 ; xmitld: load bytes from current buffer
 ;
 xmitld:
+         tst    fport
+         beq    1$
+         jmp    fpxld
+1$:
          mov    r0,-(sp)
          mov    r1,-(sp)
          mov    r2,-(sp)
@@ -1051,6 +1075,10 @@ xmitrb:
 ; pktin: deal with packets incoming on the encx24j600
 ;
 pktin:
+         tst    fport
+         beq    1$
+         jmp    fppin
+1$:
          mov    r0,-(sp)
          mov    r1,-(sp)
          mov    r2,-(sp)
@@ -1198,9 +1226,9 @@ getfr:
 
 10$:
          mov    r3,r0
-         cmp    #20,r3                 ; is the actual length left > 20
+         cmp    chunk,r3               ; is the actual length left > chunk
          bge    20$                    ; no
-         mov    #20,r0                 ; set length for this run
+         mov    chunk,r0               ; set length for this run
 20$:
          cmp    r5,r0
          bge    22$
@@ -1216,6 +1244,8 @@ getfr:
          asl    r1
 
 30$:
+         tst    fport                  ; frame port: the frame is already in our rx buffer
+         bne    40$
          mov    r1,31$                 ; set the number of bits in the parm list
          jsr    pc,xubl
          .word  rdata
@@ -1231,7 +1261,7 @@ getfr:
 42$:
          mov    r2,@#177100            ; dest low word addr
          mov    r4,@#177102            ; dest high word addr
-         mov    #buf,@#177104          ; src addr
+         jsr    pc,rxsrc               ; src addr: buf, or the frame port's rx buffer
          movb   #1,@#177107            ; direction - to xu busmaster
          tst    r1
          beq    48$
@@ -1311,6 +1341,189 @@ getfr:
          mov    (sp)+,r1
          mov    (sp)+,r0
 99$:
+         rts    pc
+;
+; frame port (rtl/xufp.vhd, notes/xu-frames-plan.md): frames go through two
+; 2 KB buffers in our memory, tx at 020000 and rx at 024000, and MiSTer Main
+; puts them on the host's network. Registers: 177200 csr (bit0 rxrdy, bit1
+; txbusy, bit2 hostup, bit15 selected; write bit0 releases rx), 177202 rxlen,
+; 177204 txlen (write sends), 177206 default mac, 177214 guest mac, 177222 mode.
+;
+; initnic: use the frame port when it is selected, otherwise the encx24j600
+;
+initnic:
+         mov    #20,chunk
+         clr    fport
+         tst    @#177200               ; csr bit 15: frame port selected
+         bmi    10$
+         jmp    initenc
+10$:
+         mov    #1,fport
+         mov    #200,chunk
+         xascil <frame port: host networking>
+         jsr    pc,fpbia
+         jsr    pc,fpdlaa
+         jsr    pc,setlaa
+         jsr    pc,setmodebits
+         clr    r0
+         rts    pc
+;
+; fpbia: default physical address from the frame port, kept in the chip's byte order like the encx24j600's
+;
+fpbia:
+         mov    @#177206,dbia+4
+         mov    @#177210,dbia+2
+         mov    @#177212,dbia+0
+         rts    pc
+;
+; fpdlaa: physical address := default physical address
+;
+fpdlaa:
+         movb   dbia+4,dlaa+0
+         movb   dbia+5,dlaa+1
+         movb   dbia+2,dlaa+2
+         movb   dbia+3,dlaa+3
+         movb   dbia+0,dlaa+4
+         movb   dbia+1,dlaa+5
+         rts    pc
+;
+; fprpa: refresh the default address; follow it unless the host set its own
+;
+fprpa:
+         jsr    pc,fpbia
+         tst    laaset
+         bne    9$
+         jsr    pc,fpdlaa
+         jsr    pc,setlaa
+9$:
+         rts    pc
+;
+; fpmode: publish the mode (bit0 promiscuous, bit1 all-multicast, bit2 loopback) and with it the guest mac
+;
+fpmode:
+         mov    r0,-(sp)
+         clr    r0
+         bit    #100000,modebits       ; prom
+         beq    1$
+         bis    #1,r0
+1$:
+         bit    #40000,modebits        ; enal
+         beq    2$
+         bis    #2,r0
+2$:
+         bit    #4,modebits            ; loop
+         beq    3$
+         bis    #4,r0
+3$:
+         mov    r0,@#177222
+         mov    (sp)+,r0
+         rts    pc
+;
+; fpxld: append the current transmit buffer to the frame in the tx buffer, xubm straight from the host
+;
+fpxld:
+         mov    r0,-(sp)
+         mov    r1,-(sp)
+         mov    r2,-(sp)
+         mov    r3,-(sp)
+         mov    r4,-(sp)
+         mov    xmitlen,-(sp)          ; zero: this is the first buffer of the frame
+         mov    xdre+0,r3              ; slen
+         mov    xdre+2,r1              ; segb l
+         bic    #1,r1                  ; FIXME, byte alignment disregarded as in xmitld
+         mov    xdre+4,r2              ; segb h
+         bic    #177774,r2
+10$:
+         tst    r3
+         ble    50$
+         mov    r3,r0
+         cmp    chunk,r3
+         bge    20$
+         mov    chunk,r0
+20$:
+         mov    xmitlen,r4
+         add    r0,r4
+         cmp    r4,#3770               ; 2040. bytes fit a slot; drop the rest of an overlong frame
+         bhi    50$
+         mov    r0,r4
+         inc    r4
+         bic    #1,r4                  ; xubm moves words
+         mov    r1,@#177100
+         mov    r2,@#177102
+         mov    xmitlen,@#177104
+         add    #20000,@#177104
+         movb   #0,@#177107            ; direction: host to us
+         movb   r4,@#177106            ; go
+         add    r0,xmitlen
+         add    r0,r1
+         adc    r2
+         sub    r0,r3
+         br     10$
+50$:
+         tst    (sp)+
+         bne    90$
+;
+; first buffer: match bit if it is addressed to us, and our address as the source
+;
+         clr    xmitmch
+         cmpb   dlaa+0,@#20000
+         bne    60$
+         cmpb   dlaa+1,@#20001
+         bne    60$
+         cmpb   dlaa+2,@#20002
+         bne    60$
+         cmpb   dlaa+3,@#20003
+         bne    60$
+         cmpb   dlaa+4,@#20004
+         bne    60$
+         cmpb   dlaa+5,@#20005
+         bne    60$
+         mov    #1,xmitmch
+60$:
+         movb   dlaa+0,@#20006
+         movb   dlaa+1,@#20007
+         movb   dlaa+2,@#20010
+         movb   dlaa+3,@#20011
+         movb   dlaa+4,@#20012
+         movb   dlaa+5,@#20013
+90$:
+         mov    (sp)+,r4
+         mov    (sp)+,r3
+         mov    (sp)+,r2
+         mov    (sp)+,r1
+         mov    (sp)+,r0
+         rts    pc
+;
+; fppin: a received frame from the frame port onto the receive ring
+;
+fppin:
+         clr    recvdw
+         tst    rcurrl
+         bne    10$
+         tst    rcurrh
+         beq    90$                    ; no ring yet
+10$:
+         bit    #1,@#177200            ; frame waiting?
+         beq    90$
+         jsr    pc,getrdre
+         bit    #100000,rdre+4         ; own?
+         beq    90$                    ; no - leave the frame in the frame port until we have a buffer
+         mov    @#177202,flen
+         add    #4,flen                ; deuna mlen counts the crc (garbage here; nobody checks it)
+         jsr    pc,getfr
+         mov    #1,@#177200            ; release the rx buffer
+90$:
+         rts    pc
+;
+; rxsrc: xubm source for a receive run - buf, or the frame port's rx buffer at offset mlen
+;
+rxsrc:
+         mov    #buf,@#177104
+         tst    fport
+         beq    1$
+         mov    mlen,@#177104
+         add    #24000,@#177104
+1$:
          rts    pc
 ;
 ; init encx24j600 chip connected to spi xubl peripheral on our bus - see reset procedure in encx24j600 manual, ch. 8.1
@@ -1518,6 +1731,13 @@ setlaa:
          movb   dlaa+0,wlaa+6
          movb   dlaa+1,wlaa+7
 ;
+         tst    fport
+         beq    1$
+         mov    dlaa+0,@#177214        ; frame port: guest mac, then publish with the mode
+         mov    dlaa+2,@#177216
+         mov    dlaa+4,@#177220
+         jmp    fpmode
+1$:
          xubl   wlaa,100
          rts    pc
 
@@ -1773,6 +1993,11 @@ putmlt:
 ; set mode bits into chip
 ;
 setmodebits:
+         tst    fport
+         beq    1$
+         jsr    pc,fpmode              ; frame port: Main does promiscuous, all-multicast, loopback
+         br     29$
+1$:
          bit    #4,modebits
          beq    10$
          xubl   setlpbk,40
@@ -1963,6 +2188,7 @@ bhx:
 ;
 init:
          clr    running
+         clr    laaset
          clr    flen
          clr    drdc
          clr    modebits
@@ -2016,6 +2242,9 @@ hextab:  .ascii /0123456789abcdef/
 
          .even
 running: .word 0                       ; if nonzero, then recv/xmit is active
+fport:   .word 0                       ; nonzero: frame port (host networking), not the encx24j600
+chunk:   .word 20                      ; bytes per receive run: 16 through buf, 128 from the frame port
+laaset:  .word 0                       ; nonzero: the host wrote a physical address (fc5)
 npp:     .word 0                       ; the next packet pointer in the encx24j600
 flen:    .word 0                       ; frame length in the encx24j600 received frame header
 p0cmd:   .word 0                       ; masked off value of the pcsr0
