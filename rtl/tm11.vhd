@@ -762,9 +762,11 @@ begin
                      if reclen = x"00000000" then
                         tape_pos <= tape_pos + 4;
                         res_eof <= '1';
+                        res_brc <= sp_count + 1;                      -- the tape mark counts, as SIMH
                         engine_state <= eng_finish;
                      elsif reclen(31) = '1' then                      -- EOM: bad tape, as SIMH
                         res_bad <= '1';
+                        res_brc <= sp_count + 1;
                         engine_state <= eng_finish;
                      else
                         tape_pos <= tape_pos + reclen_pad + 8;
@@ -791,6 +793,7 @@ begin
                   when eng_sr_chk =>
                      if tape_pos = x"00000000" then
                         res_bot <= '1';
+                        res_brc <= sp_count + 1;                      -- the attempt counts, as SIMH
                         engine_state <= eng_finish;
                      else
                         hd_pos <= tape_pos - 4;
@@ -803,10 +806,12 @@ begin
                      if reclen = x"00000000" then
                         tape_pos <= tape_pos - 4;
                         res_eof <= '1';
+                        res_brc <= sp_count + 1;
                         engine_state <= eng_finish;
                      elsif (reclen_pad + 8) > tape_pos then
                         tape_pos <= (others => '0');
                         res_bot <= '1';
+                        res_brc <= sp_count + 1;
                         engine_state <= eng_finish;
                      else
                         tape_pos <= tape_pos - (reclen_pad + 8);
