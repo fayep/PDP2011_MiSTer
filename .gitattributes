@@ -1,0 +1,2 @@
+# ROM images generated from roms/*.mac by "make -C roms"
+roms/*.vhd linguist-generated=true
