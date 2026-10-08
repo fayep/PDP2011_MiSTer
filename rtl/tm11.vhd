@@ -22,7 +22,9 @@
 --
 --    <32-bit LE record length L> <L data bytes, padded to even> <32-bit LE L again>
 --    L == 0            -> tape mark  (sets MTS EOF)
---    L(31) == 1        -> end of medium / erase gap / error marker -> treated as EOT
+--    L(31) == 1        -> end of medium / erase gap / error marker -> MTS BTE (bad
+--                         tape), as SIMH: the tape does not move, so a driver
+--                         spacing on toward EOT would otherwise never stop
 --
 -- Register / bit layout follows SIMH pdp11_tm.c (FNC_*, MTC_*, STA_*).
 --
@@ -205,6 +207,7 @@ signal res_cma : std_logic_vector(15 downto 0);
 signal res_ema : std_logic_vector(1 downto 0);
 signal res_eof : std_logic;
 signal res_eot : std_logic;
+signal res_bad : std_logic;
 signal res_bot : std_logic;
 signal res_rle : std_logic;
 signal res_nxm : std_logic;
@@ -493,6 +496,7 @@ begin
                   mtc_ema <= res_ema;
                   mts_eof <= res_eof;
                   mts_eot <= res_eot;
+                  mts_bad <= res_bad;
                   mts_bot <= res_bot;
                   mts_rle <= res_rle;
                   mts_nxm <= res_nxm;
@@ -560,7 +564,7 @@ begin
                         res_brc <= lat_brc;
                         res_cma <= lat_cma;
                         res_ema <= lat_ema;
-                        res_eof <= '0'; res_eot <= '0'; res_bot <= '0';
+                        res_eof <= '0'; res_eot <= '0'; res_bot <= '0'; res_bad <= '0';
                         res_rle <= '0'; res_nxm <= '0'; res_ill <= '0';
 
                         if have_media = '0' then                       -- no tape mounted: every real
@@ -656,7 +660,7 @@ begin
                         tape_pos <= tape_pos + 4;
                         engine_state <= eng_finish;
                      elsif reclen(31) = '1' then                      -- EOM / gap / error
-                        res_eot <= '1';
+                        res_bad <= '1';
                         engine_state <= eng_finish;
                      else
                         -- req = -(MTBRC), 1..65536, as unsigned(16 downto 0)
@@ -759,8 +763,8 @@ begin
                         tape_pos <= tape_pos + 4;
                         res_eof <= '1';
                         engine_state <= eng_finish;
-                     elsif reclen(31) = '1' then
-                        res_eot <= '1';
+                     elsif reclen(31) = '1' then                      -- EOM: bad tape, as SIMH
+                        res_bad <= '1';
                         engine_state <= eng_finish;
                      else
                         tape_pos <= tape_pos + reclen_pad + 8;
