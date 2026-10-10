@@ -1391,6 +1391,10 @@ begin
          if reset = '1' then
             busmaster_state <= busmaster_idle;
             npr <= '0';
+            bus_master_control_dati <= '0';            -- a bus INIT must end the DMA cycle too: a strobe
+            bus_master_control_dato <= '0';            -- left set is replayed on the next grant (stale write)
+            rh70_bus_master_control_dati <= '0';
+            rh70_bus_master_control_dato <= '0';
             sdcard_read_ack <= '0';
             sdcard_write_start <= '0';
             sdcard_write_ack <= '0';                -- was never reset: the block device only starts a
