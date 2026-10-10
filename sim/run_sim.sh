@@ -37,7 +37,7 @@ for mac in *.mac; do
 	if [ ! -f "$mem" ] || [ "$mac" -nt "$mem" ]; then
 		obj="${mac%.mac}.obj"
 		lst="${mac%.mac}.lst"
-		../tools/macro11 "$mac" -o "$obj" -l "$lst"
+		"${MACRO11:-../tools/macro11}" "$mac" -o "$obj" -l "$lst"   # MACRO11=<path> if not built in tools/
 		python3 mac2mem.py "$obj" "$mem"
 	fi
 done

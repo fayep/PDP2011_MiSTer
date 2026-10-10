@@ -1,0 +1,377 @@
+	.title	tb_ekbee1_t61 - EKBEE1 TESTNO 61-115 MMU checks
+
+; result(500): 1 all checks passed, 2 some failed (see fails).
+; fails(516) bits, one per check:
+;       1  T61 MM register read took ACF trap (SCCC INT REG)
+;       2  T61 Unibus map 170200 read did not take vector 250
+;       4  T61 handler MMR0 was not 011003
+;      10  T62 trap+abort on one insn did not take exactly one 250 (SP)
+;      20  T62 handler MMR0 was not 051013
+;      40  T64 illegal mode MMR0 was not 140101 (NR+PL, mode 10, page 0)
+;     100  T65 supervisor NR MMR0 was not 100051 (stale mode bit 6)
+;     200  T67 MMR0 was not 040241 (PL, IC, super page 0)
+;     400  T67 MMR1 was not 173366 (SVC.50/60 SP-2,-2)
+;    1000  T67 MMR2/PSW/vector count wrong (want 4, cc 17, one 250, no 4)
+;    2000  T72 R7 mode 1/2 operand used D space (abort)
+;    4000  T77 PDR W bit wrong (see w77)
+;   10000  T115 MFPI user/user did not read D space
+;   20000  kernel stack push MM abort did not vector 4 with SP 4
+
+CPUERR	= 177766
+PSW	= 177776
+MMR0	= 177572
+MMR1	= 177574
+MMR2	= 177576
+MMR3	= 172516
+KIPDR0	= 172300
+KIPAR0	= 172340
+KDPDR0	= 172320
+KDPAR0	= 172360
+SIPDR0	= 172200
+SIPAR0	= 172240
+UIPDR0	= 177600
+UIPAR0	= 177640
+UDPDR0	= 177620
+UDPAR0	= 177660
+KIPDR4	= 172310
+KIPDR5	= 172312
+KIPDR6	= 172314
+KIPDR7	= 172316
+KIPAR4	= 172350
+KIPAR5	= 172352
+KDPDR1	= 172322
+SIPDR4	= 172210
+UIPDR4	= 177610
+UIPAR4	= 177650
+UDPAR4	= 177670
+UBMAP0	= 170200
+
+	.asect
+
+	.=4
+	.word	t4
+	.word	340
+
+	.=34
+	.word	c115
+	.word	340
+
+	.=250
+	.word	t250
+	.word	340
+
+	.=500
+result:	.word	0
+got250:	.word	0
+got4:	.word	0
+snap:	.word	0
+snap1:	.word	0
+snap2:	.word	0
+snappsw:.word	0
+fails:	.word	0
+t250pc:	.word	0
+t4pc:	.word	0
+cer:	.word	0
+w77:	.word	0
+s67:	.word	0,0,0,0			; T67 MMR2, PSW, got250, got4
+sav5:	.word	0			; t4 scratch
+
+	.=1000
+start:
+	mov	#4000,sp
+	jsr	pc,@#idmap
+	mov	#20,@#MMR3		; 22-bit
+	mov	#1,@#MMR0		; MME
+
+; ---- TESTNO 61: KIPDR7 ACF 4 + TENB. PAR/PDR/MMR0-3 reads are
+; SCCC INT REG (KB11-C IV-8): no trap. 170200 is not: first trap.
+	mov	#77404,@#KIPDR7
+	mov	#1001,@#MMR0		; TENB, bit 12 clear
+	clr	@#got250
+	mov	#f61a,@#t250pc
+	mov	@#172356,r1
+	mov	@#172256,r1
+	mov	@#177656,r1
+	mov	@#172316,r1
+	mov	@#172216,r1
+	mov	@#177616,r1
+	mov	@#177572,r1
+	mov	@#177574,r1
+	mov	@#177576,r1
+	mov	@#172516,r1
+	br	c61a
+f61a:	bis	#1,@#fails
+	mov	#1001,@#MMR0
+c61a:	clr	@#got250
+	mov	#c61b,@#t250pc
+	mov	@#UBMAP0,r1
+	bis	#2,@#fails		; no 250
+	br	c61c
+c61b:	cmp	#11003,@#snap
+	beq	c61c
+	bis	#4,@#fails
+c61c:	mov	#1,@#MMR0
+	mov	#77406,@#KIPDR7
+
+; ---- TESTNO 62: source ACF 4 trap + dest PLF abort, TENB.
+; IV-8: the abort clears the pending trap. One 250.
+	mov	#1000,@#KIPAR4
+	mov	#1000,@#KIPAR5
+	mov	#6,@#KIPDR5		; PLF 0
+	mov	#77404,@#KIPDR4		; ACF 4
+	mov	#1001,@#MMR0
+	clr	@#got250
+	mov	#c62,@#t250pc
+	mov	@#100000,@#120100
+	nop
+c62:	cmp	#4000,sp		; one frame pushed and popped
+	bne	L0
+	cmp	#1,@#got250
+	beq	L1
+L0:	bis	#10,@#fails
+	mov	#4000,sp
+L1:	cmp	#51013,@#snap
+	beq	L2
+	bis	#20,@#fails
+L2:	mov	#1,@#MMR0
+	mov	#77406,@#KIPDR4
+	mov	#77406,@#KIPDR5
+
+; ---- TESTNO 64: PS(15:14)=10. Fetch aborts NR+PL, MMR0 6:5 = 10.
+	clr	@#got250
+	clr	@#snap
+	mov	#c64,@#t250pc
+	mov	#100340,@#PSW
+	nop
+	nop
+c64:	cmp	#140101,@#snap
+	beq	L3
+	bis	#40,@#fails
+L3:	mov	#1,@#MMR0
+
+; ---- TESTNO 65: supervisor NR read after 64. MMR0 100051.
+	mov	#77403,@#SIPDR4
+	clr	@#snap
+	mov	#c65,@#t250pc
+	mov	#40340,@#PSW
+	mov	@#100000,r0
+	nop
+c65:	cmp	#100051,@#snap
+	beq	L4
+	bis	#100,@#fails
+L4:	mov	#1,@#MMR0
+	mov	#77406,@#SIPDR4
+
+; ---- TESTNO 67: odd-address trap, vector 4 PS 040340 (supervisor),
+; supervisor stack push length-aborts. PS RESTORE -> one 250 with
+; the original PS; MMR0 040241, MMR1 173366, MMR2 4.
+	bis	#40000,@#PSW		; supervisor, SIPDR0 still full
+	mov	#1104,sp
+	bic	#40000,@#PSW
+	mov	#4000,sp
+	mov	#4006,@#SIPDR0		; PLF 010: 0-1077
+	mov	#40340,@#6
+	clr	@#got250
+	clr	@#got4
+	mov	#c67,@#t250pc
+	mov	#c67,@#t4pc
+	spl	0
+	scc
+	mov	@#1,r1
+	nop
+c67:	mov	#4000,sp
+	mov	@#snap2,@#s67
+	mov	@#snappsw,@#s67+2
+	mov	@#got250,@#s67+4
+	mov	@#got4,@#s67+6
+	mov	#340,@#6
+	mov	#77406,@#SIPDR0
+	cmp	#40241,@#snap
+	beq	L5
+	bis	#200,@#fails
+L5:	cmp	#173366,@#snap1
+	beq	L6
+	bis	#400,@#fails
+L6:	cmp	#4,@#snap2
+	bne	L7
+	cmpb	#17,@#snappsw
+	bne	L7
+	cmp	#1,@#got250
+	bne	L7
+	tst	@#got4
+	beq	L8
+L7:	bis	#1000,@#fails
+L8:	mov	#1,@#MMR0
+
+; ---- TESTNO 72: kernel D space on, KDPDR1 NR, code in page 1.
+; (PC)/#n operands are I space (KB11-C IV-3.4). No abort.
+	mov	#77400,@#KDPDR1
+	mov	#24,@#MMR3
+	clr	@#got250
+	mov	#f72,@#t250pc
+	jmp	@#t72
+c72:	mov	#20,@#MMR3
+	mov	#77406,@#KDPDR1
+	tst	@#got250
+	beq	L9
+f72:	bis	#2000,@#fails
+	mov	#20,@#MMR3
+	mov	#77406,@#KDPDR1
+	mov	#4000,sp
+L9:	mov	#1,@#MMR0
+
+; ---- TESTNO 77: PDR W bit (IV-6.2, IV-7).
+	clr	@#w77
+	mov	#1000,@#KIPAR4
+	mov	#6,@#KIPDR4		; PLF 0, ACF 6
+	mov	#12345,@#100000
+	cmp	#106,@#KIPDR4		; W set
+	beq	L10
+	bis	#1,@#w77
+L10:	mov	#c77,@#t250pc
+	mov	#12345,@#100100		; PL abort
+	nop
+c77:	mov	#1,@#MMR0
+	cmp	#106,@#KIPDR4		; W stays across abort
+	beq	L11
+	bis	#2,@#w77
+L11:	movb	#4,@#KIPDR4
+	cmp	#4,@#KIPDR4		; PDR write clears A/W
+	beq	L12
+	bis	#4,@#w77
+L12:	mov	#77406,@#KIPDR7
+	mov	#123456,@#UBMAP0	; Unibus map write sets KIPDR7 W
+	bit	#100,@#KIPDR7
+	bne	L13
+	bis	#10,@#w77
+L13:	mov	#77406,@#KIPDR4		; MM register write
+	bit	#100,@#KIPDR7		; W stays
+	bne	L14
+	bis	#20,@#w77
+L14:	clr	@#UBMAP0
+	mov	#77406,@#KIPDR7
+	tst	@#w77
+	beq	L15
+	bis	#4000,@#fails
+L15:
+
+; ---- TESTNO 115: MFPI with current and previous User reads D space.
+	mov	#1000,@#UIPAR4
+	mov	#1000,@#UDPAR4
+	mov	#77400,@#UIPDR4		; user I page 4 NR
+	mov	#36514,@#100000		; kernel page 4 aliases 1000
+	mov	#21,@#MMR3		; 22-bit, user D
+	clr	@#got250
+	mov	#f115,@#t250pc
+	clr	r1
+	mov	#170340,@#PSW
+	mov	#3000,sp		; user SP
+	mov	#100000,r2
+	mfpi	(r2)
+	mov	(sp)+,r1
+	trap	0
+f115:	bis	#10000,@#fails
+	br	e115
+c115:	cmp	#36514,r1
+	bne	f115
+e115:	mov	#4000,sp
+	mov	#20,@#MMR3
+	mov	#77406,@#UIPDR4
+	mov	#1,@#MMR0
+
+; ---- MM abort on a kernel stack push: vector 4, SP 4 (6.2.1.3).
+	mov	#77407,@#KIPDR6		; NR
+	clr	@#got250
+	clr	@#got4
+	mov	#fks,@#t250pc
+	mov	#cks,@#t4pc
+	mov	#140336,sp
+	clr	(sp)
+	nop
+fks:	mov	#4000,sp
+	bis	#20000,@#fails
+	br	eks
+cks:	mov	#4000,sp
+	cmp	#1,@#got4
+	bne	fks
+	tst	@#got250
+	bne	fks
+	bit	#100000,@#MMR0
+	beq	fks
+eks:	mov	#77406,@#KIPDR6
+	mov	#1,@#MMR0
+
+; ---- done
+	clr	@#MMR0
+	mov	#1,@#result
+	tst	@#fails
+	beq	L16
+	mov	#2,@#result
+L16:	halt
+
+idmap:
+	mov	#KIPAR0,r0
+	jsr	pc,@#idpar
+	mov	#KDPAR0,r0
+	jsr	pc,@#idpar
+	mov	#SIPAR0,r0
+	jsr	pc,@#idpar
+	mov	#UIPAR0,r0
+	jsr	pc,@#idpar
+	mov	#UDPAR0,r0
+	jsr	pc,@#idpar
+	mov	#KIPDR0,r0
+	jsr	pc,@#idpdr
+	mov	#KDPDR0,r0
+	jsr	pc,@#idpdr
+	mov	#SIPDR0,r0
+	jsr	pc,@#idpdr
+	mov	#UIPDR0,r0
+	jsr	pc,@#idpdr
+	mov	#UDPDR0,r0
+	jsr	pc,@#idpdr
+	rts	pc
+idpar:	clr	r1
+	mov	#7,r2
+L17:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,L17
+	mov	#177600,(r0)
+	rts	pc
+idpdr:	mov	#8.,r2
+L18:	mov	#77406,(r0)+
+	sob	r2,L18
+	rts	pc
+
+; After a red stack trap SP is 0: a kernel R6 mode 1/6 write there is
+; itself red (address <= SL+337), so edit the frame through r5.
+t4:	inc	@#got4
+	mov	@#CPUERR,@#cer
+	clr	@#CPUERR
+	mov	r5,@#sav5
+	mov	sp,r5
+	mov	@#t4pc,(r5)
+	mov	#340,2(r5)
+	mov	@#sav5,r5
+	rti
+
+	.=20000
+t250:	mov	@#MMR0,@#snap		; page 1 I space
+	mov	@#MMR1,@#snap1
+	mov	@#MMR2,@#snap2
+	mov	2(sp),@#snappsw
+	inc	@#got250
+	mov	@#t250pc,(sp)
+	mov	#340,2(sp)
+	rti
+
+	.=30000
+t72:	mov	(pc),r0
+	mov	#0,r0
+	tst	(pc)
+	tst	#0
+	cmp	#240,(pc)
+	nop
+	jmp	@#c72
+
+	.end	start
