@@ -14,6 +14,9 @@ lines and error reports. Everything the console prints is kept in the log.
 Exit 0 = at least one pass and no errors, 1 otherwise.
 """
 import re, subprocess, sys, time
+import os as _os, subprocess as _sp, sys as _sys
+if _sp.run(["sh", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mister_guard.sh")]).returncode:
+    _sys.exit("not taking the MiSTer: it may be in use (regress/mister_guard.sh). Ask first.")
 
 MGL, LOG, DIAG = sys.argv[1], sys.argv[2], sys.argv[3].upper()
 RUN = int(sys.argv[4]) if len(sys.argv) > 4 else 240
@@ -52,7 +55,7 @@ ssh(f"""echo 'load_core /media/fat/menu.rbf' > /dev/MiSTer_cmd; sleep 4
 for p in $(pidof pdp_harness); do kill $p; done; sleep 1
 stty -F /dev/ttyS1 19200 cs8 -parenb -cstopb -crtscts clocal -icanon -echo -ixon min 1 time 0
 setsid nohup /media/fat/Scripts/pdp_harness -tcp :7788 > /tmp/pdp_harness_stdout.log 2>&1 < /dev/null &
-sleep 2; echo 'load_core /media/fat/_Debug/{MGL}.mgl' > /dev/MiSTer_cmd""", timeout=60)
+sleep 2; cp /media/fat/_Debug/{MGL}.mgl /tmp/claude_loaded.mgl; echo 'load_core /media/fat/_Debug/{MGL}.mgl' > /dev/MiSTer_cmd""", timeout=60)
 note(f"loaded {MGL}")
 
 stage = 0; t_start = None
