@@ -46,11 +46,15 @@ entity rk11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);                -- hps_io disk slot (clk_sys), see mister_blkdev.vhd
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_rk : in integer range 0 to 1;
       have_rk_num : in integer range 1 to 8;
@@ -63,14 +67,8 @@ end rk11;
 
 architecture implementation of rk11 is
 
-component sdspi is
+component mister_blkdev is
    port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-
       sdcard_addr : in std_logic_vector(23 downto 0);
 
       sdcard_idle : out std_logic;
@@ -91,7 +89,16 @@ component sdspi is
       enable : in integer range 0 to 1 := 0;
       controller_clk : in std_logic;
       reset : in std_logic;
-      clk50mhz : in std_logic
+
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic
    );
 end component;
 
@@ -191,7 +198,7 @@ signal sd_addr : std_logic_vector(23 downto 0);
 
 signal work_bar : std_logic_vector(17 downto 1);
 
-signal rkclock : integer range 0 to 4095;
+signal rkclock : integer range 0 to 4095 := 0;
 subtype rksi_st is integer range 0 to 3;
 type rksi_t is array(7 downto 0) of rksi_st;
 signal rksi : rksi_t;
@@ -200,24 +207,24 @@ signal scpset : std_logic;
 signal rkdelay : integer range 0 to 240000;
 signal rkcs_godelay : integer range 0 to 10000;
 
-signal write_start : std_logic;
+signal write_start : std_logic := '0';
 signal wrkdb : std_logic_vector(15 downto 0);
 
 -- sdspi interface signals
 
 signal sdcard_xfer_clk : std_logic;
 signal sdcard_xfer_addr : integer range 0 to 255;
-signal sdcard_xfer_read : std_logic;
+signal sdcard_xfer_read : std_logic := '0';
 signal sdcard_xfer_out : std_logic_vector(15 downto 0);
-signal sdcard_xfer_write : std_logic;
+signal sdcard_xfer_write : std_logic := '0';
 signal sdcard_xfer_in : std_logic_vector(15 downto 0);
 
 signal sdcard_idle : std_logic;
-signal sdcard_read_start : std_logic;
-signal sdcard_read_ack : std_logic;
+signal sdcard_read_start : std_logic := '0';
+signal sdcard_read_ack : std_logic := '0';
 signal sdcard_read_done : std_logic;
-signal sdcard_write_start : std_logic;
-signal sdcard_write_ack : std_logic;
+signal sdcard_write_start : std_logic := '0';
+signal sdcard_write_ack : std_logic := '0';
 signal sdcard_write_done : std_logic;
 signal sdcard_error : std_logic;
 
@@ -245,13 +252,7 @@ signal busmaster_state : busmaster_state_t := busmaster_idle;
 
 begin
 
-   sd1: sdspi port map(
-      sdcard_cs => sdcard_cs,
-      sdcard_mosi => sdcard_mosi,
-      sdcard_sclk => sdcard_sclk,
-      sdcard_miso => sdcard_miso,
-      sdcard_debug => sdcard_debug,
-
+   sd1: mister_blkdev port map(
       sdcard_addr => sd_addr,
 
       sdcard_idle => sdcard_idle,
@@ -272,7 +273,16 @@ begin
       enable => have_rk,
       controller_clk => clk,
       reset => reset,
-      clk50mhz => clk50mhz
+
+      sd_lba => sd_lba,
+      sd_rd => sd_rd,
+      sd_wr => sd_wr,
+      sd_ack => sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sys
    );
 
 
@@ -381,6 +391,7 @@ begin
             rkcs_mex <= "00";
             rkcs_fu <= "000";
             rkcs_go <= '0';
+            write_start <= '0';                     -- was never reset (power-up luck on hardware)
 
             rkda_dr <= (others => '0');
             rkda_cy <= (others => '0');
@@ -449,7 +460,7 @@ begin
             end if;
 
             if have_rk = 1 then
-               rkclock <= rkclock + 1;
+               if rkclock = 4095 then rkclock <= 0; else rkclock <= rkclock + 1; end if;  -- 12-bit free-running; explicit wrap for GHDL
                if rkclock = 0 then
                   if rkds_sc(3 downto 0) = "1011" then
                      rkds_sc <= "0000";
@@ -971,6 +982,9 @@ begin
             npr <= '0';
             sdcard_read_ack <= '0';
             sdcard_write_start <= '0';
+            sdcard_write_ack <= '0';                -- was never reset: the block device only starts a
+            sdcard_xfer_write <= '0';               -- request with both acks low (sdspi's input filter
+            sdcard_xfer_read <= '0';                -- happened to hide an undefined write_ack)
             nxm <= '0';
          else
 
@@ -1044,7 +1058,7 @@ begin
                      bus_master_addr <= work_bar(17 downto 1) & '0';
                      bus_master_dato <= sdcard_xfer_out;
                      bus_master_control_dato <= '0';
-                     sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                     if sdcard_xfer_addr = 255 then sdcard_xfer_addr <= 0; else sdcard_xfer_addr <= sdcard_xfer_addr + 1; end if;
 
 
                   when busmaster_read =>
@@ -1052,7 +1066,7 @@ begin
                         if rkcs_iba = '0' then
                            work_bar <= work_bar + 1;
                         end if;
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr = 255 then sdcard_xfer_addr <= 0; else sdcard_xfer_addr <= sdcard_xfer_addr + 1; end if;
                         sectorcounter <= sectorcounter - 1;
 
                         bus_master_control_dati <= '0';
@@ -1105,7 +1119,7 @@ begin
                         wrkdb <= (others => '0');
                         sdcard_xfer_in <= bus_master_dati;
                         sdcard_xfer_write <= '1';
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr = 255 then sdcard_xfer_addr <= 0; else sdcard_xfer_addr <= sdcard_xfer_addr + 1; end if;
 
                         if sectorcounter /= "000000001" then
                            if rkcs_iba = '0' then
@@ -1131,7 +1145,7 @@ begin
                         busmaster_state <= busmaster_write_wait;
                      else
                         sdcard_xfer_in <= (others => '0');
-                        sdcard_xfer_addr <= sdcard_xfer_addr + 1;
+                        if sdcard_xfer_addr = 255 then sdcard_xfer_addr <= 0; else sdcard_xfer_addr <= sdcard_xfer_addr + 1; end if;
                         sdcard_xfer_write <= '1';
                      end if;
 

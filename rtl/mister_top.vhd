@@ -44,6 +44,7 @@ entity mister_top is
 		vga_cursor_blink : in std_logic;
 		teste          : in std_logic;
 		testf          : in std_logic;
+		vt_saver       : in std_logic;    -- OSD "VT screen saver": '1' = blank after 15 min without keyboard activity
 		
       -- second serial port
       rx1: in std_logic;
@@ -52,30 +53,33 @@ entity mister_top is
 		cts1:in std_logic;
 
       -- sd card
-      rk_sdcard_cs   : out std_logic;
-      rk_sdcard_mosi : out std_logic;
-      rk_sdcard_sclk : out std_logic;
-      rk_sdcard_miso : in std_logic;
-		rk_sdcard_debug: out std_logic_vector (3 downto 0);
+      rk_sd_lba      : out std_logic_vector(31 downto 0);   -- RK: hps_io disk slot 0, direct
+      rk_sd_rd       : out std_logic;
+      rk_sd_wr       : out std_logic;
+      rk_sd_ack      : in std_logic;
+      rk_sd_buff_din : out std_logic_vector(15 downto 0);
 
-      rl_sdcard_cs   : out std_logic;
-      rl_sdcard_mosi : out std_logic;
-      rl_sdcard_sclk : out std_logic;
-      rl_sdcard_miso : in std_logic;
-		rl_sdcard_debug: out std_logic_vector (3 downto 0);
+      rl_sd_lba      : out std_logic_vector(31 downto 0);   -- RL: hps_io disk slot 1, direct
+      rl_sd_rd       : out std_logic;
+      rl_sd_wr       : out std_logic;
+      rl_sd_ack      : in std_logic;
+      rl_sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_addr   : in std_logic_vector(7 downto 0);    -- hps_io buffer bus
+      sd_buff_dout   : in std_logic_vector(15 downto 0);
+      sd_buff_wr     : in std_logic;
 
-      rh_sdcard_cs   : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic;
-		rh_sdcard_debug: out std_logic_vector (3 downto 0);
+      rh_sd_lba      : out std_logic_vector(31 downto 0);   -- RH: hps_io disk slot 2, direct
+      rh_sd_rd       : out std_logic;
+      rh_sd_wr       : out std_logic;
+      rh_sd_ack      : in std_logic;
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
 
       tm_media_change: in std_logic;
-      tm_sdcard_cs   : out std_logic;
-      tm_sdcard_mosi : out std_logic;
-      tm_sdcard_sclk : out std_logic;
-      tm_sdcard_miso : in std_logic;
-		tm_sdcard_debug: out std_logic_vector (3 downto 0);
+      tm_sd_lba      : out std_logic_vector(31 downto 0);   -- TM: hps_io disk slot 3, direct
+      tm_sd_rd       : out std_logic;
+      tm_sd_wr       : out std_logic;
+      tm_sd_ack      : in std_logic;
+      tm_sd_buff_din : out std_logic_vector(15 downto 0);
 
       -- Ethernet
       xu_cs   : out std_logic;
@@ -133,39 +137,43 @@ component unibus is
 
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rl_sdcard_cs : out std_logic;
-      rl_sdcard_mosi : out std_logic;
-      rl_sdcard_sclk : out std_logic;
-      rl_sdcard_miso : in std_logic := '0';
-      rl_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rl_sd_lba : out std_logic_vector(31 downto 0);                 -- RL: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rl_sd_rd : out std_logic;
+      rl_sd_wr : out std_logic;
+      rl_sd_ack : in std_logic := '0';
+      rl_sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_addr : in std_logic_vector(7 downto 0) := (others => '0');   -- hps_io buffer bus, shared by all slots
+      sd_buff_dout : in std_logic_vector(15 downto 0) := (others => '0');
+      sd_buff_wr : in std_logic := '0';
+      clk_sd : in std_logic := '0';                                  -- hps_io's clock (clk_100mhz)
 
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       have_rk_num : in integer range 1 to 8 := 8;                    -- active number of drives on the controller; set to < 8 to save core
-      rk_sdcard_cs : out std_logic;
-      rk_sdcard_mosi : out std_logic;
-      rk_sdcard_sclk : out std_logic;
-      rk_sdcard_miso : in std_logic := '0';
-      rk_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rk_sd_lba : out std_logic_vector(31 downto 0);                 -- RK: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rk_sd_rd : out std_logic;
+      rk_sd_wr : out std_logic;
+      rk_sd_ack : in std_logic := '0';
+      rk_sd_buff_din : out std_logic_vector(15 downto 0);
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rh_sdcard_cs : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic := '0';
-      rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rh_sd_lba : out std_logic_vector(31 downto 0);                 -- RH: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rh_sd_rd : out std_logic;
+      rh_sd_wr : out std_logic;
+      rh_sd_ack : in std_logic := '0';
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
       rh_type : in integer range 1 to 7 := 6;
 
 -- tm11 magtape controller
       have_tm : in integer range 0 to 1 := 0;
       tm_media_change : in std_logic := '0';
       tm_img_mounted : in integer range 0 to 1 := 0;
-      tm_sdcard_cs : out std_logic;
-      tm_sdcard_mosi : out std_logic;
-      tm_sdcard_sclk : out std_logic;
-      tm_sdcard_miso : in std_logic := '0';
-      tm_sdcard_debug : out std_logic_vector(3 downto 0);
+      tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      tm_sd_rd : out std_logic;
+      tm_sd_wr : out std_logic;
+      tm_sd_ack : in std_logic := '0';
+      tm_sd_buff_din : out std_logic_vector(15 downto 0);
 
 -- xu enc424j600 controller interface
       have_xu : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -462,6 +470,9 @@ signal cpuresetlength : integer range 0 to 255 := 255;
 -- see a tape before the host's mount handshake has actually landed.
 signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 0;
 
+-- VT screen saver timeout from the OSD (status[13], quasi-static): 0 = never
+signal vt_act_seconds : integer range 0 to 7200;
+
 signal ifetch: std_logic;
 signal iwait: std_logic;
 
@@ -572,6 +583,8 @@ begin
 
 
 
+   vt_act_seconds <= 900 when vt_saver = '1' else 0;
+
    process(cpuclk)
    begin
       if cpuclk'event and cpuclk = '1' then
@@ -610,34 +623,38 @@ begin
 		kl3_force7bit => 0,
 		
       have_rl => have_rl,
-      rl_sdcard_cs    => rl_sdcard_cs,
-      rl_sdcard_miso  => rl_sdcard_miso,
-      rl_sdcard_mosi  => rl_sdcard_mosi,
-      rl_sdcard_sclk  => rl_sdcard_sclk,
-      rl_sdcard_debug => rl_sdcard_debug,
+      rl_sd_lba       => rl_sd_lba,
+      rl_sd_rd        => rl_sd_rd,
+      rl_sd_wr        => rl_sd_wr,
+      rl_sd_ack       => rl_sd_ack,
+      rl_sd_buff_din  => rl_sd_buff_din,
+      sd_buff_addr    => sd_buff_addr,
+      sd_buff_dout    => sd_buff_dout,
+      sd_buff_wr      => sd_buff_wr,
+      clk_sd          => clk_100,
 
 		have_rk => have_rk,
-		rk_sdcard_cs    => rk_sdcard_cs,
-      rk_sdcard_mosi  => rk_sdcard_mosi,
-      rk_sdcard_sclk  => rk_sdcard_sclk,
-      rk_sdcard_miso  => rk_sdcard_miso,
-      rk_sdcard_debug => rk_sdcard_debug,
+      rk_sd_lba       => rk_sd_lba,
+      rk_sd_rd        => rk_sd_rd,
+      rk_sd_wr        => rk_sd_wr,
+      rk_sd_ack       => rk_sd_ack,
+      rk_sd_buff_din  => rk_sd_buff_din,
 
       have_rh => have_rh,
-      rh_sdcard_cs => rh_sdcard_cs,
-      rh_sdcard_miso => rh_sdcard_miso,
-      rh_sdcard_mosi => rh_sdcard_mosi,
-      rh_sdcard_sclk => rh_sdcard_sclk,
-      rh_sdcard_debug => rh_sdcard_debug,
+      rh_sd_lba => rh_sd_lba,
+      rh_sd_rd => rh_sd_rd,
+      rh_sd_wr => rh_sd_wr,
+      rh_sd_ack => rh_sd_ack,
+      rh_sd_buff_din => rh_sd_buff_din,
 
       have_tm => have_tm,
       tm_media_change => tm_media_change,
       tm_img_mounted => tm_img_mounted_sync,
-      tm_sdcard_cs => tm_sdcard_cs,
-      tm_sdcard_miso => tm_sdcard_miso,
-      tm_sdcard_mosi => tm_sdcard_mosi,
-      tm_sdcard_sclk => tm_sdcard_sclk,
-      tm_sdcard_debug => tm_sdcard_debug,
+      tm_sd_lba => tm_sd_lba,
+      tm_sd_rd => tm_sd_rd,
+      tm_sd_wr => tm_sd_wr,
+      tm_sd_ack => tm_sd_ack,
+      tm_sd_buff_din => tm_sd_buff_din,
 
       have_xu => have_xu,
 		have_xu_debug => 0,
@@ -722,7 +739,7 @@ begin
 		ifetch => ifetch,
 		iwait  => iwait,
 
-      have_act_seconds => 900,  -- screen activity counter
+      have_act_seconds => vt_act_seconds,  -- screen saver timeout (OSD), 0 = off
       have_act => have_act,     --Screen activity
 
       cpuclk => cpuclk,

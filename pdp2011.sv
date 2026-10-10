@@ -210,7 +210,6 @@ localparam CONF_STR = {
 	"O[7:5],PDP-11 Model,20,34,44,45,70,94;",
 	"-;",
 	"O[1],External Ethernet,No,Yes;",
-	"O[4:3],Real SD,RK,RL,RH;",
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -241,8 +240,8 @@ wire [21:0] gamma_bus;
 
 
 wire [31:0] sd_lba[4];
-reg   [3:0] sd_rd;
-reg   [3:0] sd_wr;
+wire  [3:0] sd_rd;
+wire  [3:0] sd_wr;
 wire  [3:0] sd_ack;
 wire [7:0]sd_buff_addr;
 wire [15:0] sd_buff_dout;
@@ -330,109 +329,26 @@ always @(posedge clk_100mhz) begin
 	end
 end
 
-sd_card #(.WIDE(1)) sd_card_rk
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
+// RK: rk11 talks to hps_io slot 0 directly through rtl/mister_blkdev.vhd.
+wire rk_sd_rd, rk_sd_wr;
+assign sd_rd[0] = rk_sd_rd & vsd_sel_rk;
+assign sd_wr[0] = rk_sd_wr & vsd_sel_rk;
 
-	.sdhc(1),
+// RL: rl11 talks to hps_io slot 1 directly through rtl/mister_blkdev.vhd
+// (no SPI SD-card emulation). Requests only while an image is mounted.
+wire rl_sd_rd, rl_sd_wr;
+assign sd_rd[1] = rl_sd_rd & vsd_sel_rl;
+assign sd_wr[1] = rl_sd_wr & vsd_sel_rl;
 
-	.sd_lba      (sd_lba[0]),
-	.sd_rd       (sd_rd[0]),
-	.sd_wr       (sd_wr[0]),
-	.sd_ack      (sd_ack[0]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[0]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
+// RH: rh11 talks to hps_io slot 2 directly through rtl/mister_blkdev.vhd.
+wire rh_sd_rd, rh_sd_wr;
+assign sd_rd[2] = rh_sd_rd & vsd_sel_rh;
+assign sd_wr[2] = rh_sd_wr & vsd_sel_rh;
 
-
-	.sck         (rk_sclk),
-	.ss          (rk_cs | ~vsd_sel_rk),
-	.mosi        (rk_mosi),
-	.miso        (rk_miso)
-
-);
-
-sd_card #(.WIDE(1)) sd_card_rl
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[1]),
-	.sd_rd       (sd_rd[1]),
-	.sd_wr       (sd_wr[1]),
-	.sd_ack      (sd_ack[1]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[1]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (rl_sclk),
-	.ss          (rl_cs | ~vsd_sel_rl),
-	.mosi        (rl_mosi),
-	.miso        (rl_miso)
-
-);
-
-sd_card #(.WIDE(1)) sd_card_rh
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[2]),
-	.sd_rd       (sd_rd[2]),
-	.sd_wr       (sd_wr[2]),
-	.sd_ack      (sd_ack[2]),
-	
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[2]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (rh_sclk),
-	.ss          (rh_cs | ~vsd_sel_rh),
-	.mosi        (rh_mosi),
-	.miso        (rh_miso)
-
-);
-
-sd_card #(.WIDE(1)) sd_card_tm
-(
-	.clk_sys     (clk_100mhz),
-	.clk_spi     (clk_100mhz),
-	.reset       (reset),
-
-	.sdhc(1),
-
-	.sd_lba      (sd_lba[3]),
-	.sd_rd       (sd_rd[3]),
-	.sd_wr       (sd_wr[3]),
-	.sd_ack      (sd_ack[3]),
-
-	.sd_buff_addr(sd_buff_addr),
-	.sd_buff_din (sd_buff_din[3]),
-	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_wr  (sd_buff_wr),
-
-
-	.sck         (tm_sclk),
-	.ss          (tm_cs | ~vsd_sel_tm),
-	.mosi        (tm_mosi),
-	.miso        (tm_miso)
-
-);
+// TM11: tm11 talks to hps_io slot 3 directly through rtl/mister_blkdev.vhd.
+wire tm_sd_rd, tm_sd_wr;
+assign sd_rd[3] = tm_sd_rd & vsd_sel_tm;
+assign sd_wr[3] = tm_sd_wr & vsd_sel_tm;
 
 int have_rk;
 int have_rl;
@@ -448,37 +364,19 @@ assign have_tm = 1;  // controller presence is a build-time choice, not tied to
 assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 
 //
-wire rk_sclk;
-wire rk_cs;
-wire rk_mosi;
-wire rk_miso;
-wire [3:0]rk_sddebug;
+wire [3:0]rk_sddebug = 4'd0;   // RK: no SPI activity bits since mister_blkdev
 //
-wire rh_sclk;
-wire rh_cs;
-wire rh_mosi;
-wire rh_miso;
-wire [3:0]rh_sddebug;
+wire [3:0]rh_sddebug = 4'd0;   // RH: no SPI activity bits since mister_blkdev
 //
-wire rl_sclk;
-wire rl_cs;
-wire rl_mosi;
-wire rl_miso;
-wire [3:0]rl_sddebug;
+wire [3:0]rl_sddebug = 4'd0;   // RL: no SPI activity bits since mister_blkdev
 //
-wire tm_sclk;
-wire tm_cs;
-wire tm_mosi;
-wire tm_miso;
-wire [3:0]tm_sddebug;
+wire [3:0]tm_sddebug = 4'd0;   // TM: no SPI activity bits since mister_blkdev
 //
 //
 
-///// REAL SD ///
-wire  sdcard_miso = vsd_sel_rh? rh_miso : SD_MISO;
-assign SD_CS   = rh_cs   |  vsd_sel_rh;
-assign SD_SCK  = rh_sclk & ~SD_CS;
-assign SD_MOSI = rh_mosi & ~SD_CS;
+// (The original "real SD" pass-through of RH's SPI to the SD_* pins was never
+// completed -- its MISO path was not connected and status[4:3] unused -- and
+// went with RH's SPI interface. The SD_* pins stay tri-stated, as set above.)
 
 /////////////////////////////// LEDS ////////////////////////////////////////
 wire greenled;
@@ -539,34 +437,37 @@ mister_top mister_top
 	.xu_miso  (xu_miso),
 	
    .have_rl (have_rl),
-   .rl_sdcard_cs    (rl_cs),
-   .rl_sdcard_miso  (rl_miso),
-   .rl_sdcard_mosi  (rl_mosi),
-   .rl_sdcard_sclk  (rl_sclk),
-   .rl_sdcard_debug (rl_sddebug),
+   .rl_sd_lba      (sd_lba[1]),
+   .rl_sd_rd       (rl_sd_rd),
+   .rl_sd_wr       (rl_sd_wr),
+   .rl_sd_ack      (sd_ack[1]),
+   .rl_sd_buff_din (sd_buff_din[1]),
+   .sd_buff_addr   (sd_buff_addr),
+   .sd_buff_dout   (sd_buff_dout),
+   .sd_buff_wr     (sd_buff_wr),
 	
    .have_rk  (have_rk),
-	.rk_sdcard_cs     (rk_cs),
-   .rk_sdcard_mosi   (rk_mosi),
-   .rk_sdcard_sclk   (rk_sclk),
-   .rk_sdcard_miso   (rk_miso),
-   .rk_sdcard_debug  (rk_sddebug),
+   .rk_sd_lba      (sd_lba[0]),
+   .rk_sd_rd       (rk_sd_rd),
+   .rk_sd_wr       (rk_sd_wr),
+   .rk_sd_ack      (sd_ack[0]),
+   .rk_sd_buff_din (sd_buff_din[0]),
 	
    .have_rh (have_rh),
-   .rh_sdcard_cs   (rh_cs),
-   .rh_sdcard_miso (rh_miso),
-   .rh_sdcard_mosi (rh_mosi),
-   .rh_sdcard_sclk (rh_sclk),
-   .rh_sdcard_debug(rh_sddebug),
+   .rh_sd_lba      (sd_lba[2]),
+   .rh_sd_rd       (rh_sd_rd),
+   .rh_sd_wr       (rh_sd_wr),
+   .rh_sd_ack      (sd_ack[2]),
+   .rh_sd_buff_din (sd_buff_din[2]),
 
    .have_tm (have_tm),
    .tm_img_mounted (tm_img_mounted),
    .tm_media_change (tape_mount_tgl),
-   .tm_sdcard_cs   (tm_cs),
-   .tm_sdcard_miso (tm_miso),
-   .tm_sdcard_mosi (tm_mosi),
-   .tm_sdcard_sclk (tm_sclk),
-   .tm_sdcard_debug(tm_sddebug),
+   .tm_sd_lba      (sd_lba[3]),
+   .tm_sd_rd       (tm_sd_rd),
+   .tm_sd_wr       (tm_sd_wr),
+   .tm_sd_ack      (sd_ack[3]),
+   .tm_sd_buff_din (sd_buff_din[3]),
 	
 	.dram_addr (SDRAM_A),
 	.dram_dq   (SDRAM_DQ),
@@ -595,6 +496,7 @@ mister_top mister_top
    .vga_cursor_block(status[11]),
    .vga_cursor_blink(status[12]),
    .teste(status[14]),
+   .vt_saver(status[13]),
    .testf(status[15]),
    .have_act(have_act)
 );

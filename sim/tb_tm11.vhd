@@ -1,18 +1,18 @@
--- deps: sdspi.vhd tm11.vhd
+-- deps: mister_blkdev.vhd tm11.vhd
 --
 -- tb_tm11.vhd -- GHDL dry-run harness for rtl/tm11.vhd
 --
--- Substitutes a behavioural mock for sdspi (this file is analysed after the
--- real rtl/sdspi.vhd, so tm11's `sd1 : sdspi` binds to the mock -- GHDL emits
--- a "was also defined" warning, which is expected here).  The mock serves
--- 512-byte blocks out of an in-memory synthetic .tap image.
+-- tm11 runs on the real rtl/mister_blkdev.vhd; a behavioural hps_io disk
+-- slot (sd_rd -> sd_ack -> sd_buff_wr word stream) serves 512-byte blocks
+-- out of an in-memory synthetic .tap image. clk_sys is unrelated to clk.
 --
 -- A tiny Unibus BFM writes MTBRC/MTCMA/MTC and reads MTS/MTC/MTBRC; a memory
 -- model captures NPR writes into dma_mem.  Checks: record read + DMA payload,
 -- MTBRC residual, tape mark -> EOF, record-length error, rewind -> BOT,
 -- space forward / reverse.
 --
--- Run:  sim/run_sim.sh tb_tm11 --stop-time=2ms
+-- Run:  ghdl -a --std=08 -fsynopsys -frelaxed rtl/mister_blkdev.vhd rtl/tm11.vhd sim/tb_tm11.vhd
+--       ghdl -e --std=08 -fsynopsys -frelaxed tb_tm11; ghdl -r --std=08 -fsynopsys -frelaxed tb_tm11 --stop-time=20ms
 --
 
 library IEEE;
@@ -20,125 +20,6 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
 use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
-------------------------------------------------------------------------------
--- mock sdspi
-------------------------------------------------------------------------------
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.STD_LOGIC_ARITH.ALL;
-use IEEE.STD_LOGIC_UNSIGNED.ALL;
-
-entity sdspi is
-   port(
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic := '0';
-      sdcard_debug : out std_logic_vector(3 downto 0);
-
-      sdcard_addr : in std_logic_vector(23 downto 0);
-
-      sdcard_idle : out std_logic;
-      sdcard_read_start : in std_logic;
-      sdcard_read_ack : in std_logic;
-      sdcard_read_done : out std_logic;
-      sdcard_write_start : in std_logic;
-      sdcard_write_ack : in std_logic;
-      sdcard_write_done : out std_logic;
-      sdcard_error : out std_logic;
-
-      sdcard_xfer_addr : in integer range 0 to 255;
-      sdcard_xfer_read : in std_logic;
-      sdcard_xfer_out : out std_logic_vector(15 downto 0);
-      sdcard_xfer_write : in std_logic;
-      sdcard_xfer_in : in std_logic_vector(15 downto 0);
-
-      enable : in integer range 0 to 1 := 0;
-      controller_clk : in std_logic;
-      reset : in std_logic;
-      clk50mhz : in std_logic
-   );
-end sdspi;
-
-architecture mock of sdspi is
-
-   type mem_t is array(0 to 2047) of std_logic_vector(15 downto 0);
-
-   function make_tap return mem_t is
-      variable m : mem_t := (others => x"0000");
-   begin
-      -- record A : length 4, payload bytes 11 22 33 44   (bytes 0..11)
-      m(0) := x"0004"; m(1) := x"0000";
-      m(2) := x"2211"; m(3) := x"4433";
-      m(4) := x"0004"; m(5) := x"0000";
-      -- record B : length 8, payload A0 A1 .. A7          (bytes 12..27)
-      m(6) := x"0008"; m(7) := x"0000";
-      m(8) := x"A1A0"; m(9) := x"A3A2"; m(10) := x"A5A4"; m(11) := x"A7A6";
-      m(12) := x"0008"; m(13) := x"0000";
-      -- tape mark 1                                        (bytes 28..31)
-      m(14) := x"0000"; m(15) := x"0000";
-      -- record C : length 6, payload 01 11 02 33 55 00     (bytes 32..45)
-      m(16) := x"0006"; m(17) := x"0000";
-      m(18) := x"1101"; m(19) := x"3302"; m(20) := x"0055";
-      m(21) := x"0006"; m(22) := x"0000";
-      -- tape mark 2                                        (bytes 46..49)
-      m(23) := x"0000"; m(24) := x"0000";
-      -- end of medium                                      (bytes 50..)
-      m(25) := x"FFFF"; m(26) := x"FFFF";
-      return m;
-   end function;
-
-   signal tap : mem_t := make_tap;
-   signal blk : mem_t := (others => x"0000");
-   signal rdone : std_logic := '0';
-   signal delay : integer range 0 to 15 := 0;
-
-begin
-
-   sdcard_cs <= '1';
-   sdcard_mosi <= '0';
-   sdcard_sclk <= '0';
-   sdcard_debug <= "0000";
-   sdcard_idle <= '1';
-   sdcard_write_done <= '0';
-   sdcard_error <= '0';
-   sdcard_read_done <= rdone;
-
-   process(controller_clk)
-      variable base : integer;
-   begin
-      if rising_edge(controller_clk) then
-         sdcard_xfer_out <= blk(sdcard_xfer_addr);
-
-         if reset = '1' then
-            rdone <= '0';
-            delay <= 0;
-         else
-            if rdone = '0' and sdcard_read_start = '1' and delay = 0 then
-               delay <= 4;
-            elsif delay > 1 then
-               delay <= delay - 1;
-            elsif delay = 1 then
-               base := conv_integer(sdcard_addr) * 256;
-               for i in 0 to 255 loop
-                  if (base + i) <= 2047 then
-                     blk(i) <= tap(base + i);
-                  else
-                     blk(i) <= x"0000";
-                  end if;
-               end loop;
-               delay <= 0;
-               rdone <= '1';
-            end if;
-
-            if rdone = '1' and sdcard_read_ack = '1' then
-               rdone <= '0';
-            end if;
-         end if;
-      end if;
-   end process;
-
-end mock;
 
 ------------------------------------------------------------------------------
 -- testbench
@@ -175,11 +56,15 @@ architecture sim of tb_tm11 is
          bus_master_control_dati : out std_logic;
          bus_master_control_dato : out std_logic;
          bus_master_nxm : in std_logic;
-         sdcard_cs : out std_logic;
-         sdcard_mosi : out std_logic;
-         sdcard_sclk : out std_logic;
-         sdcard_miso : in std_logic;
-         sdcard_debug : out std_logic_vector(3 downto 0);
+         sd_lba : out std_logic_vector(31 downto 0);
+         sd_rd : out std_logic;
+         sd_wr : out std_logic;
+         sd_ack : in std_logic;
+         sd_buff_addr : in std_logic_vector(7 downto 0);
+         sd_buff_dout : in std_logic_vector(15 downto 0);
+         sd_buff_din : out std_logic_vector(15 downto 0);
+         sd_buff_wr : in std_logic;
+         clk_sys : in std_logic;
          have_tm : in integer range 0 to 1;
          media_change : in std_logic := '0';
          reset : in std_logic;
@@ -227,6 +112,42 @@ architecture sim of tb_tm11 is
 
    signal fail_count : integer := 0;
 
+   type mem_t is array(0 to 2047) of std_logic_vector(15 downto 0);
+
+   function make_tap return mem_t is
+      variable m : mem_t := (others => x"0000");
+   begin
+      -- record A : length 4, payload bytes 11 22 33 44   (bytes 0..11)
+      m(0) := x"0004"; m(1) := x"0000";
+      m(2) := x"2211"; m(3) := x"4433";
+      m(4) := x"0004"; m(5) := x"0000";
+      -- record B : length 8, payload A0 A1 .. A7          (bytes 12..27)
+      m(6) := x"0008"; m(7) := x"0000";
+      m(8) := x"A1A0"; m(9) := x"A3A2"; m(10) := x"A5A4"; m(11) := x"A7A6";
+      m(12) := x"0008"; m(13) := x"0000";
+      -- tape mark 1                                        (bytes 28..31)
+      m(14) := x"0000"; m(15) := x"0000";
+      -- record C : length 6, payload 01 11 02 33 55 00     (bytes 32..45)
+      m(16) := x"0006"; m(17) := x"0000";
+      m(18) := x"1101"; m(19) := x"3302"; m(20) := x"0055";
+      m(21) := x"0006"; m(22) := x"0000";
+      -- tape mark 2                                        (bytes 46..49)
+      m(23) := x"0000"; m(24) := x"0000";
+      -- end of medium                                      (bytes 50..)
+      m(25) := x"FFFF"; m(26) := x"FFFF";
+      return m;
+   end function;
+   constant tap : mem_t := make_tap;
+
+   signal clk_sys : std_logic := '0';
+   signal sd_lba : std_logic_vector(31 downto 0);
+   signal sd_rd, sd_wr : std_logic;
+   signal sd_ack : std_logic := '0';
+   signal sd_buff_addr : std_logic_vector(7 downto 0) := (others => '0');
+   signal sd_buff_dout : std_logic_vector(15 downto 0) := (others => '0');
+   signal sd_buff_din : std_logic_vector(15 downto 0);
+   signal sd_buff_wr : std_logic := '0';
+
 begin
 
    clk    <= not clk    after 10 ns;
@@ -255,11 +176,15 @@ begin
       bus_master_control_dati => m_cdati,
       bus_master_control_dato => m_cdato,
       bus_master_nxm => '0',
-      sdcard_cs => open,
-      sdcard_mosi => open,
-      sdcard_sclk => open,
-      sdcard_miso => '0',
-      sdcard_debug => open,
+      sd_lba => sd_lba,
+      sd_rd => sd_rd,
+      sd_wr => sd_wr,
+      sd_ack => sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sys,
       have_tm => 1,
       media_change => media_change,
       reset => reset,
@@ -267,6 +192,32 @@ begin
       nclk => nclk,
       clk => clk
    );
+
+   clk_sys <= not clk_sys after 7 ns;
+
+   -- behavioural hps_io disk slot: read-only, serves the synthetic .tap
+   hps: process
+      variable base : integer;
+   begin
+      wait until rising_edge(clk_sys);
+      assert sd_wr = '0' report "tm11 issued a block write" severity error;
+      if sd_rd = '1' then
+         base := conv_integer(sd_lba) * 256;
+         for i in 1 to 37 loop wait until rising_edge(clk_sys); end loop;
+         sd_ack <= '1';
+         wait until rising_edge(clk_sys);
+         for w in 0 to 255 loop
+            sd_buff_addr <= conv_std_logic_vector(w, 8);
+            if base + w <= 2047 then sd_buff_dout <= tap(base + w); else sd_buff_dout <= x"0000"; end if;
+            sd_buff_wr <= '1';
+            wait until rising_edge(clk_sys);
+            sd_buff_wr <= '0';
+            for g in 1 to 3 loop wait until rising_edge(clk_sys); end loop;
+         end loop;
+         sd_ack <= '0';
+         wait until rising_edge(clk_sys);
+      end if;
+   end process;
 
    -- NPR memory model
    process(clk)

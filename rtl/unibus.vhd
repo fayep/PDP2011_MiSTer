@@ -37,28 +37,32 @@ entity unibus is
 
 -- rl controller
       have_rl : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rl_sdcard_cs : out std_logic;
-      rl_sdcard_mosi : out std_logic;
-      rl_sdcard_sclk : out std_logic;
-      rl_sdcard_miso : in std_logic := '0';
-      rl_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rl_sd_lba : out std_logic_vector(31 downto 0);                 -- RL: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rl_sd_rd : out std_logic;
+      rl_sd_wr : out std_logic;
+      rl_sd_ack : in std_logic := '0';
+      rl_sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_addr : in std_logic_vector(7 downto 0) := (others => '0');   -- hps_io buffer bus, shared by all slots
+      sd_buff_dout : in std_logic_vector(15 downto 0) := (others => '0');
+      sd_buff_wr : in std_logic := '0';
+      clk_sd : in std_logic := '0';                                  -- hps_io's clock (clk_100mhz)
 
 -- rk controller
       have_rk : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       have_rk_num : in integer range 1 to 8 := 8;                    -- active number of drives on the controller; set to < 8 to save core
-      rk_sdcard_cs : out std_logic;
-      rk_sdcard_mosi : out std_logic;
-      rk_sdcard_sclk : out std_logic;
-      rk_sdcard_miso : in std_logic := '0';
-      rk_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rk_sd_lba : out std_logic_vector(31 downto 0);                 -- RK: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rk_sd_rd : out std_logic;
+      rk_sd_wr : out std_logic;
+      rk_sd_ack : in std_logic := '0';
+      rk_sd_buff_din : out std_logic_vector(15 downto 0);
 
 -- rh controller
       have_rh : in integer range 0 to 1 := 0;                        -- enable conditional compilation
-      rh_sdcard_cs : out std_logic;
-      rh_sdcard_mosi : out std_logic;
-      rh_sdcard_sclk : out std_logic;
-      rh_sdcard_miso : in std_logic := '0';
-      rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      rh_sd_lba : out std_logic_vector(31 downto 0);                 -- RH: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      rh_sd_rd : out std_logic;
+      rh_sd_wr : out std_logic;
+      rh_sd_ack : in std_logic := '0';
+      rh_sd_buff_din : out std_logic_vector(15 downto 0);
       rh_type : in integer range 1 to 7 := 6;                        -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
       rh_noofcyl : in integer range 128 to 8192 := 1024;             -- for RM06 and RP2G: how many cylinders are available
 
@@ -66,11 +70,11 @@ entity unibus is
       have_tm : in integer range 0 to 1 := 0;                        -- enable conditional compilation
       tm_media_change : in std_logic := '0';                         -- toggles on .tap (un)mount -> re-home to BOT
       tm_img_mounted : in integer range 0 to 1 := 1;                 -- is a tape image actually mounted (see tm11's img_mounted)
-      tm_sdcard_cs : out std_logic;
-      tm_sdcard_mosi : out std_logic;
-      tm_sdcard_sclk : out std_logic;
-      tm_sdcard_miso : in std_logic := '0';
-      tm_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
+      tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
+      tm_sd_rd : out std_logic;
+      tm_sd_wr : out std_logic;
+      tm_sd_ack : in std_logic := '0';
+      tm_sd_buff_din : out std_logic_vector(15 downto 0);
 
 -- xu enc424j600 controller interface
       have_xu : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -618,11 +622,15 @@ component rl11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_rl : in integer range 0 to 1;
       reset : in std_logic;
@@ -659,11 +667,15 @@ component tm11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_tm : in integer range 0 to 1;
       media_change : in std_logic := '0';
@@ -702,11 +714,15 @@ component rk11 is
       bus_master_control_dato : out std_logic;
       bus_master_nxm : in std_logic;
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_rk : in integer range 0 to 1;
       have_rk_num : in integer range 1 to 8;
@@ -751,11 +767,15 @@ component rh11 is
       rh70_bus_master_control_dato : out std_logic;
       rh70_bus_master_nxm : in std_logic := '0';
 
-      sdcard_cs : out std_logic;
-      sdcard_mosi : out std_logic;
-      sdcard_sclk : out std_logic;
-      sdcard_miso : in std_logic;
-      sdcard_debug : out std_logic_vector(3 downto 0);
+      sd_lba : out std_logic_vector(31 downto 0);
+      sd_rd : out std_logic;
+      sd_wr : out std_logic;
+      sd_ack : in std_logic;
+      sd_buff_addr : in std_logic_vector(7 downto 0);
+      sd_buff_dout : in std_logic_vector(15 downto 0);
+      sd_buff_din : out std_logic_vector(15 downto 0);
+      sd_buff_wr : in std_logic;
+      clk_sys : in std_logic;
 
       have_rh : in integer range 0 to 1 := 0;
       have_rh70 : in integer range 0 to 1 := 0;
@@ -1836,11 +1856,15 @@ begin
       bus_master_control_dato => rl0_control_dato,
       bus_master_nxm => busmaster_nxmabort,
 
-      sdcard_cs => rl_sdcard_cs,
-      sdcard_mosi => rl_sdcard_mosi,
-      sdcard_sclk => rl_sdcard_sclk,
-      sdcard_miso => rl_sdcard_miso,
-      sdcard_debug => rl_sdcard_debug,
+      sd_lba => rl_sd_lba,
+      sd_rd => rl_sd_rd,
+      sd_wr => rl_sd_wr,
+      sd_ack => rl_sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => rl_sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sd,
 
       have_rl => have_rl,
       reset => cpu_init,
@@ -1875,11 +1899,15 @@ begin
       bus_master_control_dato => tm0_control_dato,
       bus_master_nxm => busmaster_nxmabort,
 
-      sdcard_cs => tm_sdcard_cs,
-      sdcard_mosi => tm_sdcard_mosi,
-      sdcard_sclk => tm_sdcard_sclk,
-      sdcard_miso => tm_sdcard_miso,
-      sdcard_debug => tm_sdcard_debug,
+      sd_lba => tm_sd_lba,
+      sd_rd => tm_sd_rd,
+      sd_wr => tm_sd_wr,
+      sd_ack => tm_sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => tm_sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sd,
 
       have_tm => have_tm,
       media_change => tm_media_change,
@@ -1916,11 +1944,15 @@ begin
       bus_master_control_dato => rk0_control_dato,
       bus_master_nxm => busmaster_nxmabort,
 
-      sdcard_cs => rk_sdcard_cs,
-      sdcard_mosi => rk_sdcard_mosi,
-      sdcard_sclk => rk_sdcard_sclk,
-      sdcard_miso => rk_sdcard_miso,
-      sdcard_debug => rk_sdcard_debug,
+      sd_lba => rk_sd_lba,
+      sd_rd => rk_sd_rd,
+      sd_wr => rk_sd_wr,
+      sd_ack => rk_sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => rk_sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sd,
 
       have_rk => have_rk,
       have_rk_num => have_rk_num,
@@ -1964,11 +1996,15 @@ begin
       rh70_bus_master_control_dato => rh70_bus_master_control_dato,
       rh70_bus_master_nxm => rh70_bus_master_nxm,
 
-      sdcard_cs => rh_sdcard_cs,
-      sdcard_mosi => rh_sdcard_mosi,
-      sdcard_sclk => rh_sdcard_sclk,
-      sdcard_miso => rh_sdcard_miso,
-      sdcard_debug => rh_sdcard_debug,
+      sd_lba => rh_sd_lba,
+      sd_rd => rh_sd_rd,
+      sd_wr => rh_sd_wr,
+      sd_ack => rh_sd_ack,
+      sd_buff_addr => sd_buff_addr,
+      sd_buff_dout => sd_buff_dout,
+      sd_buff_din => rh_sd_buff_din,
+      sd_buff_wr => sd_buff_wr,
+      clk_sys => clk_sd,
 
       rh_type => rh_type,
       rh_noofcyl => rh_noofcyl,

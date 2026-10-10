@@ -40,7 +40,7 @@ t0 = time.time()
 ssh(f"""echo 'load_core /media/fat/menu.rbf' > /dev/MiSTer_cmd; sleep 4
 for p in $(pidof pdp_harness); do kill $p; done; sleep 1
 stty -F /dev/ttyS1 19200 cs8 -parenb -cstopb -crtscts clocal -icanon -echo -ixon min 1 time 0
-nohup /media/fat/Scripts/pdp_harness -tcp :7788 > /tmp/pdp_harness_stdout.log 2>&1 &
+setsid nohup /media/fat/Scripts/pdp_harness -tcp :7788 > /tmp/pdp_harness_stdout.log 2>&1 < /dev/null &
 sleep 2; echo 'load_core /media/fat/_Debug/{MGL}.mgl' > /dev/MiSTer_cmd""", timeout=60)
 note(f"loaded {MGL}")
 
@@ -51,7 +51,8 @@ rules = [
     ("option", r"option:.*$", ""),
     ("date", r"date\?.*$", "01-OCT-99"),
     ("time", r"time\?.*$", "12:00"),
-    ("start timesharing", r"start timesharing\?.*$", "Y"),
+    # really INIT's Option: prompt with START as the default -- answer the option, not "yes"
+    ("start timesharing", r"start timesharing\?.*$", "START"),
     ("proceed startup", r"proceed with system startup\?.*$", "YES"),
     ("on the air", r"on the air", ""),
     ("user", r"user:\s*$", "1,2"),
@@ -87,5 +88,6 @@ while time.time() - t0 < TIMEOUT:
         break
 note(f"RESULT {result}")
 log.write("=== console ===\n" + console() + "\n"); log.close()
+ssh("for p in $(pidof pdp_harness); do kill $p; done")   # free ttyS1 for a terminal
 print(result)
 sys.exit(0 if result == "PASS" else 1)
