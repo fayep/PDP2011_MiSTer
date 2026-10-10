@@ -147,6 +147,7 @@ signal abort_nonresident : std_logic;
 signal abort_pagelength : std_logic;
 signal abort_readonly : std_logic;
 signal mmu_mmuabort : std_logic;
+signal mmr012_ref : std_logic;                                    -- reference to MMR0, MMR1 or MMR2
 signal acf_trap : std_logic;                                      -- ACF trap condition, with or without TENB
 signal trap_mm : std_logic;
 
@@ -745,6 +746,8 @@ begin
       else '0';
 
 -- generate mmu trap
+   mmr012_ref <= '1' when addr_p24z1 = o"17777572" or addr_p24z1 = o"17777574" or addr_p24z1 = o"17777576" else '0';
+
 -- ACF 1 or 4 on a read, 4 or 5 on a write sets MMR0 bit 12 whether or not traps are enabled;
 -- TENB (bit 9) only requests the vector 250 trap (KB11-C; SIMH relocR_test; EKBEE1 TESTNO 55)
    acf_trap <=
@@ -954,7 +957,10 @@ sr0out_debug <= sr0;
                      sr0(12) <= '1';
                   end if;
                   sr0(7) <= sr0_ic;
-                  if (cpu_rd = '1' or cpu_wr = '1') then
+                  -- page/mode (6:1) follow every reference until an abort freezes MMR0, except the MM
+                  -- registers MMR0-2 themselves (KB11-C 9.1.9 "INT REG"): reading MMR0 must not leave
+                  -- page 7 there (EKBEE1 TESTNO 55-60)
+                  if (cpu_rd = '1' or cpu_wr = '1') and mmr012_ref = '0' then
                      sr0(6 downto 5) <= psw_mmumode;
                      sr0(4) <= sr3id;
                      sr0(3 downto 1) <= cpu_addr_v(15 downto 13);
