@@ -41,6 +41,7 @@ entity kl11 is
       rx : in std_logic;
       rts : out std_logic;
       cts : in std_logic;
+      silo_off : in std_logic := '0';                                -- '1': no receive silo (plain DL11), even with rtscts
 
       have_kl11 : in integer range 0 to 1;
       have_kl11_force7bit : in integer range 0 to 1;
@@ -205,7 +206,7 @@ begin
    base_addr_match <= '1' when base_addr(17 downto 3) = bus_addr(17 downto 3) and have_kl11 = 1 else '0';
    bus_addr_match <= base_addr_match;
 
-   have_kl11_silo <= 1 when have_kl11_rtscts = 1 else 0;
+   have_kl11_silo <= 1 when have_kl11_rtscts = 1 and silo_off = '0' else 0;
 
    process(clk, base_addr_match, reset, have_kl11, recv_copy)
    begin
@@ -454,6 +455,8 @@ begin
                      end if;
 
                   elsif have_kl11_rtscts = 1 then
+
+                     recv_c <= recv_p;                                         -- silo switched off (silo_off): keep it empty
 
                      if recv_state /= recv_idle and recv_copy = '1' then         -- if we're already receiving, and in the process of getting rid of the last byte, then we're busy.
                         rts <= '1';

@@ -211,6 +211,9 @@ localparam CONF_STR = {
 	"-;",
 	"O[1],External Ethernet,No,Yes;",
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
+	"H0O[17],Line 1 (176500),Serial port,TU58 DECtape II;",
+	"O[18],Line clock,60 Hz,50 Hz;",
+	"O[24:22],Boot device,Auto,TM11 tape,RK11,RL11,RH70 (RP/RM);",
 	"O[16],Video,Terminal,Front panel;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -265,6 +268,7 @@ hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(4),.PS2DIV(3125)) hps_io
    .gamma_bus(gamma_bus),
 	.buttons(buttons),
 	.status(status),
+	.status_menumask({15'd0, status[2]}),   // H0: line 1 is on the UART only with the VT console
 	
 	.sd_lba(sd_lba),
    .sd_rd(sd_rd),
@@ -377,6 +381,7 @@ int tm_img_mounted;
 int rk_img_mounted;
 int rl_img_mounted;
 int rh_img_mounted;
+int boot_sel;
 
 // Controllers are always present on the bus, as real cards are; only the
 // drive behind each one goes online/offline with its image (img_mounted).
@@ -387,6 +392,7 @@ assign have_tm = 1;  // controller presence is a build-time choice, not tied to
                       // mount state -- see tm11's img_mounted for "no tape"
 assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 assign rk_img_mounted = vsd_sel_rk ? 1 : 0;
+assign boot_sel = status[24:22];   // 0 auto, 1 mt, 2 rk, 3 rl, 4 rh (5-7 = auto); 19-21 avoided: old configs have bit 21 set
 assign rl_img_mounted = vsd_sel_rl ? 1 : 0;
 assign rh_img_mounted = vsd_sel_rh ? 1 : 0;
 
@@ -451,6 +457,8 @@ mister_top mister_top
 	.clk_50 (clk_50mhz),
    .modelcode    (modelcode),
 	.serial_console (status[2]),
+	.line_50hz      (status[18]),
+	.kl1_silo_off   (status[17] & ~status[2]),  // TU58 on line 1: DL11 without the receive silo
 	
    .tx1  (UART_TXD),
    .rx1  (UART_RXD),
@@ -492,6 +500,7 @@ mister_top mister_top
    .rk_img_mounted (rk_img_mounted),
    .rl_img_mounted (rl_img_mounted),
    .rh_img_mounted (rh_img_mounted),
+   .boot_sel       (boot_sel),         // OSD boot device -> register at 165776 for the low rom
    .tm_media_change (tape_mount_tgl),
    .tm_sd_lba      (sd_lba[3]),
    .tm_sd_rd       (tm_sd_rd),
@@ -521,6 +530,7 @@ mister_top mister_top
    .vga_vsync(vga_vsync),
    .vga_hblank(vga_hblank),
    .vga_vblank(vga_vblank),
+   .vga_saver(vga_saver),
    .ce_pix(ce_pix_vt),
    .vga_fb(vga_fb),
    .vga_ht(vga_ht),
@@ -541,6 +551,7 @@ wire [7:0] video;
 wire vga_vsync;
 wire vga_hsync;
 wire vga_vblank;
+wire vga_saver;
 wire vga_hblank;
 wire vga_fb;
 wire vga_ht;
@@ -624,6 +635,13 @@ always @(posedge clk_100mhz) begin
 		pv_flip <= ~pv_flip;
 end
 wire panel_on = status[16] ^ pv_flip;
+
+// VT screen saver (OSD, keyboard wakes it): the panel view blanks with it.
+reg [1:0] saver_s;
+always @(posedge clk_100mhz) saver_s <= {saver_s[0], vga_saver};
+wire [7:0] pv_r_s = saver_s[1] ? 8'd0 : pv_r;
+wire [7:0] pv_g_s = saver_s[1] ? 8'd0 : pv_g;
+wire [7:0] pv_b_s = saver_s[1] ? 8'd0 : pv_b;
 wire ce_pix = panel_on ? pv_ce : ce_pix_vt;
 
 video_mixer video_mixer
@@ -632,9 +650,9 @@ video_mixer video_mixer
         .freeze_sync(),
         .scandoubler(1'b0),
         .hq2x(),
-        .R(panel_on ? pv_r : vga_red),
-        .G(panel_on ? pv_g : vga_green),
-		  .B(panel_on ? pv_b : vga_blue),
+        .R(panel_on ? pv_r_s : vga_red),
+        .G(panel_on ? pv_g_s : vga_green),
+		  .B(panel_on ? pv_b_s : vga_blue),
         .HSync(panel_on ? pv_hs : vga_hsync),
         .VSync(panel_on ? pv_vs : vga_vsync),
         .HBlank(panel_on ? pv_hb : vga_hblank),

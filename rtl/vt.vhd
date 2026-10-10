@@ -25,6 +25,7 @@ entity vt is
       vga_vsync : out std_logic;                                     -- vertical sync
       vga_hblank: out std_logic;                                     
       vga_vblank : out std_logic;                                    
+      vga_saver : out std_logic;                                      -- '1' while the screen saver blanks the picture
 		ce_pix     : out std_logic;
       vga_fb : out std_logic;                                        -- output - full
       vga_ht : out std_logic;                                        -- output - half
@@ -305,6 +306,7 @@ component kl11 is
       rx : in std_logic;
       rts : out std_logic;
       cts : in std_logic;
+      silo_off : in std_logic := '0';
 
       have_kl11 : in integer range 0 to 1;
       have_kl11_force7bit : in integer range 0 to 1;
@@ -378,6 +380,7 @@ component vga is
       vga_vsync : out std_logic;                                     -- vertical sync
       vga_hblank : out std_logic;                                     -- horizontal blank
       vga_vblank : out std_logic;                                     -- vertical blank
+      vga_saver : out std_logic;                                      -- '1' while the screen saver blanks the picture
 		ce_pix     : out std_logic;
       vga_fb : out std_logic;                                        -- monochrome output full on
       vga_ht : out std_logic;                                        -- monochrome output half strength for shading
@@ -830,6 +833,7 @@ begin
       vga_vsync => vga_vsync,
 		vga_hblank => vga_hblank,
 		vga_vblank => vga_vblank,
+		vga_saver => vga_saver,
 		ce_pix     => ce_pix,
       vga_fb => vga_fb,
       vga_ht => vga_ht,

@@ -30,6 +30,8 @@ entity mister_top is
 		-- PDP settings
 		modelcode      : in integer;
 		serial_console : in std_logic;
+		line_50hz      : in std_logic;
+		kl1_silo_off   : in std_logic;    -- TU58 on line 1: plain DL11 receiver
 		have_rk        : in integer;
 		have_rl        : in integer;
 		have_rh        : in integer;
@@ -38,6 +40,7 @@ entity mister_top is
 		rk_img_mounted : in integer;
 		rl_img_mounted : in integer;
 		rh_img_mounted : in integer;
+		boot_sel       : in integer;          -- OSD boot device: 0 auto, 1 mt, 2 rk, 3 rl, 4 rh
 		have_xu        : in integer;
 		
 		-- VT settings
@@ -95,6 +98,7 @@ entity mister_top is
       vga_vsync      : out std_logic;
       vga_hblank     : out std_logic;
       vga_vblank     : out std_logic;
+      vga_saver      : out std_logic;   -- VT screen saver active (the panel view blanks too)
 		ce_pix         : out std_logic;
       vga_fb         : out std_logic;
       vga_ht         : out std_logic;
@@ -177,6 +181,7 @@ component unibus is
       rk_img_mounted : in integer range 0 to 1 := 1;
       rl_img_mounted : in integer range 0 to 1 := 1;
       rh_img_mounted : in integer range 0 to 1 := 1;
+      boot_sel : in integer range 0 to 7 := 0;                       -- OSD boot device (0 = auto)
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
       tm_sd_rd : out std_logic;
       tm_sd_wr : out std_logic;
@@ -366,6 +371,8 @@ component unibus is
 
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
+      line_50hz : in std_logic := '0';                               -- KW11-L at 50 Hz instead of kw11l_hz (OSD)
+      kl1_silo_off : in std_logic := '0';                            -- line 1 without receive silo (OSD: TU58 on line 1)
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
       reset : in std_logic                                           -- active '1' synchronous reset
    );
@@ -429,6 +436,7 @@ component vt is
       vga_vsync : out std_logic;                                     -- vertical sync
       vga_hblank : out std_logic;                                    -- horizontal blank
       vga_vblank : out std_logic;                                    -- vertical blank
+      vga_saver : out std_logic;                                      -- '1' while the screen saver blanks the picture
       ce_pix : out std_logic;                                        -- 
       vga_fb : out std_logic;                                        -- output - full
       vga_ht : out std_logic;                                        -- output - half
@@ -490,6 +498,8 @@ signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 0;
 signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 0;
 signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 0;
 signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 0;
+-- boot_sel: OSD boot device (quasi-static), synchronised on cpuclk the same way
+signal boot_sel_meta, boot_sel_sync : integer range 0 to 7 := 0;
 
 -- VT screen saver timeout from the OSD (status[13], quasi-static): 0 = never
 signal vt_act_seconds : integer range 0 to 7200;
@@ -615,6 +625,7 @@ begin
          rk_img_mounted_meta <= rk_img_mounted;  rk_img_mounted_sync <= rk_img_mounted_meta;
          rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
          rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
+         boot_sel_meta <= boot_sel;  boot_sel_sync <= boot_sel_meta;
       end if;
    end process;
 
@@ -679,6 +690,7 @@ begin
       rk_img_mounted => rk_img_mounted_sync,
       rl_img_mounted => rl_img_mounted_sync,
       rh_img_mounted => rh_img_mounted_sync,
+      boot_sel => boot_sel_sync,
       tm_sd_lba => tm_sd_lba,
       tm_sd_rd => tm_sd_rd,
       tm_sd_wr => tm_sd_wr,
@@ -736,6 +748,8 @@ begin
       iwait  => iwait,
       ifetch => ifetch,
       reset => cpureset_cpu,
+      line_50hz => line_50hz,
+      kl1_silo_off => kl1_silo_off,
       clk50mhz => clk_50,
       clk => cpuclk
    );
@@ -746,6 +760,7 @@ begin
       vga_vsync => vga_vsync,
       vga_hblank => vga_hblank,
       vga_vblank => vga_vblank,
+      vga_saver => vga_saver,
 		ce_pix => ce_pix,
       vga_fb => vga_fb,
       vga_ht => vga_ht,

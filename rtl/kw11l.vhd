@@ -38,6 +38,7 @@ entity kw11l is
 
       have_kw11l : in integer range 0 to 1;
       kw11l_hz : in integer range 50 to 800;
+      line_50hz : in std_logic := '0';                              -- 1 = 50 Hz line clock (OSD), else kw11l_hz
 
       reset : in std_logic;
       clk50mhz : in std_logic;
@@ -74,11 +75,10 @@ begin
    base_addr_match <= '1' when base_addr(17 downto 1) = bus_addr(17 downto 1) and have_kw11l = 1 else '0';
    bus_addr_match <= base_addr_match;
 
-   with kw11l_hz select limit <=
-      31249  when 800,
-      416666 when 60,
-      499999 when 50,
-      416666 when others;
+   -- half periods in clk50mhz cycles: 800 Hz = 31250, 60 Hz = 416667, 50 Hz = 500000
+   limit <= 31249  when kw11l_hz = 800 else
+            499999 when line_50hz = '1' or kw11l_hz = 50 else
+            416666;
 
    process(clk, reset, lineclk)
    begin

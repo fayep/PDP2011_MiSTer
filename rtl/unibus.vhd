@@ -73,6 +73,7 @@ entity unibus is
       rk_img_mounted : in integer range 0 to 1 := 1;                 -- disk image mounted behind the controller (drive online)
       rl_img_mounted : in integer range 0 to 1 := 1;
       rh_img_mounted : in integer range 0 to 1 := 1;
+      boot_sel : in integer range 0 to 7 := 0;                       -- OSD boot device: 0 auto, 1 mt, 2 rk, 3 rl, 4 rh
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
       tm_sd_rd : out std_logic;
       tm_sd_wr : out std_logic;
@@ -262,6 +263,8 @@ entity unibus is
 
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
+      line_50hz : in std_logic := '0';                               -- KW11-L at 50 Hz instead of kw11l_hz (OSD)
+      kl1_silo_off : in std_logic := '0';                            -- line 1 without receive silo (OSD: TU58 on line 1)
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
       reset : in std_logic                                           -- active '1' synchronous reset
    );
@@ -558,6 +561,7 @@ component kl11 is
       rx : in std_logic;
       rts : out std_logic;
       cts : in std_logic;
+      silo_off : in std_logic := '0';
 
       have_kl11 : in integer range 0 to 1;
       have_kl11_force7bit : in integer range 0 to 1;
@@ -591,6 +595,7 @@ component kw11l is
 
       have_kw11l : in integer range 0 to 1;
       kw11l_hz : in integer range 50 to 800;
+      line_50hz : in std_logic := '0';
 
       reset : in std_logic;
       clk50mhz : in std_logic;
@@ -1178,6 +1183,15 @@ signal mem_dati : std_logic_vector(15 downto 0);
 signal rom0_addr_match : std_logic;
 signal rom0_dati : std_logic_vector(15 downto 0);
 
+-- Boot device register at 165776 (last word of the m9312 low rom, read-only):
+-- the low rom's last act reads it and jumps there. Auto = 173000 (the hi
+-- rom's probe, as before) once any image is mounted -- 0 until then, so an
+-- empty machine waits instead of falling through to an absent RP; a chosen
+-- device = its go routine in the hi rom once an image is mounted behind it,
+-- 0 until then (the rom waits). The go
+-- addresses are labels in roms/m9312h47 (see its .lst); keep them in step.
+signal bootsel_dati : std_logic_vector(15 downto 0);
+
 signal rom1_addr_match : std_logic;
 signal rom1_dati : std_logic_vector(15 downto 0);
 
@@ -1628,6 +1642,15 @@ begin
       clk => nclk
    );
 
+   bootsel_dati <= x"F600" when (boot_sel = 0 or boot_sel > 4)        -- 173000 auto: hi rom probe, once
+         and (tm_img_mounted = 1 or rk_img_mounted = 1                   -- anything is mounted to boot from
+           or rl_img_mounted = 1 or rh_img_mounted = 1)                  -- (else 0: the rom keeps waiting)
+      else x"F6AE" when boot_sel = 1 and tm_img_mounted = 1           -- 173256 mtgo
+      else x"F736" when boot_sel = 2 and rk_img_mounted = 1           -- 173466 rkgo
+      else x"F6D2" when boot_sel = 3 and rl_img_mounted = 1           -- 173322 rlgo
+      else x"F76C" when boot_sel = 4 and rh_img_mounted = 1           -- 173554 rpgo
+      else x"0000";                                                   -- chosen drive has no image yet
+
    bootrom0: m9312l port map(
       base_addr => o"765000",                   -- m9312 lo rom
 
@@ -1683,6 +1706,7 @@ begin
 
       have_kw11l => have_kw11l,
       kw11l_hz => kw11l_hz,
+      line_50hz => line_50hz,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       clk => nclk
@@ -1742,6 +1766,7 @@ begin
       rx => rx1,
       rts => rts1,
       cts => cts1,
+      silo_off => kl1_silo_off,
       have_kl11_bps => kl1_bps,
       have_kl11_force7bit => kl1_force7bit,
       have_kl11_rtscts => kl1_rtscts,
@@ -2618,6 +2643,7 @@ begin
       else kl3_dati when kl3_addr_match = '1'
       else kw0_dati when kw0_addr_match = '1'
       else csdr_dati when csdr_addr_match = '1'
+      else bootsel_dati when rom0_addr_match = '1' and unibus_addr(8 downto 1) = "11111111"
       else rom0_dati when rom0_addr_match = '1'
       else rom1_dati when rom1_addr_match = '1'
       else rl0_dati when rl0_addr_match = '1'
