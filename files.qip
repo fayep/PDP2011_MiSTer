@@ -40,4 +40,6 @@ set_global_assignment -name VHDL_FILE roms/vtbrt42.vhd
 set_global_assignment -name VHDL_FILE rtl/xu.vhd
 set_global_assignment -name VHDL_FILE rtl/xubl.vhd
 set_global_assignment -name VHDL_FILE rtl/xubm.vhd
+set_global_assignment -name VHDL_FILE rtl/xufp.vhd
+set_global_assignment -name VHDL_FILE rtl/xu_ddr_bridge.vhd
 set_global_assignment -name VHDL_FILE roms/xubrt45.vhd 

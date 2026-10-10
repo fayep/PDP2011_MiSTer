@@ -53,6 +53,11 @@ entity xu is
       xu_sclk : out std_logic;
       xu_miso : in std_logic;
 
+-- frame port (host networking through xu_ddr_bridge), packed - see the xufp instance below
+      fp_bclk : in std_logic := '0';
+      fp_i : in std_logic_vector(99 downto 0) := (others => '0');
+      fp_o : out std_logic_vector(85 downto 0);
+
 -- flags
       have_xu : in integer range 0 to 1 := 0;
       have_xu_debug : in integer range 0 to 1 := 1;
@@ -466,6 +471,45 @@ signal localunibus_busmaster_control_npg : std_logic;
 
 -- local bus peripherals
 signal local_addr_match : std_logic;
+component xufp is
+   port(
+      mem_addr_match : out std_logic;
+      mem_addr : in std_logic_vector(17 downto 0);
+      mem_dati : out std_logic_vector(15 downto 0);
+      mem_dato : in std_logic_vector(15 downto 0);
+      mem_control_dati : in std_logic;
+      mem_control_dato : in std_logic;
+      mem_control_datob : in std_logic;
+      reg_addr_match : out std_logic;
+      reg_addr : in std_logic_vector(17 downto 0);
+      reg_dati : out std_logic_vector(15 downto 0);
+      reg_dato : in std_logic_vector(15 downto 0);
+      reg_control_dati : in std_logic;
+      reg_control_dato : in std_logic;
+      reg_control_datob : in std_logic;
+      bclk : in std_logic;
+      b_tx_addr : in std_logic_vector(9 downto 0);
+      b_tx_q : out std_logic_vector(15 downto 0);
+      b_rx_addr : in std_logic_vector(9 downto 0);
+      b_rx_d : in std_logic_vector(15 downto 0);
+      b_rx_we : in std_logic;
+      tx_req_t : out std_logic;
+      tx_len : out std_logic_vector(10 downto 0);
+      tx_ack_t : in std_logic;
+      rx_rdy_t : in std_logic;
+      rx_len : in std_logic_vector(10 downto 0);
+      rx_rel_t : out std_logic;
+      pub_t : out std_logic;
+      guest_mac : out std_logic_vector(47 downto 0);
+      guest_mode : out std_logic_vector(7 downto 0);
+      host_mac : in std_logic_vector(47 downto 0);
+      host_valid : in std_logic;
+      fport_en : in std_logic;
+      reset : in std_logic;
+      clk : in std_logic
+   );
+end component;
+
 constant local_base_addr : std_logic_vector(17 downto 0) := o"774510";
 signal xu_dati : std_logic_vector(15 downto 0);
 
@@ -480,6 +524,11 @@ signal kw0_ivec : std_logic_vector(8 downto 0);
 
 signal ram_addr_match : std_logic;
 signal ram_dati : std_logic_vector(15 downto 0);
+
+signal xufp_mem_match : std_logic;
+signal xufp_mem_dati : std_logic_vector(15 downto 0);
+signal xufp_reg_match : std_logic;
+signal xufp_reg_dati : std_logic_vector(15 downto 0);
 
 signal cer_nxmabort : std_logic;
 signal cer_ioabort : std_logic;
@@ -827,8 +876,55 @@ begin
    kw0_bg <= cpu_bg6;
    cpu_int_vector6 <= kw0_ivec;
 
+-- frame port: tx/rx buffers at local 020000-027777, registers at 777200.
+-- fp_i (from the bridge): 9:0 tx addr, 19:10 rx addr, 35:20 rx data, 36 rx we, 37 tx ack,
+--   38 rx ready, 49:39 rx len, 97:50 host mac, 98 host valid, 99 frame port selected
+-- fp_o (to the bridge): 15:0 tx data, 16 tx req, 27:17 tx len, 28 rx release, 29 publish,
+--   77:30 guest mac, 85:78 guest mode
+
+   xufp0: xufp port map(
+      mem_addr_match => xufp_mem_match,
+      mem_addr => localbus_addr(17 downto 0),
+      mem_dati => xufp_mem_dati,
+      mem_dato => localbus_dato,
+      mem_control_dati => localbus_control_dati,
+      mem_control_dato => localbus_control_dato,
+      mem_control_datob => localbus_control_datob,
+
+      reg_addr_match => xufp_reg_match,
+      reg_addr => localunibus_addr,
+      reg_dati => xufp_reg_dati,
+      reg_dato => localunibus_dato,
+      reg_control_dati => localunibus_control_dati,
+      reg_control_dato => localunibus_control_dato,
+      reg_control_datob => localunibus_control_datob,
+
+      bclk => fp_bclk,
+      b_tx_addr => fp_i(9 downto 0),
+      b_tx_q => fp_o(15 downto 0),
+      b_rx_addr => fp_i(19 downto 10),
+      b_rx_d => fp_i(35 downto 20),
+      b_rx_we => fp_i(36),
+      tx_req_t => fp_o(16),
+      tx_len => fp_o(27 downto 17),
+      tx_ack_t => fp_i(37),
+      rx_rdy_t => fp_i(38),
+      rx_len => fp_i(49 downto 39),
+      rx_rel_t => fp_o(28),
+      pub_t => fp_o(29),
+      guest_mac => fp_o(77 downto 30),
+      guest_mode => fp_o(85 downto 78),
+      host_mac => fp_i(97 downto 50),
+      host_valid => fp_i(98),
+      fport_en => fp_i(99),
+
+      reset => xureset,
+      clk => nclk
+   );
+
    localbus_dati <=
       ram_dati when ram_addr_match = '1'
+      else xufp_mem_dati when xufp_mem_match = '1'
       else "0000000000000000";
 
    localunibus_dati <=
@@ -838,6 +934,7 @@ begin
       else xubl_dati when xubl_addr_match = '1'
       else xubm_dati when xubm_addr_match = '1'
       else xu_dati when local_addr_match = '1'
+      else xufp_reg_dati when xufp_reg_match = '1'
       else "0000000000000000";
 
    localunibus_addr_match <= '1'
@@ -847,10 +944,11 @@ begin
       or xubl_addr_match = '1'
       or xubm_addr_match = '1'
       or local_addr_match = '1'
+      or xufp_reg_match = '1'
       else '0';
 
    cer_nxmabort <= '1'
-      when ram_addr_match = '0'
+      when ram_addr_match = '0' and xufp_mem_match = '0'
       and (localbus_control_dati = '1' or localbus_control_dato = '1')
       and localbus_unibus_mapped = '0'
       and cpu_npg = '0'
@@ -858,7 +956,7 @@ begin
 
    cer_ioabort <=
       '1' when localunibus_addr_match = '0' and (localunibus_control_dati = '1' or localunibus_control_dato = '1') and localunibus_addr(17 downto 13) = "11111" and cpu_npg = '0'
-      else '1' when ram_addr_match = '0' and localbus_unibus_mapped = '1' and (localbus_control_dati = '1' or localbus_control_dato = '1') and cpu_npg = '0'
+      else '1' when ram_addr_match = '0' and xufp_mem_match = '0' and localbus_unibus_mapped = '1' and (localbus_control_dati = '1' or localbus_control_dato = '1') and cpu_npg = '0'
       else '0';
 
    nxmabort <= '1' when cer_nxmabort = '1' or cer_ioabort = '1' else '0';

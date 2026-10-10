@@ -58,6 +58,12 @@ set_false_path -from [get_registers {*ps2_device:keyboard|ps2_clk_out *ps2_devic
 # and the panel switches are quasi-static and 2-FF synchronised on cpuclk (paneldriver also debounces)
 set_false_path -from [get_registers {emu:emu|vt_kbd_off}] -to [get_clocks {cpuclk}]
 set_false_path -to [get_registers {emu:emu|mister_top:mister_top|panel_sw_meta[*]}]
+# xu frame port <-> DDR3 bridge (rtl/xufp.vhd, rtl/xu_ddr_bridge.vhd): toggles are
+# 2-FF synchronised (*xufp_s1_*); lengths and mac/mode words are held stable while
+# their toggle is outstanding, so the paths that read them across are false.
+set_false_path -to [get_registers {*xufp:*|xufp_s1_* *xu_ddr_bridge:*|xufp_s1_*}]
+set_false_path -from [get_registers {*xufp:*|txlen_r[*] *xufp:*|gmac[*] *xufp:*|gmode[*]}] -to [get_registers {*xu_ddr_bridge:*}]
+set_false_path -from [get_registers {*xu_ddr_bridge:*|rxlen_r[*] *xu_ddr_bridge:*|hmac[*]}] -to [get_registers {*xufp:*}]
 
 # kl11 receive data (clk_50 domain) is handed to cpuclk through a level
 # handshake with a multi-tap synchroniser: a real false path.
