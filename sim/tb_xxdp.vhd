@@ -32,6 +32,7 @@ entity tb_xxdp is
       init_pc         : integer := 8#200#;
       cons_sw         : integer := 0;
       budget          : integer := 24000000;
+      quiet_cycles    : integer := 5000000;               -- cpu clocks with no console output -> QUIET stop (100 ms; EKBEE1 is silent up to 56 ms at start)
       pass_match      : string  := "";
       fail_match      : string  := "";
       fail_match2     : string  := "";
@@ -250,6 +251,7 @@ begin
       variable uart_seen : std_logic := '0';
       variable ch : character;
       variable done : boolean := false;
+      variable last_out : integer := 0;
    begin
       wait until reset = '0';
       loop
@@ -257,6 +259,7 @@ begin
          i := i + 1;
 
          if uart_valid = '1' and uart_seen = '0' then
+            last_out := i;
             uart_seen := '1';
             ch := character'val(to_integer(unsigned(uart_char)));
             if ncons < cons'length then
@@ -294,6 +297,14 @@ begin
             report "tb_xxdp HALT mem=" & mem & " cycles=" & integer'image(i)
                & " pc=" & oct(dbg_r7) & " ir=" & oct(dbg_ir)
                & " psw=" & oct(dbg_psw) & " r0=" & oct(dbg_r0)
+               & " console=" & cons_dump(cons, ncons) severity error;
+            done := true;
+            exit;
+         end if;
+
+         if quiet_cycles > 0 and i - last_out >= quiet_cycles then
+            report "tb_xxdp QUIET mem=" & mem & " cycles=" & integer'image(i)
+               & " (no console output for " & integer'image(quiet_cycles) & " cycles)"
                & " console=" & cons_dump(cons, ncons) severity error;
             done := true;
             exit;
