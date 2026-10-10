@@ -985,7 +985,7 @@ sr0out_debug <= sr0;
             end if;
 
          -- handle w bit in pdr
-            if have_pdrw = 1 and sr0(0) = '1' and cpu_wr = '1' and mmu_addr_match = '0'
+            if have_pdrw = 1 and sr0(0) = '1' and cpu_wr = '1' and mm_int_reg = '0'     -- KB11-C IV-7: only PAR/PDR/MMR0-3 are exempt; a Unibus map write sets W (EKBEE1 TESTNO 77)
             and abort_nonresident = '0' and abort_pagelength = '0' and abort_readonly = '0' then
                case psw(15 downto 14) is
                   when "00" =>
@@ -1000,7 +1000,7 @@ sr0out_debug <= sr0;
             end if;
 
             -- handle a bit in pdr
-            if have_pdra = 1 and sr0(0) = '1' and mmu_addr_match = '0'
+            if have_pdra = 1 and sr0(0) = '1' and mm_int_reg = '0'
             and abort_nonresident = '0' and abort_pagelength = '0' and abort_readonly = '0'
             and
             ((pdr(2 downto 0) = "001" and cpu_rd = '1')
