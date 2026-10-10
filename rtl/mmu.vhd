@@ -945,6 +945,9 @@ sr0out_debug <= sr0;
             if ack_mmutrap = '1' then
                mmutrap <= '0';
             end if;
+            if mmu_mmuabort = '1' and oddabort = '0' then   -- an MM abort cancels a pending TENB trap (KB11-C IV-8:
+               mmutrap <= '0';                              -- SSRD MGMT HOLD); an odd-address abort inhibits the MM
+            end if;                                         -- abort, so it does not (EKBEE1 TESTNO 61-62)
             if sr0(15 downto 13) = "000" then
                abort_acknowledged <= '0';
                sr1 <= sr1_in;                               -- KB11-C: MMR1 tracks autoinc/dec until an abort freezes it
