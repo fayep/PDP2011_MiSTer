@@ -1,0 +1,593 @@
+	.title	rhex - RH70/RP06 exerciser with RSTS/E 10.1 INIT's command sequence
+;
+; Standalone, booted from tape (boot ROM: record 1 -> address 0, jump to 0).
+; Disk: an RP06 image whose blocks 0..NPAT-1 hold a pattern made by
+; mkrhex.py: word 0 = LBN, word 1 = ^C LBN, word w (2..255) =
+; ((LBN & 377) << 8 ! w) ^ 125252.
+;
+; Loop forever: pick a random LBN, length (1..13 blocks) and buffer, fill
+; the buffer and two guard words each side with a sentinel, then issue the
+; read exactly as INIT does when it loads an overlay (SIMH trace):
+;   AS, DCLR+GO, DT, PACK+GO, DC, OF, DA, DS, DS, CS1, DS, BA, WC, READ+GO
+; with a delay between steps swept over 0..15 (and x32 on alternate
+; rounds), wait for CS1.RDY, and check: CS1 SC/TRE, CS2 errors, ER1, DS
+; (ERR=0 DRY=1 MOL=1), WC=0, BA advanced, DC/DA = next block, the guards,
+; and every word. The KW11-L interrupts all the time.
+; Console: a status line every 1024 transfers; a full report for each of
+; the first 20 failures (then counted only).
+;
+; With BGTM defined (rhextm.tap): the TM11 runs in the background all the
+; time -- rewind, read record 0, read record 1 (this program) to 140000 --
+; overlapping the RH's DMA as during an install. Each read of record 1 is
+; checked against this program's code (01000-02777) in memory; the status
+; line adds tape operations, tape errors (MTC.ERR) and tape data mismatches.
+;
+; With WRT defined (rhexw.tap): every 4th transfer is a WRITE of 1..13
+; blocks to the scratch area (blocks NPAT..NPAT+NSCR-1), same command
+; sequence with WRITE+GO, data = the pattern with word 1 = a per-transfer
+; salt and words 2..255 XORed with it (salt table at SALTAB), then the
+; same blocks are read back into a new buffer and checked like any read.
+;
+	.asect
+	.enabl	ama			; absolute addressing: no linker, so nothing PC-relative
+	. = 0
+	jmp	@#start
+	. = 4
+	.word	trap4, 340
+	.word	trap10, 340
+	. = 100
+	.word	clkint, 340
+;
+rhcs1	= 176700
+rhwc	= 176702
+rhba	= 176704
+rhda	= 176706
+rhcs2	= 176710
+rhds	= 176712
+rher1	= 176714
+rhas	= 176716
+rhdt	= 176726
+rhof	= 176732
+rhdc	= 176734
+rhbae	= 176750
+lks	= 177546
+tps	= 177564
+tpb	= 177566
+psw	= 177776
+mts	= 172520
+mtc	= 172522
+mtbrc	= 172524
+mtcma	= 172526
+TMBUF	= 140000
+;
+NPAT	= 19000.
+NSCR	= 2000.			; scratch blocks after the pattern (WRT)
+SALTAB	= 150000		; salt per scratch block (WRT)
+MAXN	= 13.
+SENT	= 125125
+;
+	. = 1000
+start:	mov	#1000,sp
+	reset
+	mov	#hello,r0
+	call	puts
+	clr	@#rhcs2			; unit 0
+	clr	@#rhbae
+	mov	#100,@#lks		; KW11-L interrupts on
+	clr	@#psw			; priority 0
+;
+loop:	add	#1,iterl
+	adc	iterh
+	call	rand			; LBN = rand mod (NPAT-MAXN)
+	clr	r0
+	div	#NPAT-MAXN,r0
+	mov	r1,lbn
+	call	rand			; blocks = (rand>>8) mod 13 + 1
+	swab	r1
+	bic	#177400,r1
+	clr	r0
+	div	#MAXN,r0
+	inc	r1
+	mov	r1,nblk
+	call	rand			; buffer = 020000 + (rand & 077776)
+	bic	#100001,r1
+	add	#20000,r1
+	mov	r1,buf
+	mov	iterl,r1		; delay: iter & 17, x32 when iter & 20
+	mov	r1,r2
+	bic	#177760,r1
+	bit	#20,r2
+	beq	1$
+	ash	#5,r1
+1$:	mov	r1,dly
+	mov	nblk,r1			; bytes = blocks * 512.
+	ash	#9.,r1
+	mov	r1,nbytes
+	mov	#71,fnc			; read
+	clr	wmode
+	.if	df,WRT
+	mov	iterl,r1		; every 4th transfer: write scratch blocks, then read them back
+	bic	#177774,r1
+	cmp	r1,#3
+	bne	rdset
+	inc	wmode
+	mov	#61,fnc			; write
+	call	rand
+	clr	r0
+	div	#NSCR-MAXN,r0
+	add	#NPAT,r1
+	mov	r1,lbn
+	call	rand
+	bis	#1,r1			; salt: never 0
+	mov	r1,salt
+	mov	buf,r2			; data to write
+	mov	lbn,r4
+	mov	nblk,r3
+20$:	mov	r4,(r2)+
+	mov	salt,(r2)+
+	mov	r4,r5
+	swab	r5
+	clrb	r5
+	mov	#2,r0
+21$:	mov	r5,r1
+	bis	r0,r1
+	mov	#125252,-(sp)
+	xor	r1,(sp)
+	mov	salt,r1
+	xor	r1,(sp)
+	mov	(sp)+,(r2)+
+	inc	r0
+	cmp	r0,#400
+	blo	21$
+	mov	r4,r1			; remember this block's salt
+	sub	#NPAT,r1
+	asl	r1
+	mov	salt,SALTAB(r1)
+	inc	r4
+	sob	r3,20$
+	jmp	xseq
+	.endc
+rdset:	mov	buf,r2			; sentinel over buffer and guards
+	sub	#4,r2
+	mov	nbytes,r3
+	asr	r3
+	add	#4,r3
+2$:	mov	#SENT,(r2)+
+	sob	r3,2$
+xseq:	mov	lbn,r1			; cylinder, track, sector
+	call	chs
+	mov	r0,cyl
+	mov	r2,trkse
+;
+; INIT's sequence
+	clr	@#rhas
+	call	delay
+	mov	#11,@#rhcs1		; drive clear + GO
+	call	delay
+	mov	@#rhdt,r0
+	call	delay
+	mov	#23,@#rhcs1		; pack acknowledge + GO
+	call	delay
+	mov	cyl,@#rhdc
+	call	delay
+	mov	#10000,@#rhof
+	call	delay
+	mov	trkse,@#rhda
+	call	delay
+	mov	@#rhds,r0
+	mov	@#rhds,r0
+	mov	@#rhcs1,r0
+	mov	@#rhds,r0
+	call	delay
+	mov	buf,@#rhba
+	mov	nbytes,r0
+	asr	r0
+	neg	r0
+	mov	r0,@#rhwc
+	call	delay
+	mov	fnc,@#rhcs1		; read (or write) + GO
+	call	tmkick
+;
+	clr	r3			; wait for RDY: ~100 x 65536 polls
+	mov	#100.,r4
+3$:	tstb	@#rhcs1
+	bmi	4$
+	sob	r3,3$
+	sob	r4,3$
+	mov	#mtmo,r0
+	jmp	fail
+4$:	mov	@#rhcs1,r0
+	bit	#140000,r0
+	beq	5$
+	mov	#mcs1,r0
+	jmp	fail
+5$:	bit	#177400,@#rhcs2
+	beq	6$
+	mov	#mcs2,r0
+	jmp	fail
+6$:	tst	@#rher1
+	beq	7$
+	mov	#mer1,r0
+	jmp	fail
+7$:	mov	@#rhds,r0
+	bic	#^C050200,r0
+	cmp	r0,#010200
+	beq	8$
+	mov	#mds,r0
+	jmp	fail
+8$:	tst	@#rhwc
+	beq	9$
+	mov	#mwc,r0
+	jmp	fail
+9$:	mov	buf,r1
+	add	nbytes,r1
+	cmp	@#rhba,r1
+	beq	10$
+	mov	#mba,r0
+	jmp	fail
+10$:	mov	lbn,r1
+	add	nblk,r1
+	call	chs
+	cmp	@#rhdc,r0
+	bne	11$
+	cmp	@#rhda,r2
+	beq	12$
+11$:	mov	#mda,r0
+	jmp	fail
+12$:	.if	df,WRT
+	tst	wmode			; the write passed its checks: read the blocks back
+	beq	121$
+	clr	wmode
+	inc	writes
+	mov	#71,fnc
+	call	rand			; into a new buffer
+	bic	#100001,r1
+	add	#20000,r1
+	mov	r1,buf
+	jmp	rdset
+121$:	.endc
+	mov	buf,r2			; guards
+	cmp	-4(r2),#SENT
+	bne	13$
+	cmp	-2(r2),#SENT
+	bne	13$
+	add	nbytes,r2
+	cmp	(r2),#SENT
+	bne	13$
+	cmp	2(r2),#SENT
+	beq	14$
+13$:	mov	#mgrd,r0
+	jmp	fail
+;
+14$:	mov	buf,r2			; data
+	mov	lbn,r4			; r4 = LBN of this block
+	mov	nblk,r3
+15$:	mov	r4,r1			; word 0
+	cmp	(r2)+,r1
+	bne	17$
+	clr	salt			; pattern block: word 1 = ~lbn, no salt
+	com	r1
+	cmp	r4,#NPAT
+	blo	151$
+	mov	r4,r1			; scratch block: word 1 = its salt
+	sub	#NPAT,r1
+	asl	r1
+	mov	SALTAB(r1),r1
+	mov	r1,salt
+151$:	cmp	(r2)+,r1		; word 1
+	bne	17$
+	mov	r4,r5			; words 2..255: ((lbn&377)<<8 ! w) ^ 125252 ^ salt
+	swab	r5
+	clrb	r5
+	mov	#2,r0
+16$:	mov	r5,r1
+	bis	r0,r1
+	mov	#125252,-(sp)
+	xor	r1,(sp)
+	mov	salt,r1
+	xor	r1,(sp)
+	mov	(sp)+,r1
+	cmp	(r2)+,r1
+	bne	17$
+	inc	r0
+	cmp	r0,#400
+	blo	16$
+	inc	r4
+	sob	r3,15$
+	br	next
+17$:	mov	r2,r0
+	tst	-(r0)
+	mov	r0,badadr
+	mov	r1,badexp
+	mov	(r0),badgot
+	mov	#mdat,r0
+	jmp	fail
+;
+next:	call	tmkick
+	bit	#1777,iterl
+	bne	1$
+	mov	#mstat,r0
+	call	puts
+	mov	iterh,r0
+	call	puto
+	mov	iterl,r0
+	call	puto
+	mov	#merr,r0
+	call	puts
+	mov	errs,r0
+	call	puto
+	mov	#mtick,r0
+	call	puts
+	mov	ticks,r0
+	call	puto
+	.if	df,WRT
+	mov	#mwr,r0
+	call	puts
+	mov	writes,r0
+	call	puto
+	.endc
+	.if	df,BGTM
+	mov	#mtm,r0
+	call	puts
+	mov	tmops,r0
+	call	puto
+	mov	tmerr,r0
+	call	puto
+	mov	tmbad,r0
+	call	puto
+	.endc
+	call	crlf
+1$:	jmp	loop
+;
+; background tape: start the next TM operation if the TM is free
+tmkick:
+	.if	df,BGTM
+	tstb	@#mtc			; control unit ready?
+	bpl	9$
+	bit	#1,@#mts		; tape unit ready (not rewinding)?
+	beq	9$
+	tst	@#mtc			; previous operation in error?
+	bpl	1$
+	inc	tmerr
+1$:	tst	tmvld			; a read of record 1 just finished: check it
+	beq	3$
+	clr	tmvld
+	mov	#1000,r1
+	mov	#TMBUF+1000,r2
+	mov	#1000,r3		; 01000-02777: 512. words of code
+2$:	cmp	(r1)+,(r2)+
+	bne	21$
+	sob	r3,2$
+	br	3$
+21$:	inc	tmbad
+3$:	inc	tmst			; next: 0 rewind, 1 read record 0, 2 read record 1
+	cmp	tmst,#3
+	blo	4$
+	clr	tmst
+4$:	inc	tmops
+	tst	tmst
+	bne	5$
+	mov	#060017,@#mtc		; rewind + GO
+	br	9$
+5$:	cmp	tmst,#2			; before reading record 1: sentinel over the check area
+	bne	7$
+	mov	#TMBUF+1000,r2
+	mov	#1000,r3
+6$:	mov	#SENT,(r2)+
+	sob	r3,6$
+	inc	tmvld
+7$:	mov	#TMBUF,@#mtcma
+	mov	#-4096.,@#mtbrc
+	mov	#060003,@#mtc		; read + GO
+9$:	.endc
+	return
+;
+; failure: r0 -> reason. Report (first 20.), clear the controller, go on.
+fail:	mov	r0,why
+	inc	errs
+	cmp	errs,#20.
+	bhi	9$
+	mov	#merrh,r0
+	call	puts
+	mov	why,r0
+	call	puts
+	mov	#miter,r0
+	call	puts
+	mov	iterh,r0
+	call	puto
+	mov	iterl,r0
+	call	puto
+	mov	#mlbn,r0
+	call	puts
+	mov	lbn,r0
+	call	puto
+	mov	#mn,r0
+	call	puts
+	mov	nblk,r0
+	call	puto
+	mov	#mbuf,r0
+	call	puts
+	mov	buf,r0
+	call	puto
+	mov	#mdly,r0
+	call	puts
+	mov	dly,r0
+	call	puto
+	call	crlf
+	mov	#mregs,r0		; CS1 WC BA DA CS2 DS ER1 DC
+	call	puts
+	mov	#rhcs1,r1
+	call	puto2
+	mov	#rhwc,r1
+	call	puto2
+	mov	#rhba,r1
+	call	puto2
+	mov	#rhda,r1
+	call	puto2
+	mov	#rhcs2,r1
+	call	puto2
+	mov	#rhds,r1
+	call	puto2
+	mov	#rher1,r1
+	call	puto2
+	mov	#rhdc,r1
+	call	puto2
+	call	crlf
+	cmp	why,#mdat
+	bne	9$
+	mov	#mbad,r0
+	call	puts
+	mov	badadr,r0
+	call	puto
+	mov	#mexp,r0
+	call	puts
+	mov	badexp,r0
+	call	puto
+	mov	#mgot,r0
+	call	puts
+	mov	badgot,r0
+	call	puto
+	call	crlf
+9$:	mov	#40,@#rhcs2		; controller clear
+	mov	#1000,r0
+10$:	sob	r0,10$
+	clr	@#rhcs2
+	clr	@#rhbae
+	jmp	next
+;
+; r1 = LBN -> r0 = cylinder, r2 = (track << 8) ! sector
+chs:	clr	r0
+	div	#418.,r0
+	mov	r1,r3
+	clr	r2
+	div	#22.,r2
+	swab	r2
+	bis	r3,r2
+	return
+;
+delay:	mov	dly,r5
+	beq	2$
+1$:	sob	r5,1$
+2$:	return
+;
+; 16-bit LCG: seed = seed * 25173. + 13849., returned in r1
+rand:	mov	seed,r0
+	mul	#25173.,r0
+	add	#13849.,r1
+	mov	r1,seed
+	return
+;
+clkint:	inc	ticks
+	rti
+;
+trap4:	mov	#mtr4,r0
+	br	trapx
+trap10:	mov	#mtr10,r0
+trapx:	call	puts
+	mov	(sp),r0
+	call	puto
+	call	crlf
+	halt
+;
+; console
+putc:	tstb	@#tps
+	bpl	putc
+	movb	r0,@#tpb
+	return
+puts:	mov	r0,r1
+1$:	movb	(r1)+,r0
+	beq	2$
+	call	putc
+	br	1$
+2$:	return
+crlf:	mov	#15,r0
+	call	putc
+	mov	#12,r0
+	jmp	putc
+; r0 -> " nnnnnn"
+puto:	mov	r0,-(sp)
+	mov	#40,r0
+	call	putc
+	mov	(sp)+,r1
+	mov	#6,r2
+	clr	r0			; first digit: bit 15 only
+	asl	r1
+	rol	r0
+	br	2$
+1$:	clr	r0
+	asl	r1
+	rol	r0
+	asl	r1
+	rol	r0
+	asl	r1
+	rol	r0
+2$:	add	#'0,r0
+	mov	r1,-(sp)
+	mov	r2,-(sp)
+	call	putc
+	mov	(sp)+,r2
+	mov	(sp)+,r1
+	sob	r2,1$
+	return
+; r1 = register address: print its contents
+puto2:	mov	(r1),r0
+	jmp	puto
+;
+iterl:	.word	0
+iterh:	.word	0
+errs:	.word	0
+ticks:	.word	0
+fnc:	.word	71
+wmode:	.word	0
+salt:	.word	0
+writes:	.word	0
+tmst:	.word	2			; first kick starts with a rewind
+tmvld:	.word	0			; 1: a read of record 1 is in flight
+tmops:	.word	0
+tmerr:	.word	0
+tmbad:	.word	0
+seed:	.word	12345
+lbn:	.word	0
+nblk:	.word	0
+buf:	.word	0
+dly:	.word	0
+nbytes:	.word	0
+cyl:	.word	0
+trkse:	.word	0
+why:	.word	0
+badadr:	.word	0
+badexp:	.word	0
+badgot:	.word	0
+;
+hello:	.ascii	<15><12>/rhex: RH70 exerciser, RSTS 10.1 INIT command sequence/<15><12>
+	.asciz	/  pattern disk on DB0, blocks 0-18999/<15><12>
+mstat:	.asciz	/xfers/
+merr:	.asciz	/  errors/
+mtick:	.asciz	/  ticks/
+mtm:	.asciz	/  tm ops err bad/
+mwr:	.asciz	/  writes/
+merrh:	.asciz	/*** /
+miter:	.byte	15,12
+	.asciz	/    xfer/
+mlbn:	.asciz	/ lbn/
+mn:	.asciz	/ n/
+mbuf:	.asciz	/ buf/
+mdly:	.asciz	/ dly/
+mregs:	.asciz	/    cs1 wc ba da cs2 ds er1 dc/
+mbad:	.asciz	/    at/
+mexp:	.asciz	/ expected/
+mgot:	.asciz	/ got/
+mtmo:	.asciz	/timeout waiting for RDY/
+mcs1:	.asciz	/CS1 SC or TRE set/
+mcs2:	.asciz	/CS2 error bits set/
+mer1:	.asciz	/ER1 not zero/
+mds:	.asciz	/DS not (MOL DRY !ERR)/
+mwc:	.asciz	/WC not zero/
+mba:	.asciz	/BA did not advance by the transfer/
+mda:	.asciz	/DC or DA not at the next block/
+mgrd:	.asciz	/guard word overwritten/
+mdat:	.asciz	/data word wrong/
+mtr4:	.asciz	<15><12>/trap 4, pc/
+mtr10:	.asciz	<15><12>/trap 10, pc/
+	.even
+	.end
