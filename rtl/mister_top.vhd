@@ -33,6 +33,8 @@ entity mister_top is
 		have_rk        : in integer;
 		have_rl        : in integer;
 		have_rh        : in integer;
+		have_tm        : in integer;
+		tm_img_mounted : in integer;
 		have_xu        : in integer;
 		
 		-- VT settings
@@ -67,6 +69,13 @@ entity mister_top is
       rh_sdcard_sclk : out std_logic;
       rh_sdcard_miso : in std_logic;
 		rh_sdcard_debug: out std_logic_vector (3 downto 0);
+
+      tm_media_change: in std_logic;
+      tm_sdcard_cs   : out std_logic;
+      tm_sdcard_mosi : out std_logic;
+      tm_sdcard_sclk : out std_logic;
+      tm_sdcard_miso : in std_logic;
+		tm_sdcard_debug: out std_logic_vector (3 downto 0);
 
       -- Ethernet
       xu_cs   : out std_logic;
@@ -147,6 +156,16 @@ component unibus is
       rh_sdcard_miso : in std_logic := '0';
       rh_sdcard_debug : out std_logic_vector(3 downto 0);            -- debug/blinkenlights
       rh_type : in integer range 1 to 7 := 6;
+
+-- tm11 magtape controller
+      have_tm : in integer range 0 to 1 := 0;
+      tm_media_change : in std_logic := '0';
+      tm_img_mounted : in integer range 0 to 1 := 0;
+      tm_sdcard_cs : out std_logic;
+      tm_sdcard_mosi : out std_logic;
+      tm_sdcard_sclk : out std_logic;
+      tm_sdcard_miso : in std_logic := '0';
+      tm_sdcard_debug : out std_logic_vector(3 downto 0);
 
 -- xu enc424j600 controller interface
       have_xu : in integer range 0 to 1 := 0;                        -- enable conditional compilation
@@ -436,6 +455,13 @@ signal cpuclk : std_logic;
 signal cpureset : std_logic := '1';
 signal cpuresetlength : integer range 0 to 255 := 255;
 
+-- tm_img_mounted: pdp2011.sv's vsd_sel_tm "tape image mounted" flag
+-- (clk_100 domain), 2-FF synchronised on cpuclk. tm11 reports "no tape"
+-- through MTS SELR/TUR from it, as a real TM11 does, instead of leaving
+-- the bus. Defaults to 0 (no tape) so the boot ROM's TUR probe can never
+-- see a tape before the host's mount handshake has actually landed.
+signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 0;
+
 signal ifetch: std_logic;
 signal iwait: std_logic;
 
@@ -546,6 +572,13 @@ begin
 
 
 
+   process(cpuclk)
+   begin
+      if cpuclk'event and cpuclk = '1' then
+         tm_img_mounted_meta <= tm_img_mounted;  tm_img_mounted_sync <= tm_img_mounted_meta;
+      end if;
+   end process;
+
    pdp11: unibus port map(
       modelcode => modelcode,  -- 24,45,70,94...
 
@@ -596,6 +629,15 @@ begin
       rh_sdcard_mosi => rh_sdcard_mosi,
       rh_sdcard_sclk => rh_sdcard_sclk,
       rh_sdcard_debug => rh_sdcard_debug,
+
+      have_tm => have_tm,
+      tm_media_change => tm_media_change,
+      tm_img_mounted => tm_img_mounted_sync,
+      tm_sdcard_cs => tm_sdcard_cs,
+      tm_sdcard_miso => tm_sdcard_miso,
+      tm_sdcard_mosi => tm_sdcard_mosi,
+      tm_sdcard_sclk => tm_sdcard_sclk,
+      tm_sdcard_debug => tm_sdcard_debug,
 
       have_xu => have_xu,
 		have_xu_debug => 0,

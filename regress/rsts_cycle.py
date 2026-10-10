@@ -46,7 +46,8 @@ note(f"loaded {MGL}")
 
 # (name, regex on lower-cased console tail after the previous answer, reply)
 rules = [
-    ("boot rom", r"boot from \w+:\s*$", ""),
+    # banner is "boot from rp:" (original ROM) or just "rp" (ROM with TM11)
+    ("boot rom", r"(boot from \w+:|\n(mt|rk|rl|rp))\s*$", ""),
     ("option", r"option:.*$", ""),
     ("date", r"date\?.*$", "01-OCT-99"),
     ("time", r"time\?.*$", "12:00"),
