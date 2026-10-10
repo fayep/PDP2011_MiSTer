@@ -342,6 +342,8 @@ signal yellow_stack_trap_trigger : std_logic;
 signal yellow_stack_trap_relevant_state_simple : std_logic;
 signal yellow_stack_trap_inhibit : std_logic;
 signal red_stack_trap : std_logic;
+signal trap_push : std_logic;                                        -- 11/70: a trap's PS/PC pushes are in progress (PS RESTORE)
+signal sr1_trap : std_logic;                                         -- 11/70: MMR1 shows the trap's SP -2,-2 (173366)
 signal red_stack_trap_trigger : std_logic;
 signal red_stack_trap_relevant_state_simple : std_logic;
 signal stack_trap_relevant_state_full : std_logic;
@@ -891,7 +893,8 @@ begin
       else sr1_srcd & ir(8 downto 6) when sr1_srcd /= "00000" and (have_mmr1_r7 = 1 or ir(8 downto 6) /= "111") and ir_dop = '1'
       else "00000000";
 
-   sr1 <= sr1_dst & sr1_src when (ir_dop = '1' or ir_jsr = '1') and sr1_srcd /= "00000"
+   sr1 <= x"F6F6" when sr1_trap = '1'                                  -- 11/70 (KB11-C Table 6-1): SVC.50/60 step SP -2,-2
+      else sr1_dst & sr1_src when (ir_dop = '1' or ir_jsr = '1') and sr1_srcd /= "00000"
       else sr1_dst & sr1_src when sr1_dstd = "00000"
       else sr1_src & sr1_dst;
 
@@ -1170,6 +1173,8 @@ begin
             rbus_we <= '1';                                -- pulse write
             sr1_srcd <= "00000";                           -- INIT: MMR1 packer idle
             sr1_dstd <= "00000";
+            trap_push <= '0';
+            sr1_trap <= '0';
          else
 
 --
@@ -1234,6 +1239,10 @@ begin
             elsif oddabort = '1' and (have_oddimmediateabort = 1 or ir_csm = '1') then   -- odd abort signal, and need to deal with it and suppress the state machine actions?
                trap_vector <= o"004";                                                    -- set vector
                state <= state_trap;                                                      -- do trap
+               if modelcode = 70 then
+                  sr0_ic <= '1';                                                         -- KB11-C 9.1.4: BRK.30 sets IC (odd address)
+                  sr2 <= x"0004";                                                        -- and MMR2 holds the vector (EKBEE1 TESTNO 67)
+               end if;
             else
 
 --
@@ -1332,6 +1341,10 @@ begin
                      elsif psw(4) = '1' and ir_rtt = '0' and ir_wait = '0' then
                         trap_vector <= o"014";                                           -- trace bit, vector = 014
                         state <= state_trap;
+                        if modelcode = 70 then
+                           sr0_ic <= '1';                                                -- KB11-C 9.1.4: BRK.30 sets IC (T bit)
+                           sr2 <= x"000C";                                               -- and MMR2 holds the vector
+                        end if;
                      else
                         cons_maddr(7) <= '0';
                         if cons_ena = '1' then
@@ -1347,6 +1360,7 @@ begin
                         end if;
                         sr1_srcd <= "00000";                                             -- setup mmu sr1 source part
                         sr1_dstd <= "00000";                                             -- setup mmu sr1 destination part
+                        sr1_trap <= '0';
                         if modelcode /= 70 then                                          -- 11/70 (KB11-C 9.1.4): IC is not set at the fetch;
                            sr0_ic <= '1';                                                -- an abort on the fetch freezes it clear
                         end if;                                                          -- (EKBEE1 TESTNO 64: MMR0 140105, not 100305)
@@ -2435,6 +2449,10 @@ begin
                         ack_mmuabort <= '0';
                         trap_vector <= o"250";                                 -- mmu, vector = 250
                         state <= state_trap;
+                        if modelcode = 70 and trap_push = '1' and psw(15 downto 14) /= "00" then
+                           psw <= temp_psw;                                    -- KB11-C 6.2.1.3 PS RESTORE: an MM abort on a push to a
+                        end if;                                                -- non-Kernel stack restores the PS that entered the service
+                        trap_push <= '0';                                      -- flows, then re-enters them through 250 (EKBEE1 TESTNO 67)
                      end if;
 
 --
@@ -2588,6 +2606,10 @@ begin
                      state <= state_trapb;
 
                   when state_trapb =>
+                     if modelcode = 70 then
+                        trap_push <= '1';                              -- the PS/PC pushes follow (trapc, trapd)
+                        sr1_trap <= '1';                               -- MMR1 = SVC.50/60 (EKBEE1 TESTNO 67)
+                     end if;
                      state <= state_trapc;
 
                   when state_trapc =>
@@ -2615,6 +2637,7 @@ begin
 
                   when state_trape =>
                      rbus_cpu_mode <= "00";                          -- force rbus cpu mode to 00 - this is output to the mmu to select the par/pdr set
+                     trap_push <= '0';
                      state <= state_trapf;
 
                   when state_trapf =>
@@ -3683,6 +3706,10 @@ begin
                   if run = '1' then
                      trap_vector <= o"004";
                      state <= state_trap;
+                     if modelcode = 70 then
+                        sr0_ic <= '1';                                         -- KB11-C 9.1.4: BRK.30 sets IC (NXM, timeout)
+                        sr2 <= x"0004";                                        -- and MMR2 holds the vector
+                     end if;
                   else
                      state <= state_halt;
                   end if;
@@ -3691,7 +3718,7 @@ begin
 
             if mmuabort = '1' and have_mmuimmediateabort = 0
                and have_red = 1 and red_stack_trap_trigger = '1' then                    -- the abort is on a Kernel trap push: a red stack
-               ack_mmuabort <= '1';                                                      -- error, keep state_rsv (vector 4, not 250; EKBEE1 TESTNO 61)
+               ack_mmuabort <= '1';                                                      -- error, keep state_rsv (vector 4, not 250; EKBEE1 077244)
             elsif mmuabort = '1' and have_mmuimmediateabort = 0 then                     -- signal from mmu that an access caused an abort.
                if run = '1' then
                   state <= state_mmuabort;                                                  -- precursor state for mmu abort
