@@ -346,6 +346,7 @@ signal trap_push : std_logic;                                        -- 11/70: a
 signal sr1_trap : std_logic;                                         -- 11/70: MMR1 shows the trap's SP -2,-2 (173366)
 signal red_stack_trap_trigger : std_logic;
 signal red_stack_trap_relevant_state_simple : std_logic;
+signal stack_check_addr : std_logic_vector(15 downto 0);          -- the stack address a limit check compares
 signal stack_trap_relevant_state_full : std_logic;
 
 -- floating point stuff
@@ -541,6 +542,11 @@ begin
       '1' when state_csmg,
       '0' when others;
 
+-- (SP) and (SP)+ reference SP itself; -(SP) and the JSR/trap pushes reference SP-2. Comparing SP-2
+-- every time made MOV (SP),(SP) at SP = SL+340 a red zone error instead of yellow (EKBEE1 stack
+-- limit sweep 076502-077140, one error per SL)
+   stack_check_addr <= rbus_data when state = state_dst1 or state = state_dst2 else rbus_data_m2;
+
    with state select stack_trap_relevant_state_full <=
       '1' when state_dst1,
       '1' when state_dst2,
@@ -572,7 +578,7 @@ begin
          and psw(15 downto 14) = "00"
          and yellow_stack_trap_inhibit = '0'
          and red_stack_trap = '0' and red_stack_trap_trigger = '0'
-         and unsigned(cpu_stack_limit(15 downto 8) & "11111110") > unsigned(rbus_data_m2)
+         and unsigned(cpu_stack_limit(15 downto 8) & "11111110") > unsigned(stack_check_addr)
 
       else '0';
 
@@ -601,7 +607,7 @@ begin
          and (
             oddabort = '1'
             or nxmabort = '1'
-            or unsigned(cpu_stack_limit(15 downto 8) & "11100000") > unsigned(rbus_data_m2)
+            or unsigned(cpu_stack_limit(15 downto 8) & "11100000") > unsigned(stack_check_addr)
             or rbus_data(15 downto 1) = "111111111111111"
          )
       else '1'
