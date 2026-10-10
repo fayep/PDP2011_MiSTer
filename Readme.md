@@ -28,6 +28,10 @@
 
 The copyrights to the VHDL described on this core are held by **Sytse Van Slooten**. In short, you are allowed to run the core for personal use, but you can not use it commercially.
 
+## Building
+
+  The core builds with the MiSTer toolchain, Quartus Prime 17.0.2 Lite (`raetro/quartus:mister`). On Apple silicon, read [notes/quartus-apple-silicon.md](notes/quartus-apple-silicon.md): run `quartus_map` with `--parallel=1`, or build the patched image described there.
+
 ## Disk images
 
   * You can download a disk image containing **BSD2.11** form the [original core download page](https://pdp2011.sytse.net/wordpress/download/).
