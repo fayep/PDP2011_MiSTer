@@ -725,6 +725,9 @@ begin
             (pdr(3) = '1' and unsigned(cpu_addr_v(12 downto 6)) < unsigned(pdr(14 downto 8)))
          )
          and psw_mmumodelegal = '1'                                            -- fkth tests for this. jkdk too. Still, PDP11_Handbook1979.pdf pg. 163 specifically states that bit 14 will be set on access in an illegal mode.
+      else '1' when (cpu_rd = '1' or cpu_wr = '1')                          -- 11/70 (KB11-C 9.1.1/9.1.5): an illegal-mode (10)
+         and have_mmu = 1 and sr0(0) = '1'                                  -- reference sets page length (14) as well as
+         and psw_mmumode = "10" and modelcode = 70                          -- non-resident (15); EKBEE1 TESTNO 64 expects 140105
          else '0';
 
 -- generate abort readonly
