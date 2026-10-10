@@ -32,6 +32,7 @@ entity mmu is
       mmutrap : out std_logic;
       ack_mmutrap : in std_logic;
       mmuabort : out std_logic;
+      mmurawabort : out std_logic;                                  -- abort condition, not masked by abort_acknowledged (11/70 red stack)
       ack_mmuabort : in std_logic;
 
       mmuoddabort : out std_logic;
@@ -746,6 +747,7 @@ begin
    mmu_mmuabort <=
       '1' when (abort_nonresident = '1' or abort_pagelength = '1' or abort_readonly = '1') and abort_acknowledged = '0'
       else '0';
+   mmurawabort <= '1' when abort_nonresident = '1' or abort_pagelength = '1' or abort_readonly = '1' else '0';
    mmuabort <= mmu_mmuabort when oddabort = '0'
       else '0';
 

@@ -50,6 +50,7 @@ entity cpu is
       mmutrap : in std_logic;                                        -- if '1', the mmu requests a trap to be serviced after the current instruction completes
       ack_mmutrap : out std_logic;                                   -- if '1', the mmu trap request is being acknowledged
       mmuabort : in std_logic;                                       -- if '1', the mmu requests that the current instruction is aborted because of a mmu fault
+      mmurawabort : in std_logic := '0';                             -- 11/70: the mmu's abort condition, not masked by an earlier abort
       ack_mmuabort : out std_logic;                                  -- if '1', the mmu abort request is being acknowledged
 
       npr : in std_logic;                                            -- non-processor request
@@ -601,6 +602,13 @@ begin
             or unsigned(cpu_stack_limit(15 downto 8) & "11100000") > unsigned(rbus_data_m2)
             or rbus_data(15 downto 1) = "111111111111111"
          )
+      else '1'
+      when                                                    -- 11/70 KB11-C 6.2.1.3: an MM abort on a trap push to the
+         modelcode = 70                                       -- Kernel stack is a stack error (SER.00, SP = 4, vector 4),
+         and red_stack_trap_relevant_state_simple = '1'       -- not a vector 250 trap. The push can follow the abort that
+         and psw(15 downto 14) = "00"                         -- started the trap, so use the mmu's unmasked condition
+         and red_stack_trap = '0'                             -- (EKBEE1 TESTNO 61)
+         and mmurawabort = '1'
       else '0';
 
    rsv <= red_stack_trap_trigger;
@@ -3681,7 +3689,10 @@ begin
                end if;
             end if;
 
-            if mmuabort = '1' and have_mmuimmediateabort = 0 then                        -- signal from mmu that an access caused an abort.
+            if mmuabort = '1' and have_mmuimmediateabort = 0
+               and have_red = 1 and red_stack_trap_trigger = '1' then                    -- the abort is on a Kernel trap push: a red stack
+               ack_mmuabort <= '1';                                                      -- error, keep state_rsv (vector 4, not 250; EKBEE1 TESTNO 61)
+            elsif mmuabort = '1' and have_mmuimmediateabort = 0 then                     -- signal from mmu that an access caused an abort.
                if run = '1' then
                   state <= state_mmuabort;                                                  -- precursor state for mmu abort
                else
