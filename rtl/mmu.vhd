@@ -727,7 +727,7 @@ begin
 
 -- generate abort readonly
    abort_readonly <=
-      '1' when have_acf3 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 0) = "000" or pdr(2 downto 0) = "001" or pdr(2 downto 0) = "010")   -- ACF 1 (RO, trap on read) is read-only too: EKBEE1 TESTNO 55
+      '1' when have_acf3 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "010")   -- ACF 1 and 2; ACF 0 is non-resident only (EKBEE1 TESTNO 53, 55)
       else '1' when have_acf2 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 1) = "00" or pdr(2 downto 1) = "01")
       else '0';
 
