@@ -57,6 +57,7 @@ entity rl11 is
       clk_sys : in std_logic;
 
       have_rl : in integer range 0 to 1;
+      img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -125,6 +126,7 @@ signal csr_ie : std_logic;
 signal csr_ba : std_logic_vector(17 downto 16);
 signal csr_fc : std_logic_vector(2 downto 0);
 signal csr_drdy : std_logic;
+signal rl_online : std_logic;                                  -- image mounted (img_mounted): drive online
 
 signal bar : std_logic_vector(15 downto 1) := (others => '0');
 
@@ -270,7 +272,8 @@ begin
 
 -- specific logic for the device
 
-   csr_drdy <= '1';                    -- the drive is always ready
+   rl_online <= '1' when img_mounted = 1 else '0';   -- an image is mounted: cartridge loaded, drive spun up
+   csr_drdy <= rl_online;              -- drive ready only with a cartridge
    csr_de <= '0';                      -- the drive has no errors
 
    csr_err <= '0' when csr_e = "000" and csr_nxm = '0' and csr_de = '0' else '1';
@@ -387,7 +390,11 @@ begin
                               bus_dati(6) <= dnhs(conv_integer(csr_ds));           -- current head
                               bus_dati(5) <= '0';                                  -- cover open
 --                              if sd_state = sd_idle then                           -- idle is the only state the cpu should ever be able to witness, unless the card interface is recovering from an error. All busy states are passed through while the cpu is stopped.
-                              bus_dati(4 downto 0) <= "11101";                     -- heads out, brush home, locked
+                              if rl_online = '1' then
+                                 bus_dati(4 downto 0) <= "11101";                  -- heads out, brush home, locked
+                              else
+                                 bus_dati(4 downto 0) <= "00000";                  -- no cartridge: load cartridge state
+                              end if;
 --                              else
 --                                 bus_dati(4 downto 0) <= "00000";                  -- load cartridge
 --                              end if;
@@ -450,7 +457,12 @@ begin
                end if;
 
                if csr_crdy = '0' and start = '0' then
-                  start <= '1';
+                  if rl_online = '0' and csr_fc /= "000" and csr_fc /= "010" then
+                     csr_e <= "001";                                    -- drive function, no cartridge: operation incomplete (as SIMH)
+                     csr_crdy <= '1';
+                  else
+                     start <= '1';
+                  end if;
                end if;
 
                if start = '1' then

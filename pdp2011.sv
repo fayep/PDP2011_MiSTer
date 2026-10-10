@@ -355,13 +355,21 @@ int have_rl;
 int have_rh;
 int have_tm;
 int tm_img_mounted;
+int rk_img_mounted;
+int rl_img_mounted;
+int rh_img_mounted;
 
-assign have_rk = vsd_sel_rk ? 1 : 0;
-assign have_rl = vsd_sel_rl ? 1 : 0;
+// Controllers are always present on the bus, as real cards are; only the
+// drive behind each one goes online/offline with its image (img_mounted).
+assign have_rk = 1;
+assign have_rl = 1;
 assign have_rh = 1;
 assign have_tm = 1;  // controller presence is a build-time choice, not tied to
                       // mount state -- see tm11's img_mounted for "no tape"
 assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
+assign rk_img_mounted = vsd_sel_rk ? 1 : 0;
+assign rl_img_mounted = vsd_sel_rl ? 1 : 0;
+assign rh_img_mounted = vsd_sel_rh ? 1 : 0;
 
 //
 wire [3:0]rk_sddebug = 4'd0;   // RK: no SPI activity bits since mister_blkdev
@@ -462,6 +470,9 @@ mister_top mister_top
 
    .have_tm (have_tm),
    .tm_img_mounted (tm_img_mounted),
+   .rk_img_mounted (rk_img_mounted),
+   .rl_img_mounted (rl_img_mounted),
+   .rh_img_mounted (rh_img_mounted),
    .tm_media_change (tape_mount_tgl),
    .tm_sd_lba      (sd_lba[3]),
    .tm_sd_rd       (tm_sd_rd),
@@ -522,7 +533,7 @@ wire [7:0] vga_blue;
 
 
 assign vttype  = status[10] ? 105 : 100; 
-assign have_act = status[13];
+assign have_act = 2'd2;   // VT screen saver: only keyboard activity wakes the screen (1 = keyboard or serial)
 assign color=status[9:8];
 
 

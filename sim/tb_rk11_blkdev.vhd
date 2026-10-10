@@ -35,7 +35,7 @@ architecture sim of tb_rk11_blkdev is
    constant GO_WRITE : std_logic_vector(15 downto 0) := x"0003";      -- function 1 + GO
    constant GO_READ  : std_logic_vector(15 downto 0) := x"0005";      -- function 2 + GO
 
-   constant NBLK : integer := 16;
+   constant NBLK : integer := 600;
    type block_t is array(0 to 255) of std_logic_vector(15 downto 0);
    type image_t is array(0 to NBLK-1) of block_t;
 
@@ -48,6 +48,7 @@ architecture sim of tb_rk11_blkdev is
    signal nclk    : std_logic := '1';
    signal clk_sys : std_logic := '0';
    signal reset   : std_logic := '1';
+   signal img     : integer range 0 to 1 := 1;                  -- image mounted (drive online)
 
    signal b_addr  : std_logic_vector(17 downto 0) := (others => '0');
    signal b_dato  : std_logic_vector(15 downto 0) := (others => '0');
@@ -119,6 +120,7 @@ begin
       sd_buff_wr => sd_buff_wr,
       clk_sys => clk_sys,
       have_rk => 1,
+      img_mounted => img,
       have_rk_num => 1,
       reset => reset,
       clk50mhz => clk_sys,
@@ -296,6 +298,15 @@ begin
             & integer'image(bad) & " wrong)", bad = 0);
       end procedure;
 
+      procedure check_guard(tag : string; wa : integer; n : integer) is
+         variable bad : integer := 0;
+      begin
+         for i in 0 to n - 1 loop
+            if mem(wa + i) /= x"DEAD" then bad := bad + 1; end if;
+         end loop;
+         ok(tag & " (" & integer'image(bad) & " of " & integer'image(n) & " guard words overwritten)", bad = 0);
+      end procedure;
+
       procedure check_mem(tag : string; wa : integer; b : integer; lo, hi : integer) is
          variable bad : integer := 0;
       begin
@@ -305,6 +316,8 @@ begin
          ok(tag & " (" & integer'image(bad) & " wrong)", bad = 0);
       end procedure;
 
+      variable v  : std_logic_vector(15 downto 0);
+      variable n0 : integer;
    begin
       wait until img_init_done;
       cyc(5);
@@ -339,6 +352,82 @@ begin
       check_mem("read back sector 5", 8#50000#, 5, 0, 255);
       check_mem("read back sector 6", 8#50000# + 256, 6, 0, 255);
       check_mem("read back sector 7", 8#50000# + 512, 7, 0, 255);
+
+      -- partial-sector reads (word counts RT-11 really uses): exactly wc words land,
+      -- nothing beyond them is touched
+      for k in 0 to 2 loop
+         for i in 0 to 5000 loop
+            memw(8#60000# + i, x"DEAD");
+         end loop;
+         if k = 0 then
+            rh_cmd(GO_READ, 1, 134, 8#60000#, "partial read 134 words");
+            check_mem("partial read 134: data", 8#60000#, 1, 0, 133);
+            check_guard("partial read 134: nothing past the end", 8#60000# + 134, 400);
+         elsif k = 1 then
+            rh_cmd(GO_READ, 2, 223, 8#60000#, "partial read 223 words");
+            check_mem("partial read 223: data", 8#60000#, 2, 0, 222);
+            check_guard("partial read 223: nothing past the end", 8#60000# + 223, 400);
+         else
+            rh_cmd(GO_READ, 0, 4502, 8#60000#, "read 4502 words (17.59 sectors)");
+            check_mem("read 4502: sector 0", 8#60000#, 0, 0, 255);
+            check_mem("read 4502: last partial sector", 8#60000# + 17 * 256, 17, 0, 4502 - 17 * 256 - 1);
+            check_guard("read 4502: nothing past the end", 8#60000# + 4502, 400);
+         end if;
+      end loop;
+
+      -- RT-11 loading DIR.SAV: 4502 words from cylinder 22, surface 1, sector 10
+      -- (RKDA 001332 = block 550). After two sectors the transfer runs off the end
+      -- of cylinder 22 and must continue at cylinder 23, surface 0, sector 0.
+      for i in 0 to 5000 loop
+         memw(8#60000# + i, x"DEAD");
+      end loop;
+      reg_write(RKDA, x"02DA");                                      -- 001332 octal
+      reg_write(RKBA, conv_std_logic_vector(8#60000# * 2, 16));
+      reg_write(RKWC, conv_std_logic_vector(65536 - 4502, 16));
+      reg_write(RKCS, GO_READ);
+      wait_rdy("read 4502 words from block 550 (crosses into cylinder 23)");
+      for k in 0 to 16 loop
+         check_mem("cylinder-crossing read: block " & integer'image(550 + k), 8#60000# + k * 256, 550 + k, 0, 255);
+      end loop;
+      check_mem("cylinder-crossing read: block 567 (partial)", 8#60000# + 17 * 256, 567, 0, 4502 - 17 * 256 - 1);
+      check_guard("cylinder-crossing read: nothing past the end", 8#60000# + 4502, 400);
+
+      -- No image mounted: the controller is still there, the drive is not
+      -- ready, a drive function ends at once with DRE (no disk activity), a
+      -- control reset still works and clears it, and after the image is
+      -- mounted again a read works.
+      img <= 0;
+      cyc(10);
+      reg_write(RKDA, x"0000");
+      reg_read("000", v);
+      ok("offline: RKDS DRY clear", v(7) = '0');
+      ok("offline: RKDS RWS RDY clear", v(6) = '0');
+      n0 := sd_reads;
+      reg_write(RKCS, GO_READ);
+      for i in 1 to 200 loop
+         cyc(10);
+         reg_read(RKCS, v);
+         exit when v(7) = '1';
+      end loop;
+      ok("offline: read completes (RDY)", v(7) = '1');
+      ok("offline: read sets ERR and HE", v(15) = '1' and v(14) = '1');
+      reg_read("001", v);
+      ok("offline: RKER DRE", v(15) = '1' and v(7) = '0');
+      ok("offline: no disk transfer started", sd_reads = n0);
+      reg_write(RKCS, x"0001");                                      -- control reset
+      for i in 1 to 200 loop
+         cyc(10);
+         reg_read(RKCS, v);
+         exit when v(7) = '1';
+      end loop;
+      reg_read("001", v);
+      ok("offline: control reset works and clears DRE", v = x"0000");
+      img <= 1;
+      cyc(10);
+      reg_read("000", v);
+      ok("remounted: RKDS DRY set", v(7) = '1');
+      rh_cmd(GO_READ, 0, 256, 8#60000#, "remounted: read sector 0");
+      check_mem("remounted: data", 8#60000#, 0, 0, 255);
 
       cyc(10);
       report "tb_rk11_blkdev: " & integer'image(pass_count) & " checks passed, "

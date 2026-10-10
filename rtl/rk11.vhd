@@ -57,6 +57,7 @@ entity rk11 is
       clk_sys : in std_logic;
 
       have_rk : in integer range 0 to 1;
+      img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       have_rk_num : in integer range 1 to 8;
       reset : in std_logic;
       clk50mhz : in std_logic;
@@ -123,6 +124,7 @@ signal rkds_dru : std_logic;                               -- drive unsafe
 signal rkds_sin : std_logic;                               -- seek incomplete
 signal rkds_sok : std_logic;                               -- sector counter ok
 signal rkds_dry : std_logic;                               -- drive ready
+signal rk_online : std_logic;                              -- image mounted (img_mounted): drives online
 signal rkds_rwsrdy : std_logic;                            -- read/write/seek ready
 signal rkds_wps : std_logic;                               -- write protected if 1
 signal rkds_scsa : std_logic;                              -- disk address = sector counter
@@ -329,9 +331,10 @@ begin
       or rker_dre = '1'
       else '0';
 
-   rkds_rwsrdy <= '1' when conv_integer(rkda_dr) < have_rk_num and rksi(conv_integer(rkda_dr)) = 0 and sdcard_idle = '1'
+   rk_online <= '1' when img_mounted = 1 else '0';                -- an image is mounted: the drives have a pack
+   rkds_rwsrdy <= '1' when conv_integer(rkda_dr) < have_rk_num and rksi(conv_integer(rkda_dr)) = 0 and sdcard_idle = '1' and rk_online = '1'
       else '0';
-   rkds_dry <= '1' when conv_integer(rkda_dr) < have_rk_num else '0';
+   rkds_dry <= '1' when conv_integer(rkda_dr) < have_rk_num and rk_online = '1' else '0';
 
 -- regular bus interface : handle register contents and dependent logic
 
@@ -614,7 +617,10 @@ begin
                end if;
 
                if rkcs_rdy = '0' and start = '0' and rkcs_go = '0' then
-                  if conv_integer(rkda_dr) < have_rk_num then
+                  if conv_integer(rkda_dr) < have_rk_num and rk_online = '0' and rkcs_fu /= "000" then
+                     rker_dre <= '1';                                      -- drive function, no pack: drive error (control reset still works)
+                     rkcs_rdy <= '1';
+                  elsif conv_integer(rkda_dr) < have_rk_num then
                      start <= '1';
                      rkdelay <= 120;
                      rkcs_scp <= '0';
