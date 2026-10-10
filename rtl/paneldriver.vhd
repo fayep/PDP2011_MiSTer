@@ -64,6 +64,8 @@ entity paneldriver is
 
       paneltype : in integer range 0 to 4 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons; 4 - MiSTer on-screen panel
       vpanel_lamps : out std_logic_vector(49 downto 0);              -- type 4: address(22) & data(16) & run pause master user super kernel data 16 18 22 adrserr parerr
+      vpanel_sw : in std_logic_vector(35 downto 0) := (others => '0'); -- type 4: raw switch words 3 & 2 & 1 from the keyboard (pdp2011.sv)
+      vpanel_knobs : in std_logic_vector(4 downto 0) := (others => '0'); -- type 4: DATA knob (4-3) & ADDRESS knob (2-0) positions
 
       cons_reset : out std_logic;                                    -- a request for a reset from the console
 
@@ -583,7 +585,7 @@ begin
                      when 13 =>
                         panel_row <= "101";
                         if paneltype = 4 then
-                           panel_sw_raw1 <= (others => '0');      -- on-screen panel: no switch matrix (yet)
+                           panel_sw_raw1 <= vpanel_sw(11 downto 0);   -- on-screen panel: switch register 11-0 from the keyboard
                         else
                            panel_sw_raw1 <= not panel_col;
                         end if;
@@ -591,7 +593,7 @@ begin
                      when 14 =>
                         panel_row <= "011";
                         if paneltype = 4 then
-                           panel_sw_raw2 <= (others => '0');      -- on-screen panel: no switch matrix (yet)
+                           panel_sw_raw2 <= vpanel_sw(23 downto 12);  -- switch register 21-12
                         else
                            panel_sw_raw2 <= not panel_col;
                         end if;
@@ -599,7 +601,7 @@ begin
                      when 15 =>
                         panel_row <= "111";
                         if paneltype = 4 then
-                           panel_sw_raw3 <= (others => '0');      -- on-screen panel: no switch matrix (yet)
+                           panel_sw_raw3 <= vpanel_sw(35 downto 24);  -- control switches (load, exam, dep, cont, halt, inst, start)
                         else
                            panel_sw_raw3 <= not panel_col;
                         end if;
@@ -677,6 +679,9 @@ begin
                   end case;
                end if;
 
+               if paneltype = 4 then                                -- on-screen panel: the knob position comes from the keyboard
+                  rotary1_bin <= conv_integer(vpanel_knobs(2 downto 0));
+               end if;
                case rotary1_bin is
                   when 0 =>
                      adss <= adss_pp;
@@ -767,6 +772,9 @@ begin
                   end case;
                end if;
 
+               if paneltype = 4 then
+                  rotary2_bin <= conv_integer(vpanel_knobs(4 downto 3));
+               end if;
                case rotary2_bin is
                   when 0 => ddss <= ddss_dp;
                   when 1 => ddss <= ddss_mu;

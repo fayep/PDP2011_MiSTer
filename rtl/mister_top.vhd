@@ -121,6 +121,7 @@ entity mister_top is
 
       -- board peripherals
       panel_lamps    : out std_logic_vector(49 downto 0);   -- on-screen panel lamps, clk_100 (paneldriver type 4)
+      panel_sw       : in std_logic_vector(40 downto 0) := (others => '0');  -- on-screen panel: knobs (40-36) & switches from the keyboard (quasi-static)
 
       greenled       : out std_logic
   );
@@ -422,6 +423,8 @@ component paneldriver is
 
       paneltype : in integer range 0 to 4 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons
       vpanel_lamps : out std_logic_vector(49 downto 0);
+      vpanel_sw : in std_logic_vector(35 downto 0) := (others => '0');
+      vpanel_knobs : in std_logic_vector(4 downto 0) := (others => '0');
 
       cons_reset : out std_logic;                                    -- a request for a reset from the console
 
@@ -500,6 +503,8 @@ signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 0;
 signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 0;
 -- boot_sel: OSD boot device (quasi-static), synchronised on cpuclk the same way
 signal boot_sel_meta, boot_sel_sync : integer range 0 to 7 := 0;
+-- panel_sw: on-screen panel switches (clk_100, from the keyboard), synchronised on cpuclk
+signal panel_sw_meta, panel_sw_sync : std_logic_vector(40 downto 0) := (others => '0');
 
 -- VT screen saver timeout from the OSD (status[13], quasi-static): 0 = never
 signal vt_act_seconds : integer range 0 to 7200;
@@ -626,6 +631,7 @@ begin
          rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
          rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
          boot_sel_meta <= boot_sel;  boot_sel_sync <= boot_sel_meta;
+         panel_sw_meta <= panel_sw;  panel_sw_sync <= panel_sw_meta;
       end if;
    end process;
 
@@ -833,6 +839,8 @@ begin
 
       paneltype => 4,                                  -- MiSTer on-screen panel
       vpanel_lamps => cons_vlamps,
+      vpanel_sw => panel_sw_sync(35 downto 0),
+      vpanel_knobs => panel_sw_sync(40 downto 36),
 
       sample_cycles => sample_cycles,
       minon_cycles => minon_cycles,
