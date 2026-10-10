@@ -1,0 +1,90 @@
+	.title	tb_ekbee1_stklim - kernel stack limit on MOV (SP),(SP)
+
+; EKBEE1's stack limit sweep (076502-077140) does MOV R5,SP / MOV (SP),(SP)
+; over SL and SP. The DATO address is SP itself (mode 1), so:
+;   A: SL 0,   SP 340  yellow (SL+340..377): completes, trap 4; the trap's
+;                       own pushes are then red: CPUERR 014, SP 0 (as 11orcam)
+;   B: SL 0,   SP 740  no trap
+;   C: SL 400, SP 340  red (below SL+340): abort, SP 4, trap 4, CPUERR 004
+; Hardware 897c432 called A red (it compared SP-2), one error per SL.
+;
+; result(500) 1 pass, 2 fail. cerA/spA(502/504) cerC/spC(506/510) as
+; seen in the vector 4 handler, trapsB(512) traps taken in case B.
+
+CPUERR	= 177766
+STKLIM	= 177774
+
+	.asect
+	.=4
+	.word	t4,340
+
+	.=500
+result:	.word	0
+cera:	.word	0
+spa:	.word	0
+cerc:	.word	0
+spc:	.word	0
+trapsb:	.word	0
+t4pc:	.word	0
+t4cer:	.word	0
+t4sp:	.word	0
+
+	.=1000
+	jmp	@#start
+
+	.=3000
+start:	mov	#4000,sp
+; A
+	clr	@#STKLIM
+	clr	@#CPUERR
+	mov	#ca,@#t4pc
+	mov	#340,sp
+	mov	(sp),(sp)
+	br	ca			; no trap: cera stays 0
+ca:	mov	@#t4cer,@#cera
+	mov	@#t4sp,@#spa
+	clr	@#t4cer
+; B
+	clr	@#CPUERR
+	clr	@#STKLIM
+	mov	#cb,@#t4pc
+	mov	#740,sp
+	mov	(sp),(sp)
+	br	cb2
+cb:	inc	@#trapsb
+cb2:
+; C
+	mov	#400,@#STKLIM
+	clr	@#CPUERR
+	mov	#cc,@#t4pc
+	mov	#340,sp
+	mov	(sp),(sp)
+	br	cc
+cc:	mov	@#t4cer,@#cerc
+	mov	@#t4sp,@#spc
+	clr	@#STKLIM
+	mov	#4000,sp
+	mov	#2,@#result
+	cmp	#14,@#cera		; A: yellow, then red on the trap pushes
+	bne	done
+	tst	@#spa
+	bne	done
+	tst	@#trapsb		; B: no trap
+	bne	done
+	cmp	#4,@#cerc		; C: red only
+	bne	done
+	tst	@#spc			; C: SP 4, two words pushed -> 0
+	bne	done
+	mov	#1,@#result
+done:	halt
+
+; vector 4: record CPUERR and SP after the trap frame, resume at t4pc
+t4:	mov	@#CPUERR,@#t4cer
+	mov	sp,@#t4sp
+	clr	@#CPUERR
+	clr	@#STKLIM
+	mov	#4000,sp
+	mov	@#t4pc,r0		; (a PC-relative @t4pc is not relocated by mac2mem)
+	jmp	(r0)
+
+	.end	start

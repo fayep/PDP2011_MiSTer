@@ -1,0 +1,82 @@
+	.title	tb_ekbee1_odd - EKBEE1 odd address beats MM abort
+
+; EKBEE1 076436-076470, after TESTNO 122. Kernel page 6 is
+; non-resident, MMU on, SP 1100, then a word CLR at absolute 140001.
+; The odd address error must win: one trap through 4, no 250.
+; Hardware 2e99514 took 250. MMR0 is only reported: the FPGA records
+; the NR abort (100015) here; EKBEE1 clears MMR0 on this path.
+;
+; result(500) 1 pass, 2 fail. got4(502), got250(504), mmr0s(506) MMR0 as
+; seen in the handler, cer(510) is CPUERR.
+
+MMR0	= 177572
+MMR3	= 172516
+CPUERR	= 177766
+KIPDR0	= 172300
+KIPAR0	= 172340
+KDPDR0	= 172320
+KDPAR0	= 172360
+KIPDR6	= 172314
+
+	.asect
+	.=4
+	.word	t4,340
+	.=250
+	.word	t250,340
+
+	.=500
+result:	.word	0
+got4:	.word	0
+got250:	.word	0
+mmr0s:	.word	0
+cer:	.word	0
+
+	.=1000
+	jmp	@#start
+
+	.=3000
+start:	mov	#1100,sp
+	jsr	pc,@#idmap
+	clr	@#MMR3
+	bis	#7,@#KIPDR6		; EKBEE1 076316: page 6 non-resident (ACF 7)
+	mov	#1,@#MMR0
+	mov	#1100,sp
+	clr	@#140001		; odd address in a non-resident page
+	br	done			; no trap at all: fail
+t4:	inc	@#got4
+	br	snap
+t250:	inc	@#got250
+snap:	mov	@#MMR0,@#mmr0s
+	mov	@#CPUERR,@#cer
+	clr	@#MMR0
+	mov	#1100,sp
+done:	mov	#2,@#result
+	cmp	#1,@#got4
+	bne	L1
+	tst	@#got250
+	bne	L1
+	mov	#1,@#result
+L1:	halt
+
+idmap:	mov	#KIPAR0,r0
+	jsr	pc,@#idpar
+	mov	#KDPAR0,r0
+	jsr	pc,@#idpar
+	mov	#KIPDR0,r0
+	jsr	pc,@#idpdr
+	mov	#KDPDR0,r0
+	jsr	pc,@#idpdr
+	rts	pc
+idpar:	clr	r1
+	mov	#7,r2
+L5:	mov	r1,(r0)+
+	add	#200,r1
+	sob	r2,L5
+	mov	#177600,(r0)
+	rts	pc
+idpdr:	mov	#8.,r2
+L6:	mov	#77406,(r0)+
+	sob	r2,L6
+	rts	pc
+
+	.end	start
