@@ -211,6 +211,7 @@ localparam CONF_STR = {
 	"-;",
 	"O[1],External Ethernet,No,Yes;",
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
+	"O[16],Video,Terminal,Front panel;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
@@ -313,6 +314,11 @@ end
 wire por = ~&por_cnt;
 
 wire reset = RESET | status[0] | buttons[1] | por;
+// One register stage before mister_top: the combinational path por_cnt ->
+// reset -> the DRAM state machine's I/O-cell registers had little margin
+// (0.47 ns in 32fd0e7) and failed once more logic shared the area.
+reg  reset_q = 1'b1;
+always @(posedge clk_100mhz) reset_q <= reset;
 
 ///////////////////////// DISKS /////////////////////////////////////////
 
@@ -440,7 +446,7 @@ assign SDRAM_CKE=1'b1;
 
 mister_top mister_top
 (
-   .reset(reset),
+   .reset(reset_q),
    .clk_100(clk_100mhz),
 	.clk_50 (clk_50mhz),
    .modelcode    (modelcode),
@@ -505,6 +511,7 @@ mister_top mister_top
    .dram_cs_n (SDRAM_nCS),
 	
 	.greenled (greenled),
+	.panel_lamps (panel_lamps),
 	
 	.ps2k_c(ps2k_c),
 	.ps2k_d(ps2k_d),
@@ -514,7 +521,7 @@ mister_top mister_top
    .vga_vsync(vga_vsync),
    .vga_hblank(vga_hblank),
    .vga_vblank(vga_vblank),
-   .ce_pix(ce_pix),
+   .ce_pix(ce_pix_vt),
    .vga_fb(vga_fb),
    .vga_ht(vga_ht),
    .vga_cursor_block(status[11]),
@@ -529,7 +536,7 @@ mister_top mister_top
 
 //////////////////////////////////////////////////////////////////
 
-wire ce_pix;
+wire ce_pix_vt;
 wire [7:0] video;
 wire vga_vsync;
 wire vga_hsync;
@@ -577,19 +584,61 @@ end
 
 assign CLK_VIDEO = clk_100mhz;
 
+//////////////////////////////////////////////////////////////////
+// On-screen front panel (notes/front-panel-plan.md). The panel drawn on
+// clk_100 with the VT's exact timing; lamps from the CPU's console loom
+// through paneldriver type 4 (step 2); switches still at their defaults.
+// OSD "Video" picks the terminal or the panel, PrintScreen flips it.
+
+wire [49:0] panel_lamps;       // paneldriver (type 4) lamps, already on clk_100
+
+wire        pv_ce, pv_hs, pv_vs, pv_hb, pv_vb;
+wire  [7:0] pv_r, pv_g, pv_b;
+
+panel_view panel_view
+(
+	.clk    (clk_100mhz),
+	.reset  (1'b0),                // free-running video timing: keep it off the reset net (fanout into the DRAM FSM)
+	.addr_l (panel_lamps[49:28]),
+	.data_l (panel_lamps[27:12]),
+	.stat_l (panel_lamps[11:0]),
+	.sw     (22'o0),
+	.ctl    (7'b0000100),           // ENABLE up
+	.ce_pix (pv_ce),
+	.hsync  (pv_hs),
+	.vsync  (pv_vs),
+	.hblank (pv_hb),
+	.vblank (pv_vb),
+	.r      (pv_r),
+	.g      (pv_g),
+	.b      (pv_b)
+);
+
+// PrintScreen (sent by Main as E0 12 E0 7C; Win+PrintScreen stays Main's
+// screenshot) flips the view; the OSD item sets where it starts.
+reg  pv_flip = 1'b0;
+reg  ps2_key_t = 1'b0;
+always @(posedge clk_100mhz) begin
+	ps2_key_t <= ps2_key[10];
+	if (ps2_key[10] != ps2_key_t && ps2_key[9] && ps2_key[8] && ps2_key[7:0] == 8'h7C)
+		pv_flip <= ~pv_flip;
+end
+wire panel_on = status[16] ^ pv_flip;
+wire ce_pix = panel_on ? pv_ce : ce_pix_vt;
+
 video_mixer video_mixer
 (
         .*,
         .freeze_sync(),
         .scandoubler(1'b0),
         .hq2x(),
-        .R(vga_red),
-        .G(vga_green),
-		  .B(vga_blue),
-        .HSync(vga_hsync),
-        .VSync(vga_vsync),
-        .HBlank(vga_hblank),
-        .VBlank(vga_vblank)
+        .R(panel_on ? pv_r : vga_red),
+        .G(panel_on ? pv_g : vga_green),
+		  .B(panel_on ? pv_b : vga_blue),
+        .HSync(panel_on ? pv_hs : vga_hsync),
+        .VSync(panel_on ? pv_vs : vga_vsync),
+        .HBlank(panel_on ? pv_hb : vga_hblank),
+        .VBlank(panel_on ? pv_vb : vga_vblank)
 );
 
 endmodule

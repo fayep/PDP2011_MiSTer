@@ -62,7 +62,8 @@ entity paneldriver is
       sample_cycles : in std_logic_vector(15 downto 0) := x"0400";   -- a sample is this many runs of the panel state machine (which has 16 cycles, so multiply by that)
       minon_cycles : in std_logic_vector(15 downto 0) := x"0400";    -- if a signal has been on for this many cycles in a sample, then the corresponding output will be on - note 16, above.
 
-      paneltype : in integer range 0 to 3 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons
+      paneltype : in integer range 0 to 4 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons; 4 - MiSTer on-screen panel
+      vpanel_lamps : out std_logic_vector(49 downto 0);              -- type 4: address(22) & data(16) & run pause master user super kernel data 16 18 22 adrserr parerr
 
       cons_reset : out std_logic;                                    -- a request for a reset from the console
 
@@ -237,6 +238,11 @@ begin
       else '0';
 
    cons_ena <= panel_sw_ena;
+
+-- on-screen panel (type 4): the integrated lamps, for the video renderer
+   vpanel_lamps <= temp_addr & temp_data
+      & temp_run & temp_pause & temp_master & temp_user & temp_super & temp_kernel & temp_id
+      & temp_map16 & temp_map18 & temp_map22 & temp_adrserr & (temp_parh or temp_parl);
    cons_inst <= panel_sw_inst;
 
    pl_load: panelos port map(
@@ -576,15 +582,27 @@ begin
 
                      when 13 =>
                         panel_row <= "101";
-                        panel_sw_raw1 <= not panel_col;
+                        if paneltype = 4 then
+                           panel_sw_raw1 <= (others => '0');      -- on-screen panel: no switch matrix (yet)
+                        else
+                           panel_sw_raw1 <= not panel_col;
+                        end if;
 
                      when 14 =>
                         panel_row <= "011";
-                        panel_sw_raw2 <= not panel_col;
+                        if paneltype = 4 then
+                           panel_sw_raw2 <= (others => '0');      -- on-screen panel: no switch matrix (yet)
+                        else
+                           panel_sw_raw2 <= not panel_col;
+                        end if;
 
                      when 15 =>
                         panel_row <= "111";
-                        panel_sw_raw3 <= not panel_col;
+                        if paneltype = 4 then
+                           panel_sw_raw3 <= (others => '0');      -- on-screen panel: no switch matrix (yet)
+                        else
+                           panel_sw_raw3 <= not panel_col;
+                        end if;
 
 
                      when others =>

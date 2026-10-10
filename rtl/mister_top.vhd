@@ -116,6 +116,8 @@ entity mister_top is
       dram_cs_n      : out std_logic;
 
       -- board peripherals
+      panel_lamps    : out std_logic_vector(49 downto 0);   -- on-screen panel lamps, clk_100 (paneldriver type 4)
+
       greenled       : out std_logic
   );
 end mister_top;
@@ -411,7 +413,8 @@ component paneldriver is
       sample_cycles : in std_logic_vector(15 downto 0) := x"0400";   -- a sample is this many runs of the panel state machine (which has 16 cycles, so multiply by that)
       minon_cycles : in std_logic_vector(15 downto 0) := x"0400";    -- if a signal has been on for this many cycles in a sample, then the corresponding output will be on - note 16, above.
 
-      paneltype : in integer range 0 to 3 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons
+      paneltype : in integer range 0 to 4 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons
+      vpanel_lamps : out std_logic_vector(49 downto 0);
 
       cons_reset : out std_logic;                                    -- a request for a reset from the console
 
@@ -554,6 +557,7 @@ signal cons_map18 : std_logic;
 signal cons_map22 : std_logic;
 
 signal cons_reset : std_logic;
+signal cons_vlamps : std_logic_vector(49 downto 0);              -- paneldriver lamps (cpuclk)
 
 signal sample_cycles : std_logic_vector(15 downto 0) := x"0400";
 signal minon_cycles : std_logic_vector(15 downto 0) := x"0400";
@@ -812,13 +816,14 @@ begin
 
       cons_reset => cons_reset,
 
-      paneltype => 0,
+      paneltype => 4,                                  -- MiSTer on-screen panel
+      vpanel_lamps => cons_vlamps,
 
       sample_cycles => sample_cycles,
       minon_cycles => minon_cycles,
 
       clkin => cpuclk,
-      reset => reset
+      reset => cpureset_cpu                               -- (on cpuclk: the synchronised reset)
    );
 
 
@@ -1120,6 +1125,8 @@ begin
                      dram_ba_0 <= addr(21);
                      dram_dq <= dato;
                   end if;
+
+                  panel_lamps <= cons_vlamps;            -- on-screen panel: cpuclk -> clk_100 at a fixed state
 
                   dram_fsm <= dram_c9;
 
