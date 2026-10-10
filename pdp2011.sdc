@@ -19,23 +19,41 @@ create_generated_clock -name cpuclk \
 derive_pll_clocks -use_net_name
 derive_clock_uncertainty
 
-# cpuclk -> divclk: the DRAM FSM samples the CPU's address/data at the
-# edge ending dram_c6 (row address, 5 divclk periods after the cpuclk
-# rise) or dram_c8 (column/data, 7 periods). -setup 5 is the tighter of
-# the two; -hold 4 brings the hold check back to the launch edge.
-set_multicycle_path -from [get_clocks {cpuclk}] \
-   -to [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] -setup 5
-set_multicycle_path -from [get_clocks {cpuclk}] \
-   -to [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] -hold 4
+# --- cpuclk <-> divclk ---------------------------------------------------
+# cpuclk is a fabric register, so its edges reach the CPU's flops several
+# ns (~6.7 ns in 7a6cd5e) after the divclk edge that made them. Quartus
+# counts -setup multicycles in DESTINATION periods and -hold in SOURCE
+# periods unless told otherwise, so every exception here says -start/-end
+# explicitly. (The old "-setup 3 / -hold 14" into cpuclk meant 3 x 140 ns
+# and effectively no hold check; "-hold 4" out of cpuclk was 4 x 140 ns.)
+set divclk {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}
 
-# divclk -> cpuclk: dati is loaded at the edge ending dram_c12 (edge 23)
-# and consumed at the next cpuclk rise (edge 29): 3 divclk periods.
-# cpureset (also from the dram_fsm process) changes at most once per
-# cpuclk period: the hold relaxation is one full cpuclk period (14).
-set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
-   -to [get_clocks {cpuclk}] -setup 3
-set_multicycle_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk}] \
-   -to [get_clocks {cpuclk}] -hold 14
+# cpuclk -> divclk: the DRAM FSM samples the CPU's address/control at the
+# edge ending dram_c6 (row, 5 divclk periods after the cpuclk rise) or
+# dram_c8 (column/data, 7). The controllers' block address/handshake
+# registers are read by mister_blkdev only after a synchronised start, so
+# they have at least as long. Hold is checked at the launch edge.
+set_multicycle_path -setup -end 5 -from [get_clocks {cpuclk}] -to [get_clocks $divclk]
+set_multicycle_path -hold  -end 4 -from [get_clocks {cpuclk}] -to [get_clocks $divclk]
+
+# divclk -> cpuclk: only the DRAM read data has more than one divclk period.
+# dati is loaded at the edge ending dram_c12 (edge 23) and used at the next
+# cpuclk rise (edge 29): 3 divclk periods. Hold back at the real launch edge.
+# Everything else divclk -> cpuclk is either a synchroniser input (below) or
+# must meet the strict single-period default.
+set_multicycle_path -setup -start 3 -from [get_registers {emu:emu|mister_top:mister_top|dati[*]}] -to [get_clocks {cpuclk}]
+set_multicycle_path -hold  -start 2 -from [get_registers {emu:emu|mister_top:mister_top|dati[*]}] -to [get_clocks {cpuclk}]
+
+# Synchroniser first stages (2-FF, clk_100 <-> cpuclk): the crossing is
+# asynchronous by design; the second stage is what the logic uses.
+set_false_path -to [get_registers {*mister_blkdev:*|*_m}]
+set_false_path -to [get_registers {emu:emu|mister_top:mister_top|cpureset_s1}]
+set_false_path -to [get_registers {emu:emu|mister_top:mister_top|tm_img_mounted_meta* emu:emu|mister_top:mister_top|rk_img_mounted_meta* emu:emu|mister_top:mister_top|rl_img_mounted_meta* emu:emu|mister_top:mister_top|rh_img_mounted_meta*}]
+# tm11 synchronises the tape-change toggle on both cpuclk edges (mc_e, mc_n)
+set_false_path -to [get_registers {*tm11:tm0|mc_e[0] *tm11:tm0|mc_n[0]}]
+# PS/2 keyboard lines from hps_io: an asynchronous serial protocol, sampled
+# by the VT's ps2 filter shift register (ps2_cfilter) on cpuclk.
+set_false_path -from [get_registers {*ps2_device:keyboard|ps2_clk_out *ps2_device:keyboard|ps2_dat_out}] -to [get_clocks {cpuclk}]
 
 # kl11 receive data (clk_50 domain) is handed to cpuclk through a level
 # handshake with a multi-tap synchroniser: a real false path.

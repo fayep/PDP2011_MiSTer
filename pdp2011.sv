@@ -299,7 +299,20 @@ pll pll
 );
 
 
-wire reset = RESET | status[0] | buttons[1]; //| !pll_locked;
+// Power-on reset: the whole core stays in reset until the PLL has been
+// locked for 65536 clk_100mhz cycles (~655 us), so nothing depends on
+// register power-up values or on clocks that were not yet stable. pll_locked
+// is asynchronous; it is synchronised before use.
+reg  [1:0] lock_s  = 2'b00;
+reg [15:0] por_cnt = 16'd0;
+always @(posedge clk_100mhz) begin
+	lock_s <= {lock_s[0], pll_locked};
+	if (!lock_s[1]) por_cnt <= 16'd0;
+	else if (~&por_cnt) por_cnt <= por_cnt + 1'd1;
+end
+wire por = ~&por_cnt;
+
+wire reset = RESET | status[0] | buttons[1] | por;
 
 ///////////////////////// DISKS /////////////////////////////////////////
 

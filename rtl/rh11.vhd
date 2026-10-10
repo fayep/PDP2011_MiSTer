@@ -300,6 +300,9 @@ signal hs_offset : std_logic_vector(23 downto 0);
 signal ca_offset : std_logic_vector(23 downto 0);
 signal dn_offset : std_logic_vector(23 downto 0);
 signal sd_addr : std_logic_vector(23 downto 0);
+signal sd_addr_lat : std_logic_vector(23 downto 0) := (others => '0');   -- block of the sector in flight, fixed at its start
+signal xfer_orphan : std_logic := '0';                          -- a controller clear abandoned the sector in flight
+signal wcheck : std_logic;                                       -- write check function: compare, never store
 
 type busmaster_state_t is (
    busmaster_idle,
@@ -348,7 +351,7 @@ begin
 
 
    sd1: mister_blkdev port map(
-      sdcard_addr => sd_addr,
+      sdcard_addr => sd_addr_lat,
 
       sdcard_idle => sdcard_idle,
       sdcard_read_start => sdcard_read_start,
@@ -406,6 +409,11 @@ begin
 
    rmcs3_ie <= rmcs1_ie;
 
+   -- write check (and write check header and data) reads the block like a read,
+   -- but must never store it: the controller has no comparator, so the check
+   -- always passes; storing the disk data overwrote the very buffer being checked
+   wcheck <= '1' when rmcs1_fnc = "10100" or rmcs1_fnc = "10101" else '0';
+
    rmds_err <= '1' when  rmer1_dck = '1' or rmer1_uns = '1' or rmer1_opi = '1' or rmer1_dte = '1' or rmer1_wle = '1'
       or rmer1_iae = '1' or rmer1_aoe = '1' or rmer1_hcrc = '1' or rmer1_hce = '1' or rmer1_ech = '1' or rmer1_wcf = '1'
       or rmer1_fer = '1' or rmer1_par = '1' or rmer1_rmr = '1' or rmer1_ilr = '1' or rmer1_ilf = '1'
@@ -435,6 +443,7 @@ begin
 
             sdcard_read_start <= '0';
             write_start <= '0';
+            xfer_orphan <= '0';
             rmcs1_rdy <= '1';
             rmcs1_rdyset <= '0';
 
@@ -607,7 +616,20 @@ begin
 
                if base_addr_match = '1' and bus_control_dato = '1' then
 
-                  if rmcs1_go = '1' and bus_addr(5 downto 1) /= "00111" and bus_addr(5 downto 1) /= "01010" then
+                  -- While the drive is busy (GO), only writes to the DRIVE's registers are
+                  -- refused (RMR), as in SIMH's split between the RH70 (pdp11_rh.c) and the
+                  -- drive (pdp11_rp.c rp_mbwr) and on real hardware: the controller's own
+                  -- registers -- WC, BA, CS2, DB, BAE, CS3 -- always take the write, and so
+                  -- does the controller half of CS1 (see below). AS, and MR as before, are
+                  -- never refused. RSTS 10.1 DSKINT writes a controller register during a
+                  -- transfer; refusing it with RMR failed the install ("Disk error during
+                  -- DSKINT build phase").
+                  if rmcs1_go = '1'
+                  and bus_addr(5 downto 1) /= "00000" and bus_addr(5 downto 1) /= "00001"     -- CS1 (split below), WC
+                  and bus_addr(5 downto 1) /= "00010" and bus_addr(5 downto 1) /= "00100"     -- BA, CS2
+                  and bus_addr(5 downto 1) /= "01001" and bus_addr(5 downto 1) /= "10100"     -- DB, BAE
+                  and bus_addr(5 downto 1) /= "10101" and bus_addr(5 downto 1) /= "11110"     -- CS3, BAE alias
+                  and bus_addr(5 downto 1) /= "00111" and bus_addr(5 downto 1) /= "01010" then -- AS, MR
                      rmer1_rmr <= '1';
                   else
 
@@ -616,13 +638,17 @@ begin
                         case bus_addr(5 downto 1) is
 -- rmcs1 17 776 700 - control/status 1
                            when "00000" =>
-                              rmcs1_rdyset <= bus_dato(7);
+                              rmcs1_rdyset <= bus_dato(7);             -- controller half: always
                               rmcs1_ie <= bus_dato(6);
-                              rmcs1_fnc <= bus_dato(5 downto 1);
-                              if rmcs1_sc = '0' then
-                                 rmcs1_go <= bus_dato(0);
-                                 if rmds_err = '0' then
-                                    rmds_ata <= '0';
+                              if rmcs1_go = '1' then                   -- drive half (function, GO) while
+                                 rmer1_rmr <= '1';                     -- busy: refused, as SIMH rp_mbwr
+                              else
+                                 rmcs1_fnc <= bus_dato(5 downto 1);
+                                 if rmcs1_sc = '0' then
+                                    rmcs1_go <= bus_dato(0);
+                                    if rmds_err = '0' then
+                                       rmds_ata <= '0';
+                                    end if;
                                  end if;
                               end if;
 
@@ -836,6 +862,28 @@ begin
                   rmds_vv <= '1';
                end if;
 
+               -- A controller clear does not stop a block that hps_io is already
+               -- reading or writing.  Its handshake is finished here, with no
+               -- register updates and no DMA (see the busmaster); a new data
+               -- transfer waits for it (the read/write cases below).  The old
+               -- controller let a retried transfer count the abandoned block as
+               -- its own first sector.
+               if xfer_orphan = '1' then
+                  if sdcard_read_start = '1' then
+                     if sdcard_read_ack = '1' and sdcard_read_done = '0' then
+                        sdcard_read_start <= '0';
+                        xfer_orphan <= '0';
+                     end if;
+                  elsif write_start = '1' then
+                     if sdcard_write_ack = '1' and sdcard_write_done = '0' then
+                        write_start <= '0';
+                        xfer_orphan <= '0';
+                     end if;
+                  else
+                     xfer_orphan <= '0';
+                  end if;
+               end if;
+
                if rmcs1_go = '1' then
 
                   rmcs1_mcpe <= '0';
@@ -980,7 +1028,9 @@ begin
                         when "11000" | "11001" =>             -- write data, write header/data
                            rmcs1_rdy <= '0';
                            rmds_om <= '0';
-                           if sdcard_idle = '1' and write_start = '0' then
+                           if xfer_orphan = '1' then
+                              null;                                      -- an abandoned block is still in flight
+                           elsif sdcard_idle = '1' and write_start = '0' then
                               if v_iae = '1' then
                                  rmer1_iae <= '1';
                                  rmcs1_go <= '0';
@@ -995,6 +1045,7 @@ begin
                                  rmcs1_rdyset <= '1';
                               else
                                  write_start <= '1';
+                                 sd_addr_lat <= sd_addr;
                                  if rmcs1_fnc(0) = '1' and unsigned(wcp) >= unsigned'("0000000000000010") then
                                     wcp <= wcp - 2;
                                  end if;
@@ -1053,7 +1104,9 @@ begin
 
                         when "11100" | "11101" | "10100" | "10101" =>             -- read data, read header/data, write check, write check header/data
                            rmcs1_rdy <= '0';
-                           if sdcard_idle = '1' and sdcard_read_start = '0' and sdcard_read_done = '0' then
+                           if xfer_orphan = '1' then
+                              null;                                      -- an abandoned block is still in flight
+                           elsif sdcard_idle = '1' and sdcard_read_start = '0' and sdcard_read_done = '0' then
                               if v_iae = '1' then
                                  rmer1_iae <= '1';
                                  rmcs1_go <= '0';
@@ -1062,6 +1115,7 @@ begin
                                  rmds_ataset <= '1';
                               else
                                  sdcard_read_start <= '1';
+                                 sd_addr_lat <= sd_addr;
                                  if rmcs1_fnc(0) = '1' and unsigned(wcp) >= unsigned'("0000000000000010") then
                                     wcp <= wcp - 2;
                                  end if;
@@ -1132,6 +1186,10 @@ begin
 
 -- reset controller and disks
                if rmcs2_clr = '1' then
+
+                  if write_start = '1' or sdcard_read_start = '1' then
+                     xfer_orphan <= '1';                             -- finish its handshake, discard it
+                  end if;
 
 -- rmcs1 17 776 700 - control/status 1
                   rmcs1_rdy <= '1';
@@ -1326,7 +1384,11 @@ begin
 
                   when busmaster_idle =>
                      nxm <= '0';
-                     if write_start = '1' then
+                     if write_start = '1' and xfer_orphan = '1' then     -- abandoned before its DMA: write nothing,
+                        busmaster_state <= busmaster_write_done;          -- just complete the handshake
+                     elsif sdcard_read_done = '1' and xfer_orphan = '1' then -- abandoned read: no DMA of its data
+                        busmaster_state <= busmaster_read_done;
+                     elsif write_start = '1' then
                         npr <= '1';
                         if npg = '1' then
                            busmaster_state <= busmaster_write1;
@@ -1370,11 +1432,11 @@ begin
                      if have_rh70 = 1 then
                         rh70_bus_master_addr <= work_bar & '0';
                         rh70_bus_master_dato <= "110" & rmof_fmt & rmdc(11 downto 0);  -- this is for testing only, so don't need it for rm06/rp2g. But it won't do any harm.
-                        rh70_bus_master_control_dato <= '1';
+                        rh70_bus_master_control_dato <= not wcheck;
                      else
                         bus_master_addr <= work_bar(17 downto 1) & '0';
                         bus_master_dato <= rmdc;
-                        bus_master_control_dato <= '1';
+                        bus_master_control_dato <= not wcheck;
                      end if;
                      work_bar <= work_bar + 1;
                      busmaster_state <= busmaster_readh2;
@@ -1384,11 +1446,11 @@ begin
                      if have_rh70 = 1 then
                         rh70_bus_master_addr <= work_bar & '0';
                         rh70_bus_master_dato <= rmda_ta & rmda_sa;
-                        rh70_bus_master_control_dato <= '1';
+                        rh70_bus_master_control_dato <= not wcheck;
                      else
                         bus_master_addr <= work_bar(17 downto 1) & '0';
                         bus_master_dato <= rmda_ta & rmda_sa;
-                        bus_master_control_dato <= '1';
+                        bus_master_control_dato <= not wcheck;
                      end if;
                      work_bar <= work_bar + 1;
                      busmaster_state <= busmaster_read1;
@@ -1416,12 +1478,12 @@ begin
 
                         if have_rh70 = 1 then
                            rh70_bus_master_control_dati <= '0';
-                           rh70_bus_master_control_dato <= '1';
+                           rh70_bus_master_control_dato <= not wcheck;
                            rh70_bus_master_addr <= work_bar & '0';
                            rh70_bus_master_dato <= sdcard_xfer_out;
                         else
                            bus_master_control_dati <= '0';
-                           bus_master_control_dato <= '1';
+                           bus_master_control_dato <= not wcheck;
                            bus_master_addr <= work_bar(17 downto 1) & '0';
                            bus_master_dato <= sdcard_xfer_out;
                         end if;
