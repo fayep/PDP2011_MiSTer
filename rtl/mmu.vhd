@@ -147,6 +147,7 @@ signal abort_nonresident : std_logic;
 signal abort_pagelength : std_logic;
 signal abort_readonly : std_logic;
 signal mmu_mmuabort : std_logic;
+signal acf_trap : std_logic;                                      -- ACF trap condition, with or without TENB
 signal trap_mm : std_logic;
 
 signal oddabort : std_logic;
@@ -744,10 +745,15 @@ begin
       else '0';
 
 -- generate mmu trap
-   trap_mm <=
-      '1' when sr0(9) = '1' and sr0(0)= '1'
+-- ACF 1 or 4 on a read, 4 or 5 on a write sets MMR0 bit 12 whether or not traps are enabled;
+-- TENB (bit 9) only requests the vector 250 trap (KB11-C; SIMH relocR_test; EKBEE1 TESTNO 55)
+   acf_trap <=
+      '1' when sr0(0)= '1'
          and have_mmutr = 1
          and ((cpu_rd = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "100")) or (cpu_wr = '1' and (pdr(2 downto 0) = "100" or pdr(2 downto 0) = "101")))
+      else '0';
+   trap_mm <=
+      '1' when acf_trap = '1' and sr0(9) = '1'
       else '0';
 
 
@@ -944,7 +950,9 @@ sr0out_debug <= sr0;
                   sr0(15) <= abort_nonresident;
                   sr0(14) <= abort_pagelength;
                   sr0(13) <= abort_readonly;
-                  sr0(12) <= trap_mm;
+                  if acf_trap = '1' then                -- bit 12 is sticky until software or INIT clears it
+                     sr0(12) <= '1';
+                  end if;
                   sr0(7) <= sr0_ic;
                   if (cpu_rd = '1' or cpu_wr = '1') then
                      sr0(6 downto 5) <= psw_mmumode;
