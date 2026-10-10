@@ -54,6 +54,7 @@ signal lc_irq : std_logic := '0';                  -- a tick is owed an interrup
 signal lineclk : std_logic;
 
 signal lc_clk_old : std_logic;
+signal lineclk_m, lineclk_s : std_logic := '0';  -- lineclk (clk50mhz domain) synchronised into clk
 
 -- regular bus interface
 
@@ -83,13 +84,15 @@ begin
    process(clk, reset, lineclk)
    begin
       if clk = '1' and clk'event then
+         lineclk_m <= lineclk;                 -- two-stage synchroniser: lineclk toggles on clk50mhz, and the
+         lineclk_s <= lineclk_m;               -- edge detect and lc_irq below used it raw (clk50 -> cpuclk is a false path)
          if reset = '1' then
 
             br <= '0';
             if have_kw11l = 1 then
                interrupt_state <= i_idle;
 
-               lc_clk_old <= lineclk;
+               lc_clk_old <= lineclk_s;
                lc_monitor <= '1';                -- EK-KDJ1B-UG_KDJ11-B_Nov86.pdf, table 1-23, pg. 1-45
                lc_ie <= '0';
                lc_irq <= '0';
@@ -152,8 +155,8 @@ begin
                   end if;
                end if;
 
-               lc_clk_old <= lineclk;
-               if lineclk /= lc_clk_old and lineclk = '1' then
+               lc_clk_old <= lineclk_s;
+               if lineclk_s /= lc_clk_old and lineclk_s = '1' then
                   lc_monitor <= '1';
                   if lc_ie = '1' then
                      lc_irq <= '1';
