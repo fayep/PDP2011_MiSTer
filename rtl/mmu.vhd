@@ -1075,6 +1075,7 @@ sr0out_debug <= sr0;
                      end if;
                      if cpu_dw8 = '0' or cpu_addr_v(0) = '1' then   -- word write or odd address
                         sr0(15 downto 13) <= mmu_dato(15 downto 13);
+                        sr0(12) <= mmu_dato(12);        -- trap-MM is software-written too (KB11-C 9.1.8; EKBEE1 TESTNO 11)
                         sr0(9) <= mmu_dato(9);          -- traps, 45 and 70
                         sr0(8) <= mmu_dato(8);
                      end if;
