@@ -1339,7 +1339,9 @@ begin
                         end if;
                         sr1_srcd <= "00000";                                             -- setup mmu sr1 source part
                         sr1_dstd <= "00000";                                             -- setup mmu sr1 destination part
-                        sr0_ic <= '1';                                                   -- set mmu sr0 instruction complete flag
+                        if modelcode /= 70 then                                          -- 11/70 (KB11-C 9.1.4): IC is not set at the fetch;
+                           sr0_ic <= '1';                                                -- an abort on the fetch freezes it clear
+                        end if;                                                          -- (EKBEE1 TESTNO 64: MMR0 140105, not 100305)
                         if modelcode = 44                                                -- fairly sure about this list, see kktb. Seems likely that at least 70 and J11 would also do this variant. However, not sure about F11 or other models
                         or modelcode = 45 or modelcode = 50 or modelcode = 55            -- and least sure of all about 45... but gamble is on this variant, seems 70 is most likely similar
                         or modelcode = 70
