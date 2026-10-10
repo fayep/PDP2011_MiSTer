@@ -148,6 +148,7 @@ signal abort_pagelength : std_logic;
 signal abort_readonly : std_logic;
 signal mmu_mmuabort : std_logic;
 signal mmr012_ref : std_logic;                                    -- reference to MMR0, MMR1 or MMR2
+signal mm_int_reg : std_logic;                                    -- PAR/PDR/MMR0-3 reference (not the Unibus map)
 signal acf_trap : std_logic;                                      -- ACF trap condition, with or without TENB
 signal trap_mm : std_logic;
 
@@ -753,6 +754,7 @@ begin
    acf_trap <=
       '1' when sr0(0)= '1'
          and have_mmutr = 1
+         and mm_int_reg = '0'
          and ((cpu_rd = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "100")) or (cpu_wr = '1' and (pdr(2 downto 0) = "100" or pdr(2 downto 0) = "101")))
       else '0';
    trap_mm <=
@@ -891,6 +893,10 @@ begin
       else "0000000000" & ubmo2(21 downto 16) when ubmo2valid = '1' and addr_p(1) = '1' and have_ubm = 1
       else unibus_dati when addr_p(21 downto 13) = "111111111"
       else bus_dati;
+
+-- MM internal registers (KB11-C Table 7-1 "INT REG": PARs, PDRs, MMR0-3; not the Unibus map) never
+-- meet the ACF trap condition (IV-8; EKBEE1 TESTNO 61)
+   mm_int_reg <= mmu_addr_match when not (addr_p(21 downto 7) = "111111111100001" and have_ubm = 1) else '0';
 
 -- generate mmu_addr_match, extremely unelegant but I don't see how else to do this
    mmu_addr_match <=
