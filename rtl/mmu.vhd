@@ -756,7 +756,7 @@ begin
          and ((cpu_rd = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "100")) or (cpu_wr = '1' and (pdr(2 downto 0) = "100" or pdr(2 downto 0) = "101")))
       else '0';
    trap_mm <=
-      '1' when acf_trap = '1' and sr0(9) = '1'
+      '1' when acf_trap = '1' and sr0(9) = '1' and sr0(12) = '0'   -- only when bit 12 goes 0 -> 1 (EKBEE1 TESTNO 60)
       else '0';
 
 
