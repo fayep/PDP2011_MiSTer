@@ -24,7 +24,7 @@ LOADS = int(sys.argv[3]) if len(sys.argv) > 3 else 10
 WAIT = int(sys.argv[4]) if len(sys.argv) > 4 else 20
 HOST = os.environ.get("MISTER_HOST", "192.168.51.209")
 SSH = ["sshpass", "-p", "1", "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
-       "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=password", "root@" + HOST]
+       "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=keyboard-interactive", "root@" + HOST]
 SERIAL = "/tmp/pdp_harness/serial.log"
 
 

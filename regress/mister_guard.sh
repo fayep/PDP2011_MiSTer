@@ -14,7 +14,7 @@ H=${MISTER_HOST:-192.168.51.209}
 # MISTER_GUARD_TEST replaces the ssh query (for testing this script only)
 if [ -n "$MISTER_GUARD_TEST" ]; then out=$MISTER_GUARD_TEST; else
 out=$(sshpass -p 1 ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o PubkeyAuthentication=no \
-      -o PreferredAuthentications=password root@$H '
+      -o PreferredAuthentications=keyboard-interactive root@$H '
 p=$(pidof MiSTer_pdp2011 MiSTer | tr " " "\n" | head -1)
 echo "core: $(tr "\0" " " < /proc/$p/cmdline)"
 # what our driver loaded: it snapshots the MGL to /tmp/claude_loaded.mgl at

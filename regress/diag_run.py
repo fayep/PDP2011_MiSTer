@@ -59,7 +59,7 @@ RUN = int(sys.argv[4]) if len(sys.argv) > 4 else 240
 PASSES = int(_os.environ.get("DIAG_PASSES", "3"))   # stop after this many clean END PASS lines (0: always run RUN)
 HOST = __import__("os").environ.get("MISTER_HOST", "192.168.51.209")
 SSH = ["sshpass", "-p", "1", "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
-       "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=password", "root@" + HOST]
+       "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=keyboard-interactive", "root@" + HOST]
 
 def ssh(cmd, timeout=60):
     """Run cmd on the MiSTer. A failed connection (refused, dropped, or a login
