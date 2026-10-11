@@ -5,7 +5,7 @@
 import re, subprocess, sys, time
 HOST = __import__("os").environ.get("MISTER_HOST", "192.168.51.209")
 SSH = ["sshpass", "-p", "1", "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
-       "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=password", "root@" + HOST]
+       "-o", "PubkeyAuthentication=yes", "-o", "PreferredAuthentications=publickey,keyboard-interactive", "root@" + HOST]
 def log():
     r = subprocess.run(SSH + ["cat /tmp/pdp_harness/serial.log"], capture_output=True, timeout=60)
     return r.stdout.decode("latin-1").replace("\r", "").replace("\0", "")

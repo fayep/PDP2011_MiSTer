@@ -21,7 +21,7 @@ MGL, LOG = sys.argv[1], sys.argv[2]
 TIMEOUT = int(sys.argv[3]) if len(sys.argv) > 3 else 300
 HOST = __import__("os").environ.get("MISTER_HOST", "192.168.51.209")
 SSH = ["sshpass", "-p", "1", "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
-       "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=password", "root@" + HOST]
+       "-o", "PubkeyAuthentication=yes", "-o", "PreferredAuthentications=publickey,keyboard-interactive", "root@" + HOST]
 
 def ssh(cmd, timeout=60):
     """Run cmd on the MiSTer. A failed connection (refused, dropped, or a login

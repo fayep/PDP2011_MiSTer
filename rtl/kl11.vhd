@@ -247,7 +247,18 @@ begin
                      end if;
 
                   when i_req =>
-                     if tx_trigger = '1' then
+                     if bg = '0'                                     -- software cleared IE before the grant: the request is
+                     and ((tx_trigger = '1' and tx_ie = '0')         -- withdrawn, and vector 0 tells the cpu it was a passive
+                       or (rx_trigger = '1' and rx_ie = '0')) then   -- release (EKBBF0 TESTNO 47). Only IE: a ready/done change
+                        br <= '0';                                   -- under a pending request is left as it was
+                        int_vector <= (others => '0');
+                        if tx_trigger = '1' then
+                           tx_trigger <= '0';
+                        else
+                           rx_trigger <= '0';
+                        end if;
+                        interrupt_state <= i_idle;
+                     elsif tx_trigger = '1' then
                         if bg = '1' then
                            int_vector <= ovec;
                            br <= '0';

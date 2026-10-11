@@ -327,6 +327,9 @@ signal eis_temp1 : std_logic_vector(31 downto 0);
 signal eis_temp2 : std_logic_vector(31 downto 0);
 signal eis_sequencer : std_logic_vector(4 downto 0);
 signal eis_psw : std_logic_vector(3 downto 0);
+signal eis_div_abs : std_logic_vector(31 downto 0);                  -- 11/70 div: |dividend|, as the KB11-C writes it back
+signal eis_div_z : std_logic;                                        -- 11/70 div: first trial step (DIV.40/50) was zero
+signal eis_div_wb : std_logic;                                       -- 11/70 div: overflow on a negative dividend writes |dividend| back
 signal eis_flag1 : std_logic;
 signal eis_flag2 : std_logic;
 
@@ -425,6 +428,7 @@ signal have_mtps : integer range 0 to 1;
 signal have_mfp : integer range 0 to 1;
 signal have_mpr : integer range 0 to 1;
 signal have_spl : integer range 0 to 1;
+signal spl_inhibit : std_logic := '0';                               -- 11/70: no interrupt or trace trap between an SPL and the next instruction
 signal have_mmr1_r7 : integer range 0 to 1;                           -- MMR1 records R7 (PC) autoinc/dec
 signal have_csm : integer range 0 to 1;
 signal have_red : integer range 0 to 1;
@@ -1312,40 +1316,40 @@ begin
                         state <= state_fptrap;
                      elsif falu_pending_divz = '1' then                                  -- pending div by zero trap from fp11
                         state <= state_fptrap;
-                     elsif pir_in(15) = '1' and unsigned(psw(7 downto 5)) < unsigned'("111") then
+                     elsif spl_inhibit = '0' and pir_in(15) = '1' and unsigned(psw(7 downto 5)) < unsigned'("111") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif br7 = '1' and unsigned(psw(7 downto 5)) < unsigned'("111") then
+                     elsif spl_inhibit = '0' and br7 = '1' and unsigned(psw(7 downto 5)) < unsigned'("111") then
                         state <= state_br7;                                              -- external, level 7, vector determined by device
                         bg7 <= '1';
-                     elsif pir_in(14) = '1' and unsigned(psw(7 downto 5)) < unsigned'("110") then
+                     elsif spl_inhibit = '0' and pir_in(14) = '1' and unsigned(psw(7 downto 5)) < unsigned'("110") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif br6 = '1' and unsigned(psw(7 downto 5)) < unsigned'("110") then
+                     elsif spl_inhibit = '0' and br6 = '1' and unsigned(psw(7 downto 5)) < unsigned'("110") then
                         state <= state_br6;                                              -- external, level 6, vector determined by device
                         bg6 <= '1';
-                     elsif pir_in(13) = '1' and unsigned(psw(7 downto 5)) < unsigned'("101") then
+                     elsif spl_inhibit = '0' and pir_in(13) = '1' and unsigned(psw(7 downto 5)) < unsigned'("101") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif br5 = '1' and unsigned(psw(7 downto 5)) < unsigned'("101") then
+                     elsif spl_inhibit = '0' and br5 = '1' and unsigned(psw(7 downto 5)) < unsigned'("101") then
                         state <= state_br5;                                              -- external, level 5, vector determined by device
                         bg5 <= '1';
-                     elsif pir_in(12) = '1' and unsigned(psw(7 downto 5)) < unsigned'("100") then
+                     elsif spl_inhibit = '0' and pir_in(12) = '1' and unsigned(psw(7 downto 5)) < unsigned'("100") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif br4 = '1' and unsigned(psw(7 downto 5)) < unsigned'("100") then
+                     elsif spl_inhibit = '0' and br4 = '1' and unsigned(psw(7 downto 5)) < unsigned'("100") then
                         state <= state_br4;                                              -- external, level 4, vector determined by device
                         bg4 <= '1';
-                     elsif pir_in(11) = '1' and unsigned(psw(7 downto 5)) < unsigned'("011") then
+                     elsif spl_inhibit = '0' and pir_in(11) = '1' and unsigned(psw(7 downto 5)) < unsigned'("011") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif pir_in(10) = '1' and unsigned(psw(7 downto 5)) < unsigned'("010") then
+                     elsif spl_inhibit = '0' and pir_in(10) = '1' and unsigned(psw(7 downto 5)) < unsigned'("010") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif pir_in(9) = '1' and unsigned(psw(7 downto 5)) < unsigned'("001") then
+                     elsif spl_inhibit = '0' and pir_in(9) = '1' and unsigned(psw(7 downto 5)) < unsigned'("001") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif psw(4) = '1' and ir_rtt = '0' and ir_wait = '0' then
+                     elsif spl_inhibit = '0' and psw(4) = '1' and ir_rtt = '0' and ir_wait = '0' then     -- no trace trap after an SPL either (EKBBF0 TESTNO 32, T-bit passes)
                         trap_vector <= o"014";                                           -- trace bit, vector = 014
                         state <= state_trap;
                         if modelcode = 70 then
@@ -1354,6 +1358,7 @@ begin
                         end if;
                      else
                         cons_maddr(7) <= '0';
+                        spl_inhibit <= '0';                                              -- the instruction after an SPL is fetched
                         if cons_ena = '1' then
                            run <= '1'; pause <= '0'; master <= '0';
                         end if;
@@ -2074,6 +2079,9 @@ begin
                               if pswmf(15 downto 14) = "00" then
                                  psw(7 downto 5) <= datain(2 downto 0);
                               end if;
+                              if modelcode = 70 then                                     -- KB11-C: the next instruction runs before any
+                                 spl_inhibit <= '1';                                     -- interrupt is taken (EKBBF0 TESTNO 32)
+                              end if;
                               state <= state_ifetch;
                            end if;
 
@@ -2522,7 +2530,10 @@ begin
 -- bus request, prio level 4; handle br4/bg4 signals and initiate trap
 
                   when state_br4 =>
-                     if br4 = '0' then
+                     if br4 = '0' and int_vector4 = "000000000" then          -- passive release: the request was withdrawn
+                        bg4 <= '0';                                            -- before the grant (KL11 IE cleared) -- no interrupt
+                        state <= state_ifetch;
+                     elsif br4 = '0' then
                         bg4 <= '0';
                         trap_vector <= int_vector4;
                         state <= state_trap;
@@ -2596,6 +2607,7 @@ begin
 
                   when state_trap =>
                      temp_psw <= psw;
+                     spl_inhibit <= '0';                             -- a trap taken instead of the next instruction ends it too
                      psw(15 downto 14) <= "00";                      -- initial, we'll load the real mode to select the correct stack by in the next step
                      psw(13 downto 12) <= pswmf(15 downto 14);
                      rbus_cpu_mode <= "00";                          -- force rbus cpu mode to 00 - this is output to the mmu to select the par/pdr set
@@ -2910,7 +2922,7 @@ begin
                      eis_sequencer <= eis_sequencer - 1;
 
                   when state_diva =>
-                     if eis_psw(1 downto 0) = "00" then
+                     if eis_psw(1 downto 0) = "00" or eis_div_wb = '1' then
                         if ir(8 downto 6) /= "111" then
                            rbus_waddr <= pswmf(15 downto 14) & pswmf(11) & ir(8 downto 6);
                            rbus_d <= eis_output;
@@ -2922,7 +2934,7 @@ begin
                      state <= state_divb;
 
                   when state_divb =>
-                     if eis_psw(1 downto 0) = "00" then
+                     if eis_psw(1 downto 0) = "00" or eis_div_wb = '1' then
                         if ir(8 downto 7) /= "11" then
                            rbus_waddr <= pswmf(15 downto 14) & pswmf(11) & ir(8 downto 7) & '1';
                            rbus_d <= eis_output32;
@@ -4515,6 +4527,12 @@ begin
                         if eis_sequencer(3 downto 0) = "1111" then
                            if unsigned(eis_temp1) <= unsigned(eis_temp2) then
                               eis_psw(1) <= '1';
+                              eis_div_abs <= eis_temp2;
+                              if eis_temp2(30 downto 15) = eis_temp1(30 downto 15) then
+                                 eis_div_z <= '1';
+                              else
+                                 eis_div_z <= '0';
+                              end if;
                               if modelcode = 70 then
                                  eis_psw(2) <= '1';
                               end if;
@@ -4576,6 +4594,28 @@ begin
                         end if;
                         eis_psw(1) <= '1';
                         eis_psw(0) <= '1';
+                     end if;
+
+-- 11/70 quotient overflow (KB11-C FLOWS 9, DIV.60 -> DVE.20): the KB11-C quits after the first
+-- trial step with N still the dividend's sign (DIV.10, or DVN.70 for a negative dividend),
+-- Z = that first step was zero (DIV.30 sets Z, DIV.40/50 Z <= Zold and SHFR=0), V set, C clear.
+-- A negative dividend has already been negated and written back (DVN.10, DVN.40), so the
+-- registers hold |dividend|. The most negative dividend (DVE.10) and the -32768 quotient keep
+-- the handling above. EKBBF0 TESTNO 14.
+
+                     eis_div_wb <= '0';
+                     if modelcode = 70
+                     and eis_psw(1) = '1'
+                     and alu_input /= (15 downto 0 => '0')
+                     and eis_div_abs /= x"80000000"
+                     and not (eis_temp(14 downto 0) = (14 downto 0 => '0') and eis_temp(15) = '1' and eis_flag1 /= eis_flag2) then
+                        eis_psw(3) <= eis_flag2;
+                        eis_psw(2) <= eis_div_z;
+                        eis_psw(1) <= '1';
+                        eis_psw(0) <= '0';
+                        eis_output <= eis_div_abs(31 downto 16);
+                        eis_output32 <= eis_div_abs(15 downto 0);
+                        eis_div_wb <= eis_flag2;
                      end if;
 
                   end if;

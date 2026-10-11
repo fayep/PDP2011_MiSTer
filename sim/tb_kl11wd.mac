@@ -1,0 +1,52 @@
+	.title	tb_kl11wd - a KL11 request withdrawn before its grant (EKBBF0 TESTNO 47)
+; result = 1 when both cases pass, else 100*case + check (rt = observed count)
+PSW	= 177776
+TPS	= 177564
+	.asect
+	.=4
+	.word	bad,340
+	.=10
+	.word	bad,340
+	.=64
+	.word	xint,340
+	.=500
+result:	.word	0
+rt:	.word	0
+count:	.word	0
+	.=1000
+start:	mov	#700,sp		; stack below the code (pushes must not land on it)
+	clr	@#count
+; case 1: IE set at PL7 (request raised, blocked), IE cleared, SPL 0: no interrupt
+	spl	7
+	mov	#100,@#TPS
+	nop
+	nop
+	clr	@#TPS
+	spl	0
+	nop
+	nop
+	nop
+	mov	@#count,@#rt
+	mov	#101,@#result
+	tst	@#count
+	beq	.+6
+	jmp	@#done
+; case 2: IE set again at PL0: the interrupt comes (once; the handler clears IE)
+	mov	#100,@#TPS
+	nop
+	nop
+	nop
+	nop
+	mov	@#count,@#rt
+	mov	#201,@#result
+	cmp	@#count,#1
+	beq	.+6
+	jmp	@#done
+	mov	#1,@#result
+done:	halt
+xint:	inc	@#count
+	clr	@#TPS
+	rti
+bad:	mov	#3,@#result
+	halt
+	.end	start
