@@ -39,10 +39,15 @@ def score(run_part, quiet_s=None, quiet_limit=60):
     reports = max(hdr, vocab)
     notes = []
     if hdr or vocab: notes.append(f"{hdr} report headers, {vocab} error-word lines")
-    if OPERATOR.search(t): notes.append("waiting for the operator: " + OPERATOR.search(t).group(0))
+    # a prompt counts as unanswered only if no END PASS follows the last one (an operator, or a
+    # person, answered EKBBF0's switch-7 / type-a-key prompts and it went on to pass)
+    prompts = list(OPERATOR.finditer(t))
+    waiting = bool(prompts) and not re.search(r"END PASS", t[prompts[-1].end():], re.I)
+    if waiting: notes.append("waiting for the operator: " + prompts[-1].group(0))
+    elif prompts: notes.append(f"{len(prompts)} operator prompts, answered")
     if quiet_s is not None and quiet_s >= quiet_limit:
         notes.append(f"console quiet for the last {quiet_s:.0f}s (hang?)")
-    ok = passes > 0 and reports == 0 and not OPERATOR.search(t) and not (quiet_s is not None and quiet_s >= quiet_limit)
+    ok = passes > 0 and reports == 0 and not waiting and not (quiet_s is not None and quiet_s >= quiet_limit)
     return ("PASS" if ok else "FAIL"), passes, reports, notes
 
 if len(sys.argv) > 1 and sys.argv[1] == "--score":          # diag_run.py --score <logfile> <DIAG>
