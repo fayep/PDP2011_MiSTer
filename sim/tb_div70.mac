@@ -1,0 +1,153 @@
+	.title	tb_div70 - 11/70 DIV overflow results (KB11-C FLOWS 9; EKBBF0 TESTNO 14)
+; result = 1 when every case passes, else 100*case + check (rt = observed value)
+PSW	= 177776
+	.asect
+	.=4
+	.word	bad,340
+	.=10
+	.word	bad,340
+	.=500
+result:	.word	0
+rt:	.word	0
+	.=1000
+start:	mov	#1100,sp
+; case 1: 000002:000000 / 1 overflows; N Z C set before, expect cc 02, R0/R1 unchanged
+	mov	#2,r0
+	clr	r1
+	mov	#1,r2
+	scc
+	clv
+	div	r2,r0
+	mov	@#PSW,r3
+	bic	#177760,r3
+	mov	r3,@#rt
+	mov	#101,@#result
+	cmp	r3,#2
+	beq	.+6
+	jmp	@#done
+	mov	r0,@#rt
+	mov	#102,@#result
+	cmp	r0,#2
+	beq	.+6
+	jmp	@#done
+; case 2: 177776:177777 (-65537) / -1 overflows; registers hold |dividend| = 000001:000001
+	mov	#177776,r0
+	mov	#177777,r1
+	mov	#177777,r2
+	div	r2,r0
+	mov	r0,@#rt
+	mov	#201,@#result
+	cmp	r0,#1
+	beq	.+6
+	jmp	@#done
+	mov	r1,@#rt
+	mov	#202,@#result
+	cmp	r1,#1
+	beq	.+6
+	jmp	@#done
+; case 3: 000100:000200 / -127 overflows; N Z C set before, expect cc 02
+	mov	#100,r0
+	mov	#200,r1
+	mov	#177601,r2
+	scc
+	clv
+	div	r2,r0
+	mov	@#PSW,r3
+	bic	#177760,r3
+	mov	r3,@#rt
+	mov	#301,@#result
+	cmp	r3,#2
+	beq	.+6
+	jmp	@#done
+; case 4: 100000:000000 / 1 (most negative dividend, DVE.10): expect cc 16
+	mov	#100000,r0
+	clr	r1
+	mov	#1,r2
+	ccc
+	sez
+	div	r2,r0
+	mov	@#PSW,r3
+	bic	#177760,r3
+	mov	r3,@#rt
+	mov	#401,@#result
+	cmp	r3,#16
+	beq	.+6
+	jmp	@#done
+; case 5: 7 / 2 = 3 rem 1, cc 0
+	clr	r0
+	mov	#7,r1
+	mov	#2,r2
+	scc
+	div	r2,r0
+	mov	@#PSW,r3
+	bic	#177760,r3
+	mov	r3,@#rt
+	mov	#501,@#result
+	tst	r3
+	beq	.+6
+	jmp	@#done
+	mov	#502,@#result
+	cmp	r0,#3
+	beq	.+6
+	jmp	@#done
+	mov	#503,@#result
+	cmp	r1,#1
+	beq	.+6
+	jmp	@#done
+; case 6: -7 / 2 = -3 rem -1, cc N
+	mov	#177777,r0
+	mov	#177771,r1
+	mov	#2,r2
+	div	r2,r0
+	mov	@#PSW,r3
+	bic	#177760,r3
+	mov	r3,@#rt
+	mov	#601,@#result
+	cmp	r3,#10
+	beq	.+6
+	jmp	@#done
+	mov	#602,@#result
+	cmp	r0,#177775
+	beq	.+6
+	jmp	@#done
+	mov	#603,@#result
+	cmp	r1,#177777
+	beq	.+6
+	jmp	@#done
+; case 7: -65536 / 2 = -32768 (not an overflow), cc N
+	mov	#177777,r0
+	clr	r1
+	mov	#2,r2
+	div	r2,r0
+	mov	@#PSW,r3
+	bic	#177760,r3
+	mov	r3,@#rt
+	mov	#701,@#result
+	cmp	r3,#10
+	beq	.+6
+	jmp	@#done
+	mov	#702,@#result
+	cmp	r0,#100000
+	beq	.+6
+	jmp	@#done
+; case 8: divide by zero: V and C set, registers unchanged
+	mov	#5,r0
+	mov	#6,r1
+	clr	r2
+	div	r2,r0
+	mov	@#PSW,r3
+	bic	#177774,r3
+	mov	r3,@#rt
+	mov	#801.,@#result
+	cmp	r3,#3
+	beq	.+6
+	jmp	@#done
+	mov	#802.,@#result
+	cmp	r0,#5
+	beq	.+6
+	jmp	@#done
+	mov	#1,@#result
+done:	halt
+bad:	mov	#3,@#result
+	halt
+	.end	start

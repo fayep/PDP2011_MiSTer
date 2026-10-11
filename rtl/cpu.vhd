@@ -327,6 +327,9 @@ signal eis_temp1 : std_logic_vector(31 downto 0);
 signal eis_temp2 : std_logic_vector(31 downto 0);
 signal eis_sequencer : std_logic_vector(4 downto 0);
 signal eis_psw : std_logic_vector(3 downto 0);
+signal eis_div_abs : std_logic_vector(31 downto 0);                  -- 11/70 div: |dividend|, as the KB11-C writes it back
+signal eis_div_z : std_logic;                                        -- 11/70 div: first trial step (DIV.40/50) was zero
+signal eis_div_wb : std_logic;                                       -- 11/70 div: overflow on a negative dividend writes |dividend| back
 signal eis_flag1 : std_logic;
 signal eis_flag2 : std_logic;
 
@@ -2910,7 +2913,7 @@ begin
                      eis_sequencer <= eis_sequencer - 1;
 
                   when state_diva =>
-                     if eis_psw(1 downto 0) = "00" then
+                     if eis_psw(1 downto 0) = "00" or eis_div_wb = '1' then
                         if ir(8 downto 6) /= "111" then
                            rbus_waddr <= pswmf(15 downto 14) & pswmf(11) & ir(8 downto 6);
                            rbus_d <= eis_output;
@@ -2922,7 +2925,7 @@ begin
                      state <= state_divb;
 
                   when state_divb =>
-                     if eis_psw(1 downto 0) = "00" then
+                     if eis_psw(1 downto 0) = "00" or eis_div_wb = '1' then
                         if ir(8 downto 7) /= "11" then
                            rbus_waddr <= pswmf(15 downto 14) & pswmf(11) & ir(8 downto 7) & '1';
                            rbus_d <= eis_output32;
@@ -4515,6 +4518,12 @@ begin
                         if eis_sequencer(3 downto 0) = "1111" then
                            if unsigned(eis_temp1) <= unsigned(eis_temp2) then
                               eis_psw(1) <= '1';
+                              eis_div_abs <= eis_temp2;
+                              if eis_temp2(30 downto 15) = eis_temp1(30 downto 15) then
+                                 eis_div_z <= '1';
+                              else
+                                 eis_div_z <= '0';
+                              end if;
                               if modelcode = 70 then
                                  eis_psw(2) <= '1';
                               end if;
@@ -4576,6 +4585,28 @@ begin
                         end if;
                         eis_psw(1) <= '1';
                         eis_psw(0) <= '1';
+                     end if;
+
+-- 11/70 quotient overflow (KB11-C FLOWS 9, DIV.60 -> DVE.20): the KB11-C quits after the first
+-- trial step with N still the dividend's sign (DIV.10, or DVN.70 for a negative dividend),
+-- Z = that first step was zero (DIV.30 sets Z, DIV.40/50 Z <= Zold and SHFR=0), V set, C clear.
+-- A negative dividend has already been negated and written back (DVN.10, DVN.40), so the
+-- registers hold |dividend|. The most negative dividend (DVE.10) and the -32768 quotient keep
+-- the handling above. EKBBF0 TESTNO 14.
+
+                     eis_div_wb <= '0';
+                     if modelcode = 70
+                     and eis_psw(1) = '1'
+                     and alu_input /= (15 downto 0 => '0')
+                     and eis_div_abs /= x"80000000"
+                     and not (eis_temp(14 downto 0) = (14 downto 0 => '0') and eis_temp(15) = '1' and eis_flag1 /= eis_flag2) then
+                        eis_psw(3) <= eis_flag2;
+                        eis_psw(2) <= eis_div_z;
+                        eis_psw(1) <= '1';
+                        eis_psw(0) <= '0';
+                        eis_output <= eis_div_abs(31 downto 16);
+                        eis_output32 <= eis_div_abs(15 downto 0);
+                        eis_div_wb <= eis_flag2;
                      end if;
 
                   end if;
