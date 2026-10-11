@@ -288,25 +288,25 @@ signal sp_count : std_logic_vector(15 downto 0);          -- space fwd/rev recor
 -- TSSR 172522 (read: status; word write: subsystem reset). Behaviour follows SIMH pdp11_ts.c.
 -- Read-only like the TM11: write and format are refused (write lock). Read reverse is not
 -- implemented yet (function reject, as an illegal mode).
-constant TS_ACK   : std_logic_vector(15 downto 0) := 16o"100000";
-constant TS_MILL  : std_logic_vector(15 downto 0) := 16o"000400";
-constant TS_MNEF  : std_logic_vector(15 downto 0) := 16o"001000";
-constant TS_CEND  : std_logic_vector(15 downto 0) := 16o"000020";
-constant TS_CFAIL : std_logic_vector(15 downto 0) := 16o"000021";
-constant TS_CERR  : std_logic_vector(15 downto 0) := 16o"000022";
-constant TS_CATN  : std_logic_vector(15 downto 0) := 16o"000023";
-constant XS0_TMK  : std_logic_vector(15 downto 0) := 16o"100000";
-constant XS0_RLS  : std_logic_vector(15 downto 0) := 16o"040000";
-constant XS0_LET  : std_logic_vector(15 downto 0) := 16o"020000";
-constant XS0_RLL  : std_logic_vector(15 downto 0) := 16o"010000";
-constant XS0_WLE  : std_logic_vector(15 downto 0) := 16o"004000";
-constant XS0_NEF  : std_logic_vector(15 downto 0) := 16o"002000";
-constant XS0_ILC  : std_logic_vector(15 downto 0) := 16o"001000";
-constant XS0_ILA  : std_logic_vector(15 downto 0) := 16o"000400";
-constant XS0_MOT  : std_logic_vector(15 downto 0) := 16o"000200";
-constant XS0_BOT  : std_logic_vector(15 downto 0) := 16o"000002";
-constant XS3_OPI  : std_logic_vector(15 downto 0) := 16o"000100";
-constant XS3_RIB  : std_logic_vector(15 downto 0) := 16o"000001";
+constant TS_ACK   : std_logic_vector(15 downto 0) := x"8000";   -- 100000
+constant TS_MILL  : std_logic_vector(15 downto 0) := x"0100";   -- 000400
+constant TS_MNEF  : std_logic_vector(15 downto 0) := x"0200";   -- 001000
+constant TS_CEND  : std_logic_vector(15 downto 0) := x"0010";   -- 000020
+constant TS_CFAIL : std_logic_vector(15 downto 0) := x"0011";   -- 000021
+constant TS_CERR  : std_logic_vector(15 downto 0) := x"0012";   -- 000022
+constant TS_CATN  : std_logic_vector(15 downto 0) := x"0013";   -- 000023
+constant XS0_TMK  : std_logic_vector(15 downto 0) := x"8000";   -- 100000
+constant XS0_RLS  : std_logic_vector(15 downto 0) := x"4000";   -- 040000
+constant XS0_LET  : std_logic_vector(15 downto 0) := x"2000";   -- 020000
+constant XS0_RLL  : std_logic_vector(15 downto 0) := x"1000";   -- 010000
+constant XS0_WLE  : std_logic_vector(15 downto 0) := x"0800";   -- 004000
+constant XS0_NEF  : std_logic_vector(15 downto 0) := x"0400";   -- 002000
+constant XS0_ILC  : std_logic_vector(15 downto 0) := x"0200";   -- 001000
+constant XS0_ILA  : std_logic_vector(15 downto 0) := x"0100";   -- 000400
+constant XS0_MOT  : std_logic_vector(15 downto 0) := x"0080";   -- 000200
+constant XS0_BOT  : std_logic_vector(15 downto 0) := x"0002";   -- 000002
+constant XS3_OPI  : std_logic_vector(15 downto 0) := x"0040";   -- 000100
+constant XS3_RIB  : std_logic_vector(15 downto 0) := x"0001";   -- 000001
 constant TSF_READ : std_logic_vector(4 downto 0) := "00001";
 constant TSF_WCHR : std_logic_vector(4 downto 0) := "00100";
 constant TSF_WRIT : std_logic_vector(4 downto 0) := "00101";
@@ -835,7 +835,7 @@ begin
                               ts_nba <= '1';
                               e_tc <= "011"; e_msg <= (others => '0');
                            else
-                              xs2 <= xs2 or 16o"000201";                -- extended features, 1
+                              xs2 <= xs2 or x"0081";                -- extended features, 1
                               ts_nba <= '0';
                               e_tc <= "000"; e_msg <= TS_ACK or TS_CEND;
                            end if;
@@ -952,7 +952,7 @@ begin
 
                   when ts_end =>                                       -- SIMH ts_endcmd
                      if cmd_done = '0' then
-                        x0 := (xs0f or e_xs0) and not 16o"000177";      -- dynamic bits rebuilt below
+                        x0 := (xs0f or e_xs0) and not x"007F";      -- dynamic bits rebuilt below
                         x0(3) := '1';                                  -- PET: 1600 bpi
                         if have_media = '1' then
                            x0(6) := '1';                               -- ONL
@@ -963,7 +963,7 @@ begin
                         x0(4) := ts_vck;                               -- VCK
                         xs0f <= x0;
                         w := xs4;
-                        if wchxopt(5) = '1' then w := w or 16o"100000"; end if;
+                        if wchxopt(5) = '1' then w := w or x"8000"; end if;
                         xs4 <= w;
                         if e_msg /= x"0000" and ts_nba = '0' then
                            if wchlnt(15 downto 4) /= x"000" then n := 8; else n := conv_integer(wchlnt(3 downto 1)); end if;
