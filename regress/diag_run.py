@@ -86,11 +86,11 @@ def note(msg):
     log.write(f"[{time.time() - t0:6.1f}s] {msg}\n"); log.flush()
 
 t0 = time.time()
-ssh(f"""echo 'load_core /media/fat/menu.rbf' > /dev/MiSTer_cmd; sleep 4
+ssh(f"""ps w | grep -q '[M]iSTer_pdp2011' && echo 'load_core /media/fat/menu.rbf' | timeout 15 tee /dev/MiSTer_cmd > /dev/null; sleep 4
 for p in $(pidof pdp_harness); do kill $p; done; sleep 1
 stty -F /dev/ttyS1 19200 cs8 -parenb -cstopb -crtscts clocal -icanon -echo -ixon min 1 time 0
 setsid nohup /media/fat/Scripts/pdp_harness -tcp :7788 > /tmp/pdp_harness_stdout.log 2>&1 < /dev/null &
-sleep 2; cp /media/fat/_Debug/{MGL}.mgl /tmp/claude_loaded.mgl; echo 'load_core /media/fat/_Debug/{MGL}.mgl' > /dev/MiSTer_cmd""", timeout=60)
+sleep 2; cp /media/fat/_Debug/{MGL}.mgl /tmp/claude_loaded.mgl; echo 'load_core /media/fat/_Debug/{MGL}.mgl' | timeout 15 tee /dev/MiSTer_cmd > /dev/null""", timeout=60)
 note(f"loaded {MGL}")
 
 stage = 0; t_start = None; seen_len = 0; t_last = time.time()
