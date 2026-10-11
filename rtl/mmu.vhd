@@ -974,7 +974,8 @@ sr0out_debug <= sr0;
                   -- page/mode (6:1) follow every reference until an abort freezes MMR0, except the MM
                   -- registers MMR0-2 themselves (KB11-C 9.1.9 "INT REG"): reading MMR0 must not leave
                   -- page 7 there (EKBEE1 TESTNO 55-60)
-                  if (cpu_rd = '1' or cpu_wr = '1') and mmr012_ref = '0' then
+                  if (cpu_rd = '1' or cpu_wr = '1')                     -- an aborting reference never reaches the register, so it
+                  and (mmr012_ref = '0' or abort_nonresident = '1' or abort_pagelength = '1' or abort_readonly = '1') then   -- records mode/page (EKBEE1 TESTNO 71)
                      sr0(6 downto 5) <= psw_mmumode;
                      sr0(4) <= sr3id;
                      sr0(3 downto 1) <= cpu_addr_v(15 downto 13);
