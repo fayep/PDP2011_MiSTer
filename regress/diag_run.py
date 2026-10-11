@@ -8,7 +8,8 @@ usage: diag_run.py <mgl-basename> <logfile> <DIAG> [run_seconds]
 
 The .mgl must boot an XXDP+ disk that holds DIAG (e.g. XXDP_RL.dsk with
 EKBAD0). After the date, "R <DIAG>" is typed at the "." prompt and the
-console is collected for run_seconds (default 240). The diagnostic runs
+console is collected for run_seconds (default 240), or until DIAG_PASSES (default 3)
+clean END PASS lines have come in. The diagnostic runs
 with its default switches (report errors, keep going). Counts "END PASS"
 lines and error reports (report column headers, error words), operator prompts and a
 console gone quiet. Everything the console prints is kept in the log.
@@ -55,6 +56,7 @@ if _sp.run(["sh", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "m
 
 MGL, LOG, DIAG = sys.argv[1], sys.argv[2], sys.argv[3].upper()
 RUN = int(sys.argv[4]) if len(sys.argv) > 4 else 240
+PASSES = int(_os.environ.get("DIAG_PASSES", "3"))   # stop after this many clean END PASS lines (0: always run RUN)
 HOST = __import__("os").environ.get("MISTER_HOST", "192.168.51.209")
 SSH = ["sshpass", "-p", "1", "ssh", "-o", "StrictHostKeyChecking=no", "-o", "LogLevel=ERROR",
        "-o", "PubkeyAuthentication=no", "-o", "PreferredAuthentications=password", "root@" + HOST]
@@ -104,6 +106,9 @@ while time.time() - t0 < RUN + 180:
         send(f"R {DIAG}"); note(f"started R {DIAG}"); stage = 2; t_start = time.time()
     elif stage == 2 and time.time() - t_start > RUN:
         break
+    elif stage == 2 and PASSES and score(console()[console().lower().find(f"r {DIAG.lower()}"):])[1] >= PASSES \
+            and score(console()[console().lower().find(f"r {DIAG.lower()}"):])[2] == 0:
+        break                                        # enough clean passes: no need to sit out RUN
 txt = console()
 run_part = txt[txt.lower().find(f"r {DIAG.lower()}"):] if stage == 2 else ""
 result, passes, errors, notes = score(run_part, quiet_s=time.time() - t_last)
