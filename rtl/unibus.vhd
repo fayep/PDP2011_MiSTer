@@ -311,6 +311,7 @@ component cpu is
       mmutrap : in std_logic;                                        -- if '1', the mmu requests a trap to be serviced after the current instruction completes
       ack_mmutrap : out std_logic;                                   -- if '1', the mmu trap request is being acknowledged
       mmuabort : in std_logic;                                       -- if '1', the mmu requests that the current instruction is aborted because of a mmu fault
+      mmurawabort : in std_logic := '0';
       ack_mmuabort : out std_logic;                                  -- if '1', the mmu abort request is being acknowledged
 
       npr : in std_logic;                                            -- non-processor request
@@ -384,6 +385,8 @@ component mmu is
       mmutrap : out std_logic;
       ack_mmutrap : in std_logic;
       mmuabort : out std_logic;
+      mmurawabort : out std_logic;
+      cpu_rsv : in std_logic := '0';
       ack_mmuabort : in std_logic;
 
       mmuoddabort : out std_logic;
@@ -1092,6 +1095,7 @@ signal cpu_int_vector4 : std_logic_vector(8 downto 0);
 
 signal mmu_trap : std_logic;
 signal mmu_abort : std_logic;
+signal mmu_rawabort : std_logic;
 signal mmu_oddabort : std_logic;
 signal cpu_ack_mmuabort : std_logic;
 signal cpu_ack_mmutrap : std_logic;
@@ -1494,6 +1498,7 @@ begin
       mmutrap => mmu_trap,
       ack_mmutrap => cpu_ack_mmutrap,
       mmuabort => mmu_abort,
+      mmurawabort => mmu_rawabort,
       ack_mmuabort => cpu_ack_mmuabort,
       npr => cpu_npr,
       npg => cpu_npg,
@@ -1559,6 +1564,8 @@ begin
       mmutrap => mmu_trap,
       ack_mmutrap => cpu_ack_mmutrap,
       mmuabort => mmu_abort,
+      mmurawabort => mmu_rawabort,
+      cpu_rsv => rsv,                                              -- red stack violation inhibits the MM abort
       ack_mmuabort => cpu_ack_mmuabort,
 
       mmuoddabort => mmu_oddabort,

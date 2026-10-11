@@ -32,6 +32,8 @@ entity mmu is
       mmutrap : out std_logic;
       ack_mmutrap : in std_logic;
       mmuabort : out std_logic;
+      mmurawabort : out std_logic;                                  -- abort condition, not masked by abort_acknowledged (11/70 red stack)
+      cpu_rsv : in std_logic := '0';                                -- the cpu's red stack violation: it inhibits the MM abort (KT BEND)
       ack_mmuabort : in std_logic;
 
       mmuoddabort : out std_logic;
@@ -147,6 +149,9 @@ signal abort_nonresident : std_logic;
 signal abort_pagelength : std_logic;
 signal abort_readonly : std_logic;
 signal mmu_mmuabort : std_logic;
+signal mmr012_ref : std_logic;                                    -- reference to MMR0, MMR1 or MMR2
+signal mm_int_reg : std_logic;                                    -- PAR/PDR/MMR0-3 reference (not the Unibus map)
+signal acf_trap : std_logic;                                      -- ACF trap condition, with or without TENB
 signal trap_mm : std_logic;
 
 signal oddabort : std_logic;
@@ -722,11 +727,14 @@ begin
             (pdr(3) = '1' and unsigned(cpu_addr_v(12 downto 6)) < unsigned(pdr(14 downto 8)))
          )
          and psw_mmumodelegal = '1'                                            -- fkth tests for this. jkdk too. Still, PDP11_Handbook1979.pdf pg. 163 specifically states that bit 14 will be set on access in an illegal mode.
+      else '1' when (cpu_rd = '1' or cpu_wr = '1')                          -- 11/70 (KB11-C 9.1.1/9.1.5): an illegal-mode (10)
+         and have_mmu = 1 and sr0(0) = '1'                                  -- reference sets page length (14) as well as
+         and psw_mmumode = "10" and modelcode = 70                          -- non-resident (15); EKBEE1 TESTNO 64 expects 140105
          else '0';
 
 -- generate abort readonly
    abort_readonly <=
-      '1' when have_acf3 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 0) = "000" or pdr(2 downto 0) = "010")
+      '1' when have_acf3 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "010")   -- ACF 1 and 2; ACF 0 is non-resident only (EKBEE1 TESTNO 53, 55)
       else '1' when have_acf2 = 1 and cpu_wr = '1' and sr0(0) = '1' and (pdr(2 downto 1) = "00" or pdr(2 downto 1) = "01")
       else '0';
 
@@ -740,14 +748,23 @@ begin
    mmu_mmuabort <=
       '1' when (abort_nonresident = '1' or abort_pagelength = '1' or abort_readonly = '1') and abort_acknowledged = '0'
       else '0';
+   mmurawabort <= '1' when abort_nonresident = '1' or abort_pagelength = '1' or abort_readonly = '1' else '0';
    mmuabort <= mmu_mmuabort when oddabort = '0'
       else '0';
 
 -- generate mmu trap
-   trap_mm <=
-      '1' when sr0(9) = '1' and sr0(0)= '1'
+   mmr012_ref <= '1' when addr_p24z1 = o"17777572" or addr_p24z1 = o"17777574" or addr_p24z1 = o"17777576" else '0';
+
+-- ACF 1 or 4 on a read, 4 or 5 on a write sets MMR0 bit 12 whether or not traps are enabled;
+-- TENB (bit 9) only requests the vector 250 trap (KB11-C; SIMH relocR_test; EKBEE1 TESTNO 55)
+   acf_trap <=
+      '1' when sr0(0)= '1'
          and have_mmutr = 1
+         and mm_int_reg = '0'
          and ((cpu_rd = '1' and (pdr(2 downto 0) = "001" or pdr(2 downto 0) = "100")) or (cpu_wr = '1' and (pdr(2 downto 0) = "100" or pdr(2 downto 0) = "101")))
+      else '0';
+   trap_mm <=
+      '1' when acf_trap = '1' and sr0(9) = '1' and sr0(12) = '0'   -- only when bit 12 goes 0 -> 1 (EKBEE1 TESTNO 60)
       else '0';
 
 
@@ -883,6 +900,10 @@ begin
       else unibus_dati when addr_p(21 downto 13) = "111111111"
       else bus_dati;
 
+-- MM internal registers (KB11-C Table 7-1 "INT REG": PARs, PDRs, MMR0-3; not the Unibus map) never
+-- meet the ACF trap condition (IV-8; EKBEE1 TESTNO 61)
+   mm_int_reg <= mmu_addr_match when not (addr_p(21 downto 7) = "111111111100001" and have_ubm = 1) else '0';
+
 -- generate mmu_addr_match, extremely unelegant but I don't see how else to do this
    mmu_addr_match <=
       '1' when (
@@ -912,7 +933,7 @@ sr0out_debug <= sr0;
             abort_acknowledged <= '0';
             mmutrap <= '0';
             sr0(15 downto 0) <= "0000000000000000";
-            sr1 <= sr1_in;
+            sr1 <= (others => '0');                        -- INIT clears MMR1
             sr2 <= sr2_in;
             sr3 <= "000000";
             if modelcode = 23 or modelcode = 24 then
@@ -936,16 +957,28 @@ sr0out_debug <= sr0;
             if ack_mmutrap = '1' then
                mmutrap <= '0';
             end if;
+            if mmu_mmuabort = '1' and oddabort = '0' then   -- an MM abort cancels a pending TENB trap (KB11-C IV-8:
+               mmutrap <= '0';                              -- SSRD MGMT HOLD); an odd-address abort inhibits the MM
+            end if;                                         -- abort, so it does not (EKBEE1 TESTNO 61-62)
             if sr0(15 downto 13) = "000" then
                abort_acknowledged <= '0';
+               sr1 <= sr1_in;                               -- KB11-C: MMR1 tracks autoinc/dec until an abort freezes it
                sr2 <= sr2_in;
                if sr0(0) = '1' then
-                  sr0(15) <= abort_nonresident;
-                  sr0(14) <= abort_pagelength;
-                  sr0(13) <= abort_readonly;
-                  sr0(12) <= trap_mm;
+                  if cpu_rsv = '0' then                 -- a red stack violation inhibits KT BEND: MMR0 records no abort
+                     sr0(15) <= abort_nonresident;      -- (EKBEE1 TESTNO 122, "TMCE KT BEND DOESN'T GO LOW ON TMCD SL RED")
+                     sr0(14) <= abort_pagelength;
+                     sr0(13) <= abort_readonly;
+                  end if;
+                  if acf_trap = '1' then                -- bit 12 is sticky until software or INIT clears it
+                     sr0(12) <= '1';
+                  end if;
                   sr0(7) <= sr0_ic;
-                  if (cpu_rd = '1' or cpu_wr = '1') then
+                  -- page/mode (6:1) follow every reference until an abort freezes MMR0, except the MM
+                  -- registers MMR0-2 themselves (KB11-C 9.1.9 "INT REG"): reading MMR0 must not leave
+                  -- page 7 there (EKBEE1 TESTNO 55-60)
+                  if (cpu_rd = '1' or cpu_wr = '1')                     -- an aborting reference never reaches the register, so it
+                  and (mmr012_ref = '0' or abort_nonresident = '1' or abort_pagelength = '1' or abort_readonly = '1') then   -- records mode/page (EKBEE1 TESTNO 71)
                      sr0(6 downto 5) <= psw_mmumode;
                      sr0(4) <= sr3id;
                      sr0(3 downto 1) <= cpu_addr_v(15 downto 13);
@@ -956,7 +989,7 @@ sr0out_debug <= sr0;
             end if;
 
          -- handle w bit in pdr
-            if have_pdrw = 1 and sr0(0) = '1' and cpu_wr = '1' and mmu_addr_match = '0'
+            if have_pdrw = 1 and sr0(0) = '1' and cpu_wr = '1' and mm_int_reg = '0'     -- KB11-C IV-7: only PAR/PDR/MMR0-3 are exempt; a Unibus map write sets W (EKBEE1 TESTNO 77)
             and abort_nonresident = '0' and abort_pagelength = '0' and abort_readonly = '0' then
                case psw(15 downto 14) is
                   when "00" =>
@@ -971,7 +1004,7 @@ sr0out_debug <= sr0;
             end if;
 
             -- handle a bit in pdr
-            if have_pdra = 1 and sr0(0) = '1' and mmu_addr_match = '0'
+            if have_pdra = 1 and sr0(0) = '1' and mm_int_reg = '0'
             and abort_nonresident = '0' and abort_pagelength = '0' and abort_readonly = '0'
             and
             ((pdr(2 downto 0) = "001" and cpu_rd = '1')
@@ -1075,6 +1108,7 @@ sr0out_debug <= sr0;
                      end if;
                      if cpu_dw8 = '0' or cpu_addr_v(0) = '1' then   -- word write or odd address
                         sr0(15 downto 13) <= mmu_dato(15 downto 13);
+                        sr0(12) <= mmu_dato(12);        -- trap-MM is software-written too (KB11-C 9.1.8; EKBEE1 TESTNO 11)
                         sr0(9) <= mmu_dato(9);          -- traps, 45 and 70
                         sr0(8) <= mmu_dato(8);
                      end if;
