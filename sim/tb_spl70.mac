@@ -15,7 +15,7 @@ rt:	.word	0
 flag:	.word	0
 seen:	.word	0
 	.=1000
-start:	mov	#1100,sp
+start:	mov	#700,sp		; stack below the code (pushes must not land on it)
 ; case 1: PIR 7 requested at PL7; SPL 6; the next instruction must run before the interrupt
 	spl	7
 	clr	@#flag
