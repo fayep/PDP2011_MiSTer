@@ -267,6 +267,7 @@ entity unibus is
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
       line_50hz : in std_logic := '0';                               -- KW11-L at 50 Hz instead of kw11l_hz (OSD)
+      tape_ts : in std_logic := '0';                                 -- the tape drive as a TS11 instead of a TM11 (OSD)
       kl1_silo_off : in std_logic := '0';                            -- line 1 without receive silo (OSD: TU58 on line 1)
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
       reset : in std_logic                                           -- active '1' synchronous reset
@@ -693,6 +694,7 @@ component tm11 is
       clk_sys : in std_logic;
 
       have_tm : in integer range 0 to 1;
+      ts_mode : in std_logic := '0';
       media_change : in std_logic := '0';
       img_mounted : in integer range 0 to 1 := 1;
       reset : in std_logic;
@@ -1955,6 +1957,7 @@ begin
       clk_sys => clk_sd,
 
       have_tm => have_tm,
+      ts_mode => tape_ts,
       media_change => tm_media_change,
       img_mounted => tm_img_mounted,
       reset => cpu_init,

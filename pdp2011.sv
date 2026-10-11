@@ -213,6 +213,7 @@ localparam CONF_STR = {
 	"O[2],Console,Virtual VT100,Serial 19200 baud;",
 	"H0O[17],Line 1 (176500),Serial port,TU58 DECtape II;",
 	"O[18],Line clock,60 Hz,50 Hz;",
+	"O[28],Tape controller,TM11 (MT),TS11 (MS);",
 	"O[24:22],Boot device,Auto,TM11 tape,RK11,RL11,RH70 (RP/RM);",
 	"O[16],Video,Terminal,Front panel;",
 	"-;",
@@ -506,6 +507,7 @@ mister_top mister_top
    .modelcode    (modelcode),
 	.serial_console (status[2]),
 	.line_50hz      (status[18]),
+	.tape_ts        (status[28]),
 	.kl1_silo_off   (status[17] & ~status[2]),  // TU58 on line 1: DL11 without the receive silo
 	
    .tx1  (UART_TXD),

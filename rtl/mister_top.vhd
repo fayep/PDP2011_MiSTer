@@ -31,6 +31,7 @@ entity mister_top is
 		modelcode      : in integer;
 		serial_console : in std_logic;
 		line_50hz      : in std_logic;
+		tape_ts        : in std_logic := '0';                  -- tape controller: '0' TM11, '1' TS11 (OSD)
 		kl1_silo_off   : in std_logic;    -- TU58 on line 1: plain DL11 receiver
 		have_rk        : in integer;
 		have_rl        : in integer;
@@ -379,6 +380,7 @@ component unibus is
 -- clocks and reset
       clk : in std_logic;                                            -- cpu clock
       line_50hz : in std_logic := '0';                               -- KW11-L at 50 Hz instead of kw11l_hz (OSD)
+      tape_ts : in std_logic := '0';                                 -- the tape drive as a TS11 instead of a TM11 (OSD)
       kl1_silo_off : in std_logic := '0';                            -- line 1 without receive silo (OSD: TU58 on line 1)
       clk50mhz : in std_logic;                                       -- 50Mhz clock for peripherals
       reset : in std_logic                                           -- active '1' synchronous reset
@@ -764,6 +766,7 @@ begin
       ifetch => ifetch,
       reset => cpureset_cpu,
       line_50hz => line_50hz,
+      tape_ts => tape_ts,
       kl1_silo_off => kl1_silo_off,
       clk50mhz => clk_50,
       clk => cpuclk
