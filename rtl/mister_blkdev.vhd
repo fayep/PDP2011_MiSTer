@@ -87,6 +87,7 @@ signal read_done_m, read_done_s : std_logic := '0';
 signal write_done_m, write_done_s : std_logic := '0';
 
 type hps_state_t is (
+   hps_drain,                                                    -- reset with a request up: keep it until acked
    hps_quiesce,                                                  -- after reset: let any HPS transfer in flight finish
    hps_idle,
    hps_read_req,                                                 -- sd_rd held until sd_ack
@@ -150,15 +151,38 @@ begin
          write_ack_m <= sdcard_write_ack;      write_ack_s <= write_ack_m;
          reset_m <= reset;                     reset_s <= reset_m;
 
-         if reset_s = '1' or enable = 0 then
+         if enable = 0 then
             idle <= '0';
             read_done <= '0';
             write_done <= '0';
             rd_r <= '0';
             wr_r <= '0';
             hps_state <= hps_quiesce;
+         elsif reset_s = '1' then
+            idle <= '0';
+            read_done <= '0';
+            write_done <= '0';
+            if hps_state = hps_read_req or hps_state = hps_write_req or hps_state = hps_drain then
+               hps_state <= hps_drain;                   -- Main may have taken the request already: it will
+               if sd_ack = '1' then                      -- serve it whatever sd_rd/sd_wr do now, so hold it
+                  rd_r <= '0';                           -- until acked, then discard the transfer; withdrawn,
+                  wr_r <= '0';                           -- its block would answer the next request
+                  hps_state <= hps_quiesce;
+               end if;
+            else
+               rd_r <= '0';
+               wr_r <= '0';
+               hps_state <= hps_quiesce;
+            end if;
          else
             case hps_state is
+
+               when hps_drain =>                                 -- a request cut off by reset: Main serves it,
+                  if sd_ack = '1' then                          -- nobody takes the data
+                     rd_r <= '0';
+                     wr_r <= '0';
+                     hps_state <= hps_quiesce;
+                  end if;
 
                when hps_quiesce =>
                   if sd_ack = '0' then
