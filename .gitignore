@@ -19,3 +19,12 @@ tools/sdfmt
 
 # pdp_harness binary (go build in tools/pdp_harness)
 tools/pdp_harness/pdp_harness
+
+# Quartus and GHDL build output
+output_files/
+output_files_*/
+db/
+incremental_db/
+sim/build/
+sim/build_*/
+__pycache__/
