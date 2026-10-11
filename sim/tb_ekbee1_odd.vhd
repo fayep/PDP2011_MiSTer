@@ -26,6 +26,7 @@ architecture sim of tb_ekbee1_odd is
 
    signal addr       : std_logic_vector(21 downto 0);
    signal dati       : std_logic_vector(15 downto 0) := (others => '0');
+   signal dati_now, dati_hold : std_logic_vector(15 downto 0) := (others => '0');
    signal dato       : std_logic_vector(15 downto 0);
    signal control_dati  : std_logic;
    signal control_dato  : std_logic;
@@ -116,9 +117,15 @@ begin
                      and unsigned(addr) < 131072
                  else '0';
 
-   dati <= ram(to_integer(unsigned(addr(16 downto 1))))
-           when addr_match = '1'
-           else (others => '0');
+   -- like mister_top's dati register: a read's word stays on dati after the cycle, until the next
+   -- read (MTPI/MTPD take their popped word one clock after the read, in state_mtpa); 0 before any read
+   dati_now <= ram(to_integer(unsigned(addr(16 downto 1))));
+   dati <= dati_now when addr_match = '1' and control_dati = '1' else dati_hold;
+   process(clk) begin
+      if rising_edge(clk) then
+         if addr_match = '1' and control_dati = '1' then dati_hold <= dati_now; end if;
+      end if;
+   end process;
 
    process(clk)
    begin
