@@ -16,3 +16,6 @@ tools/genblkram
 tools/macro11
 tools/sdfmt
 .DS_Store
+
+# pdp_harness binary (go build in tools/pdp_harness)
+tools/pdp_harness/pdp_harness
