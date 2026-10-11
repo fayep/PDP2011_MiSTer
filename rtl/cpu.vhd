@@ -428,7 +428,7 @@ signal have_mtps : integer range 0 to 1;
 signal have_mfp : integer range 0 to 1;
 signal have_mpr : integer range 0 to 1;
 signal have_spl : integer range 0 to 1;
-signal spl_inhibit : std_logic := '0';                               -- 11/70: no interrupt between an SPL and the next instruction
+signal spl_inhibit : std_logic := '0';                               -- 11/70: no interrupt or trace trap between an SPL and the next instruction
 signal have_mmr1_r7 : integer range 0 to 1;                           -- MMR1 records R7 (PC) autoinc/dec
 signal have_csm : integer range 0 to 1;
 signal have_red : integer range 0 to 1;
@@ -1349,7 +1349,7 @@ begin
                      elsif spl_inhibit = '0' and pir_in(9) = '1' and unsigned(psw(7 downto 5)) < unsigned'("001") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif psw(4) = '1' and ir_rtt = '0' and ir_wait = '0' then
+                     elsif spl_inhibit = '0' and psw(4) = '1' and ir_rtt = '0' and ir_wait = '0' then     -- no trace trap after an SPL either (EKBBF0 TESTNO 32, T-bit passes)
                         trap_vector <= o"014";                                           -- trace bit, vector = 014
                         state <= state_trap;
                         if modelcode = 70 then

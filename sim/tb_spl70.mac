@@ -1,5 +1,5 @@
 	.title	tb_spl70 - 11/70 SPL holds off interrupts for one instruction (EKBBF0 TESTNO 32)
-; result = 1 when both cases pass, else 100*case + check (rt = observed value)
+; result = 1 when all cases pass, else 100*case + check (rt = observed value)
 PSW	= 177776
 PIRQ	= 177772
 	.asect
@@ -7,6 +7,8 @@ PIRQ	= 177772
 	.word	nxm,340
 	.=10
 	.word	bad,340
+	.=14
+	.word	trc,340
 	.=240
 	.word	pir,340
 	.=500
@@ -40,8 +42,30 @@ c2ret:	mov	@#seen,@#rt
 	cmp	@#seen,#2
 	beq	.+6
 	jmp	@#done
+; case 3: as case 1 with the T bit set (XXDP's alternate passes): no trace trap between the
+; SPL and the next instruction either, so the PIR interrupt still comes after the store
+	spl	7
+	clr	@#flag
+	clr	@#seen
+	bis	#100000,@#PIRQ
+	mov	#360,-(sp)		; PL7 + T: rti into c3go with tracing on
+	mov	#c3go,-(sp)
+	rti
+c3go:	spl	6
+	mov	#1,@#flag
+	nop
+	mov	#340,-(sp)		; tracing off again
+	mov	#c3off,-(sp)
+	rtt
+c3off:	mov	@#seen,@#rt
+	mov	#301,@#result
+	cmp	@#seen,#1
+	beq	.+6
+	jmp	@#done
 	mov	#1,@#result
 done:	halt
+; trace trap: return without tracing the return
+trc:	rtt
 ; PIR interrupt: record whether the instruction after SPL had run (1) or not (3)
 pir:	clr	@#PIRQ
 	mov	#3,@#seen
