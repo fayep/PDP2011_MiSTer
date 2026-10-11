@@ -428,6 +428,7 @@ signal have_mtps : integer range 0 to 1;
 signal have_mfp : integer range 0 to 1;
 signal have_mpr : integer range 0 to 1;
 signal have_spl : integer range 0 to 1;
+signal spl_inhibit : std_logic := '0';                               -- 11/70: no interrupt between an SPL and the next instruction
 signal have_mmr1_r7 : integer range 0 to 1;                           -- MMR1 records R7 (PC) autoinc/dec
 signal have_csm : integer range 0 to 1;
 signal have_red : integer range 0 to 1;
@@ -1315,37 +1316,37 @@ begin
                         state <= state_fptrap;
                      elsif falu_pending_divz = '1' then                                  -- pending div by zero trap from fp11
                         state <= state_fptrap;
-                     elsif pir_in(15) = '1' and unsigned(psw(7 downto 5)) < unsigned'("111") then
+                     elsif spl_inhibit = '0' and pir_in(15) = '1' and unsigned(psw(7 downto 5)) < unsigned'("111") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif br7 = '1' and unsigned(psw(7 downto 5)) < unsigned'("111") then
+                     elsif spl_inhibit = '0' and br7 = '1' and unsigned(psw(7 downto 5)) < unsigned'("111") then
                         state <= state_br7;                                              -- external, level 7, vector determined by device
                         bg7 <= '1';
-                     elsif pir_in(14) = '1' and unsigned(psw(7 downto 5)) < unsigned'("110") then
+                     elsif spl_inhibit = '0' and pir_in(14) = '1' and unsigned(psw(7 downto 5)) < unsigned'("110") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif br6 = '1' and unsigned(psw(7 downto 5)) < unsigned'("110") then
+                     elsif spl_inhibit = '0' and br6 = '1' and unsigned(psw(7 downto 5)) < unsigned'("110") then
                         state <= state_br6;                                              -- external, level 6, vector determined by device
                         bg6 <= '1';
-                     elsif pir_in(13) = '1' and unsigned(psw(7 downto 5)) < unsigned'("101") then
+                     elsif spl_inhibit = '0' and pir_in(13) = '1' and unsigned(psw(7 downto 5)) < unsigned'("101") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif br5 = '1' and unsigned(psw(7 downto 5)) < unsigned'("101") then
+                     elsif spl_inhibit = '0' and br5 = '1' and unsigned(psw(7 downto 5)) < unsigned'("101") then
                         state <= state_br5;                                              -- external, level 5, vector determined by device
                         bg5 <= '1';
-                     elsif pir_in(12) = '1' and unsigned(psw(7 downto 5)) < unsigned'("100") then
+                     elsif spl_inhibit = '0' and pir_in(12) = '1' and unsigned(psw(7 downto 5)) < unsigned'("100") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif br4 = '1' and unsigned(psw(7 downto 5)) < unsigned'("100") then
+                     elsif spl_inhibit = '0' and br4 = '1' and unsigned(psw(7 downto 5)) < unsigned'("100") then
                         state <= state_br4;                                              -- external, level 4, vector determined by device
                         bg4 <= '1';
-                     elsif pir_in(11) = '1' and unsigned(psw(7 downto 5)) < unsigned'("011") then
+                     elsif spl_inhibit = '0' and pir_in(11) = '1' and unsigned(psw(7 downto 5)) < unsigned'("011") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif pir_in(10) = '1' and unsigned(psw(7 downto 5)) < unsigned'("010") then
+                     elsif spl_inhibit = '0' and pir_in(10) = '1' and unsigned(psw(7 downto 5)) < unsigned'("010") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
-                     elsif pir_in(9) = '1' and unsigned(psw(7 downto 5)) < unsigned'("001") then
+                     elsif spl_inhibit = '0' and pir_in(9) = '1' and unsigned(psw(7 downto 5)) < unsigned'("001") then
                         trap_vector <= o"240";                                           -- pirq, vector = 240
                         state <= state_trap;
                      elsif psw(4) = '1' and ir_rtt = '0' and ir_wait = '0' then
@@ -1357,6 +1358,7 @@ begin
                         end if;
                      else
                         cons_maddr(7) <= '0';
+                        spl_inhibit <= '0';                                              -- the instruction after an SPL is fetched
                         if cons_ena = '1' then
                            run <= '1'; pause <= '0'; master <= '0';
                         end if;
@@ -2077,6 +2079,9 @@ begin
                               if pswmf(15 downto 14) = "00" then
                                  psw(7 downto 5) <= datain(2 downto 0);
                               end if;
+                              if modelcode = 70 then                                     -- KB11-C: the next instruction runs before any
+                                 spl_inhibit <= '1';                                     -- interrupt is taken (EKBBF0 TESTNO 32)
+                              end if;
                               state <= state_ifetch;
                            end if;
 
@@ -2599,6 +2604,7 @@ begin
 
                   when state_trap =>
                      temp_psw <= psw;
+                     spl_inhibit <= '0';                             -- a trap taken instead of the next instruction ends it too
                      psw(15 downto 14) <= "00";                      -- initial, we'll load the real mode to select the correct stack by in the next step
                      psw(13 downto 12) <= pswmf(15 downto 14);
                      rbus_cpu_mode <= "00";                          -- force rbus cpu mode to 00 - this is output to the mmu to select the par/pdr set
