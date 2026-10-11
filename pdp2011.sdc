@@ -66,7 +66,9 @@ set_false_path -from [get_registers {*xufp:*|txlen_r[*] *xufp:*|gmac[*] *xufp:*|
 set_false_path -from [get_registers {*xu_ddr_bridge:*|rxlen_r[*] *xu_ddr_bridge:*|hmac[*]}] -to [get_registers {*xufp:*}]
 
 # kl11 receive data (clk_50 domain) is handed to cpuclk through a level
-# handshake with a multi-tap synchroniser: a real false path.
+# handshake with a multi-tap synchroniser, and kw11l's lineclk through a
+# 2-FF synchroniser (lineclk_m/_s): real false paths. Anything else crossing
+# here needs its own synchroniser -- this exception hides it from STA.
 set_false_path -from [get_clocks {emu|pll|pll_inst|altera_pll_i|general[2].gpll~PLL_OUTPUT_COUNTER|divclk}] \
    -to [get_clocks {cpuclk}]
 
