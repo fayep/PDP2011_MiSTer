@@ -386,6 +386,7 @@ component mmu is
       ack_mmutrap : in std_logic;
       mmuabort : out std_logic;
       mmurawabort : out std_logic;
+      cpu_rsv : in std_logic := '0';
       ack_mmuabort : in std_logic;
 
       mmuoddabort : out std_logic;
@@ -1564,6 +1565,7 @@ begin
       ack_mmutrap => cpu_ack_mmutrap,
       mmuabort => mmu_abort,
       mmurawabort => mmu_rawabort,
+      cpu_rsv => rsv,                                              -- red stack violation inhibits the MM abort
       ack_mmuabort => cpu_ack_mmuabort,
 
       mmuoddabort => mmu_oddabort,

@@ -33,6 +33,7 @@ entity mmu is
       ack_mmutrap : in std_logic;
       mmuabort : out std_logic;
       mmurawabort : out std_logic;                                  -- abort condition, not masked by abort_acknowledged (11/70 red stack)
+      cpu_rsv : in std_logic := '0';                                -- the cpu's red stack violation: it inhibits the MM abort (KT BEND)
       ack_mmuabort : in std_logic;
 
       mmuoddabort : out std_logic;
@@ -964,9 +965,11 @@ sr0out_debug <= sr0;
                sr1 <= sr1_in;                               -- KB11-C: MMR1 tracks autoinc/dec until an abort freezes it
                sr2 <= sr2_in;
                if sr0(0) = '1' then
-                  sr0(15) <= abort_nonresident;
-                  sr0(14) <= abort_pagelength;
-                  sr0(13) <= abort_readonly;
+                  if cpu_rsv = '0' then                 -- a red stack violation inhibits KT BEND: MMR0 records no abort
+                     sr0(15) <= abort_nonresident;      -- (EKBEE1 TESTNO 122, "TMCE KT BEND DOESN'T GO LOW ON TMCD SL RED")
+                     sr0(14) <= abort_pagelength;
+                     sr0(13) <= abort_readonly;
+                  end if;
                   if acf_trap = '1' then                -- bit 12 is sticky until software or INIT clears it
                      sr0(12) <= '1';
                   end if;
