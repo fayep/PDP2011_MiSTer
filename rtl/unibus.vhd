@@ -2997,7 +2997,9 @@ begin
             case br4_state is
 
                when br4_idle =>
-                  if kl0_br = '1' then
+                  if cpu_bg4 = '1' then                         -- a grant still up from a withdrawn request (passive
+                     null;                                      -- release): hand it to no one
+                  elsif kl0_br = '1' then
                      br4_state <= br4_kl0;
                      cpu_br4 <= kl0_br;
                   elsif kl1_br = '1' then

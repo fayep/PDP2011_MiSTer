@@ -2530,7 +2530,10 @@ begin
 -- bus request, prio level 4; handle br4/bg4 signals and initiate trap
 
                   when state_br4 =>
-                     if br4 = '0' then
+                     if br4 = '0' and int_vector4 = "000000000" then          -- passive release: the request was withdrawn
+                        bg4 <= '0';                                            -- before the grant (KL11 IE cleared) -- no interrupt
+                        state <= state_ifetch;
+                     elsif br4 = '0' then
                         bg4 <= '0';
                         trap_vector <= int_vector4;
                         state <= state_trap;

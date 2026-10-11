@@ -247,7 +247,15 @@ begin
                      end if;
 
                   when i_req =>
-                     if tx_trigger = '1' then
+                     if bg = '0'                                     -- a DL11 request is IE and READY (or IE and DONE): when that
+                     and ((tx_trigger = '1' and (tx_ie = '0' or tx_rdy = '0'))     -- goes away before the grant, the request
+                       or (rx_trigger = '1' and (rx_ie = '0' or rx_done = '0'))) then -- is withdrawn; vector 0 tells the cpu
+                        br <= '0';                                   -- it was a passive release (EKBBF0 TESTNO 47)
+                        int_vector <= (others => '0');
+                        tx_trigger <= '0';
+                        rx_trigger <= '0';
+                        interrupt_state <= i_idle;
+                     elsif tx_trigger = '1' then
                         if bg = '1' then
                            int_vector <= ovec;
                            br <= '0';
