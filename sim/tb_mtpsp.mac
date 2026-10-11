@@ -1,0 +1,25 @@
+	.title	tb_mtpsp - EKBEE1 TESTNO 107 shape: push, MTPI SP, MFPI SP, pop
+PSW	= 177776
+	.asect
+	.=4
+	.word	bad,340
+	.=10
+	.word	bad,340
+	.=500
+result:	.word	0
+rt:	.word	0
+	.=1000
+start:	mov	#1100,sp
+	mov	#10340,@#PSW		; kernel, previous mode supervisor
+	mov	#123456,-(sp)
+	mtpi	sp
+	mfpi	sp
+	mov	(sp)+,@#rt
+	mov	#2,@#result
+	cmp	#123456,@#rt
+	bne	done
+	mov	#1,@#result
+done:	halt
+bad:	mov	#3,@#result
+	halt
+	.end	start

@@ -1,0 +1,16 @@
+# XXDP MAINDEC catalog for sim/run_xxdp.sh
+# Fields, '|'-separated:
+#   name | files in XXDP_ROOT | init_pc oct | cons_sw oct | pass_match | fail_match | fail_match2 | stop-time | budget
+#
+# "files" is one basename or comma-separated basenames, loaded in order
+# (later overlays earlier) by abs2mem.py onto one 64K image.
+#
+# cons_sw 104001 = SW15 halt-on-error + SW11 inhibit-iterations + SW00 skip operator (EKBAD0).
+# ZMMCA0 uses 0 so the diagnostic takes default limits 2710-17470.
+# stop-time is GHDL's wall; budget is cpu clocks (20 ns).  Keep
+# budget*20ns < stop-time so TIMEOUT can print pc/ir/r0 instead of a
+# silent --stop-time kill.  20ms only reached the EKBAD0 banner.
+#
+EKBAD0|EKBAD0.BIC|200|104001|END PASS|TEST NUMBER||500ms|24000000
+ZMMCA0|ZMMCA0.BIC|200|0||WRITE-READ ERROR|DUAL ADDRESS ERROR|2sec|95000000
+EKBEE1|EKBEE1.BIC|200|004001|END PASS|||4sec|180000000

@@ -3,3 +3,7 @@ build_abort/
 build_blk/
 build_panel/
 build_bracket/
+# macro11 / mac2mem.py outputs, regenerated from the .mac by run_sim.sh
+*.obj
+*.lst
+*.mem
