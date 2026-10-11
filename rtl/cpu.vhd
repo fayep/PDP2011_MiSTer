@@ -3732,6 +3732,12 @@ begin
                   state <= state_halt;
                end if;
                ack_mmuabort <= '1';                                                      -- set acknowledge flag to mmu core
+               if state = state_idecode then                                             -- the instruction fetch itself aborted: the word read
+                  rbus_we <= '0';                                                        -- is not an instruction, so none of idecode's side
+                  psw <= psw;                                                            -- effects may land -- a junk 000001 armed WAIT and the
+                  ir_wait <= '0';                                                        -- 250 handler's first fetch then waited forever at
+               end if;                                                                   -- priority 7 (EKBEE1 user NR fetch walk); a junk MARK
+                                                                                          -- rewrote SP. The PC step is kept for the trap's push.
             elsif oddabort = '1' and have_oddimmediateabort = 0 then                     -- odd abort signal
                if run = '1' then
                   trap_vector <= o"004";                                                    -- set vector
