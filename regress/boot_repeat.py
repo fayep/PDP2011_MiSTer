@@ -41,7 +41,7 @@ def since_start():
 booted = 0
 with open(LOG, "w") as log:
     for i in range(1, LOADS + 1):
-        ssh("echo 'load_core /media/fat/menu.rbf' > /dev/MiSTer_cmd; sleep 4; "
+        ssh("ps w | grep -q '[M]iSTer_pdp2011' && echo 'load_core /media/fat/menu.rbf' | timeout 15 tee /dev/MiSTer_cmd > /dev/null; sleep 4; "
             "for p in $(pidof pdp_harness); do kill $p; done; "
             "setsid nohup /media/fat/Scripts/pdp_harness -tcp :7788 > /tmp/pdp_harness_stdout.log 2>&1 < /dev/null & "
             "sleep 2; cp /media/fat/_Debug/%s.mgl /tmp/claude_loaded.mgl; echo 'load_core /media/fat/_Debug/%s.mgl' > /dev/MiSTer_cmd" % (MGL, MGL))
