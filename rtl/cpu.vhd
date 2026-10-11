@@ -578,7 +578,8 @@ begin
          and psw(15 downto 14) = "00"
          and yellow_stack_trap_inhibit = '0'
          and red_stack_trap = '0' and red_stack_trap_trigger = '0'
-         and unsigned(cpu_stack_limit(15 downto 8) & "11111110") > unsigned(stack_check_addr)
+         and unsigned(cpu_stack_limit(15 downto 8) & "11111111") >= unsigned(stack_check_addr)   -- yellow: address <= SL+377
+                                                                    -- (KB11-C 6.2.2: SL+340..SL+377; EKBBF0 TESTNO 36 MOV R0,(SP) at 376)
 
       else '0';
 
