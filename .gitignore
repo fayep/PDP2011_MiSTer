@@ -28,3 +28,4 @@ incremental_db/
 sim/build/
 sim/build_*/
 __pycache__/
+sim/verilator/build/
