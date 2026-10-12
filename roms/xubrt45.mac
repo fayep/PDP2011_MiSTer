@@ -702,16 +702,21 @@ fc15:
          bis    #4000,@#174510            ; dni
          rts    pc
 ;
-; fc16
+; fc16 - read status, fc17 - read and clear status. RSX-11M-PLUS's XEDRV
+; issues fc16 while it initializes the controller (it keeps the microcode
+; revision from it); with no reply it timed out, logged a fatal controller
+; init and left XE: offline. Same answer as SIMH's xu: status 0 (no
+; errors latched, revision 0), 10. multicast addresses, 32.-word counters.
 ;
 fc16:
-         xascil <fc16>
-         rts    pc
-;
-; fc17
-;
 fc17:
-         xascil <fc17>
+         xascil <fc16/17 - read status>
+         jsr    pc,getpcbb
+         clr    pcbb+2
+         mov    #10.,pcbb+4
+         mov    #32.,pcbb+6
+         jsr    pc,putpcbb
+         bis    #4000,@#174510            ; dni
          rts    pc
 ;
 ; fc20
@@ -728,40 +733,25 @@ fc21:
          bis    #44000,@#174510           ; pcei - this function is not implemented
          rts    pc
 ;
-; fc22
+; fc22 - read system id, fc23 - write system id, fc24 - read load server
+; address, fc25 - write load server address: not kept, but completed (as
+; SIMH's xu does for the writes); before they never set dni, so a driver
+; that asked waited forever
 ;
 fc22:
-         xascil <fc22>
-         rts    pc
-;
-; fc23
-;
 fc23:
-         xascil <fc23>
-         rts    pc
-;
-; fc24
-;
 fc24:
-         xascil <fc24>
-         rts    pc
-;
-; fc25
-;
 fc25:
-         xascil <fc25>
+         xascil <fc22-25 - system id / load server, not kept>
+         bis    #4000,@#174510            ; dni
          rts    pc
 ;
-; fc26
+; fc26, fc27: not DEUNA functions
 ;
 fc26:
-         xascil <fc26>
-         rts    pc
-;
-; fc27
-;
 fc27:
-         xascil <fc27>
+         xascil <fc26/27 - undefined>
+         bis    #44000,@#174510           ; pcei
          rts    pc
 ;
 ; xmitpl : poll xmit ring for entries with own set
