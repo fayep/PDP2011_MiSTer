@@ -78,6 +78,7 @@ entity tm11 is
       clk_sys : in std_logic;
 
       have_tm : in integer range 0 to 1;
+      ts_mode : in std_logic := '0';                            -- '1': the same drive as a TS11 (OSD), see the TS11 section
       media_change : in std_logic := '0';                       -- toggles when a .tap is (un)mounted -> re-home to BOT
       img_mounted : in integer range 0 to 1 := 1;               -- is a tape image actually mounted; a real TM11
                                                                  -- always has the controller present (that's
@@ -196,6 +197,14 @@ signal cmd_req : std_logic;                               -- nclk -> engine : st
 signal cmd_done : std_logic;                              -- engine -> nclk : command complete, results valid
 
 -- latched at cmd_req (nclk -> engine)
+signal lat_op : std_logic_vector(1 downto 0) := "00";     -- "00" tape function lat_fnc, "01" dma read, "10" dma write
+signal lat_dma_addr : std_logic_vector(17 downto 0);      -- dma: first word address
+signal lat_dma_cnt : integer range 0 to 8 := 0;           -- dma: words
+type dma_buf_t is array(0 to 7) of std_logic_vector(15 downto 0);
+signal dmawb : dma_buf_t;                                 -- nclk -> engine: words to write
+signal dmarb : dma_buf_t;                                 -- engine -> nclk: words read
+signal dma_idx : integer range 0 to 8 := 0;
+signal dma_work : std_logic_vector(17 downto 0);
 signal lat_fnc : std_logic_vector(2 downto 0);
 signal lat_brc : std_logic_vector(15 downto 0);
 signal lat_cma : std_logic_vector(15 downto 0);
@@ -212,6 +221,7 @@ signal res_bot : std_logic;
 signal res_rle : std_logic;
 signal res_nxm : std_logic;
 signal res_ill : std_logic;
+signal res_rib : std_logic;                               -- a reverse space ran into BOT (TS11 reports it, RIB)
 
 -- sdspi interface
 signal sd_addr : std_logic_vector(23 downto 0);
@@ -244,6 +254,9 @@ type engine_state_t is (
    eng_sr_init, eng_sr_chk, eng_sr_eval,
    -- rewind / unload / illegal
    eng_rew, eng_illegal,
+   -- dma word read / write (TS11 packets)
+   eng_dr_acq, eng_dr_gnt, eng_dr_a, eng_dr_b,
+   eng_dw_acq, eng_dw_gnt, eng_dw_a, eng_dw_b,
    eng_finish
 );
 signal engine_state : engine_state_t := eng_idle;
@@ -269,6 +282,63 @@ signal words_left : std_logic_vector(15 downto 0);
 signal payload_pos : std_logic_vector(31 downto 0);
 signal cma_work : std_logic_vector(17 downto 0);          -- {ema, cma} working address
 signal sp_count : std_logic_vector(15 downto 0);          -- space fwd/rev record counter (2's complement)
+
+-- TS11 personality (ts_mode = '1'): same drive and .tap engine, TS11 registers and packets.
+-- TSBA/TSDB 172520 (read: bus address; word write: command packet address -> fetch and run),
+-- TSSR 172522 (read: status; word write: subsystem reset). Behaviour follows SIMH pdp11_ts.c.
+-- Read-only like the TM11: write and format are refused (write lock). Read reverse is not
+-- implemented yet (function reject, as an illegal mode).
+constant TS_ACK   : std_logic_vector(15 downto 0) := x"8000";   -- 100000
+constant TS_MILL  : std_logic_vector(15 downto 0) := x"0100";   -- 000400
+constant TS_MNEF  : std_logic_vector(15 downto 0) := x"0200";   -- 001000
+constant TS_CEND  : std_logic_vector(15 downto 0) := x"0010";   -- 000020
+constant TS_CFAIL : std_logic_vector(15 downto 0) := x"0011";   -- 000021
+constant TS_CERR  : std_logic_vector(15 downto 0) := x"0012";   -- 000022
+constant TS_CATN  : std_logic_vector(15 downto 0) := x"0013";   -- 000023
+constant XS0_TMK  : std_logic_vector(15 downto 0) := x"8000";   -- 100000
+constant XS0_RLS  : std_logic_vector(15 downto 0) := x"4000";   -- 040000
+constant XS0_LET  : std_logic_vector(15 downto 0) := x"2000";   -- 020000
+constant XS0_RLL  : std_logic_vector(15 downto 0) := x"1000";   -- 010000
+constant XS0_WLE  : std_logic_vector(15 downto 0) := x"0800";   -- 004000
+constant XS0_NEF  : std_logic_vector(15 downto 0) := x"0400";   -- 002000
+constant XS0_ILC  : std_logic_vector(15 downto 0) := x"0200";   -- 001000
+constant XS0_ILA  : std_logic_vector(15 downto 0) := x"0100";   -- 000400
+constant XS0_MOT  : std_logic_vector(15 downto 0) := x"0080";   -- 000200
+constant XS0_BOT  : std_logic_vector(15 downto 0) := x"0002";   -- 000002
+constant XS3_OPI  : std_logic_vector(15 downto 0) := x"0040";   -- 000100
+constant XS3_RIB  : std_logic_vector(15 downto 0) := x"0001";   -- 000001
+constant TSF_READ : std_logic_vector(4 downto 0) := "00001";
+constant TSF_WCHR : std_logic_vector(4 downto 0) := "00100";
+constant TSF_WRIT : std_logic_vector(4 downto 0) := "00101";
+constant TSF_WSSM : std_logic_vector(4 downto 0) := "00110";
+constant TSF_POS  : std_logic_vector(4 downto 0) := "01000";
+constant TSF_FMT  : std_logic_vector(4 downto 0) := "01001";
+constant TSF_CTL  : std_logic_vector(4 downto 0) := "01010";
+constant TSF_INIT : std_logic_vector(4 downto 0) := "01011";
+constant TSF_GSTA : std_logic_vector(4 downto 0) := "01111";
+type ts_state_t is (ts_idle, ts_rew_wait, ts_fetch, ts_decode, ts_wchr_wait, ts_op_wait, ts_op_next, ts_end, ts_msg_wait);
+signal ts_state : ts_state_t := ts_idle;
+type ts_op_t is (op_readf, op_spacef, op_spacer, op_skipf, op_skipr, op_rew, op_rewunl);
+signal ts_op : ts_op_t := op_rew;
+signal tsba : std_logic_vector(17 downto 0);              -- last memory address
+signal ts_sc, ts_rmr, ts_nxm, ts_nba, ts_ssr : std_logic;
+signal ts_tc : std_logic_vector(2 downto 0);
+signal tssr : std_logic_vector(15 downto 0);
+signal cmdhdr, cmdadl, cmdadh, cmdlnt : std_logic_vector(15 downto 0);    -- command packet
+signal wchadl, wchadh, wchlnt, wchopt, wchxopt : std_logic_vector(15 downto 0); -- characteristics
+signal msgrfc, xs0f, xs1, xs2, xs3, xs4 : std_logic_vector(15 downto 0); -- message packet status
+signal ts_bot : std_logic;                                -- at true BOT (rewound/mounted)
+signal ts_vck : std_logic;                                -- volume check (set by reset, CVC clears)
+signal ts_int : std_logic;                                -- interrupt pending
+signal ts_rst_rew : std_logic;                            -- rewind owed after a TSSR-write reset
+signal ts_skipn : std_logic_vector(15 downto 0);          -- skip tape marks: marks still to pass
+signal ts_tmkprv : std_logic;                             -- skip: the last thing passed was a tape mark
+signal e_tc : std_logic_vector(2 downto 0);               -- end of command: termination class,
+signal e_xs0 : std_logic_vector(15 downto 0);             -- XS0 bits to add,
+signal e_msg : std_logic_vector(15 downto 0);             -- message header (0: no message packet)
+signal ts_msgn : integer range 0 to 8;
+signal ts_msga : std_logic_vector(17 downto 0);
+signal ts_wchn : integer range 0 to 8;
 
 begin
 
@@ -325,6 +395,10 @@ begin
    mts <= mts_ill & mts_eof & mts_crc & mts_par & mts_dlt & mts_eot & mts_rle & mts_bad
         & mts_nxm & (mts_onl and have_media) & mts_bot & mts_7tk & mts_sdn & mts_wlk & mts_rew & (mts_tur and have_media);
 
+   -- TSSR: SC . . RMR NXM NBA A17 A16 SSR OFL . . TC2 TC1 TC0 .
+   tssr <= ts_sc & "00" & ts_rmr & ts_nxm & ts_nba & tsba(17 downto 16) & ts_ssr & (not have_media)
+           & "00" & ts_tc & '0';
+
    sd_addr <= '0' & need_pos(31 downto 9);
    reclen_pad <= reclen when reclen(0) = '0' else reclen + 1;
 
@@ -333,6 +407,16 @@ begin
 
    process(nclk, reset)
       variable w : std_logic_vector(15 downto 0);
+      variable fnc : std_logic_vector(4 downto 0);
+      variable md : integer range 0 to 15;
+      variable vck : std_logic;
+      variable modok : boolean;
+      variable rfc : std_logic_vector(15 downto 0);
+      variable tc : std_logic_vector(2 downto 0);
+      variable x0 : std_logic_vector(15 downto 0);
+      variable a18 : std_logic_vector(17 downto 0);
+      variable n : integer range 0 to 8;
+      variable bytes : std_logic_vector(15 downto 0);
    begin
       if nclk = '1' and nclk'event then
          if reset = '1' then
@@ -366,6 +450,18 @@ begin
                interrupt_trigger <= '0';
                interrupt_state <= i_idle;
                mc_n <= "000";
+
+               lat_op <= "00";
+               ts_state <= ts_idle;                            -- TS11 reset (bus INIT); the engine
+               tsba <= (others => '0');                        -- rewinds on the same reset
+               ts_sc <= '0'; ts_rmr <= '0'; ts_nxm <= '0'; ts_nba <= '1'; ts_ssr <= '1';
+               ts_tc <= "000";
+               cmdhdr <= (others => '0'); cmdadl <= (others => '0'); cmdadh <= (others => '0'); cmdlnt <= (others => '0');
+               wchadl <= (others => '0'); wchadh <= (others => '0'); wchlnt <= (others => '0');
+               wchopt <= (others => '0'); wchxopt <= (others => '0');
+               msgrfc <= (others => '0'); xs0f <= (others => '0'); xs1 <= (others => '0');
+               xs2 <= (others => '0'); xs3 <= (others => '0'); xs4 <= (others => '0');
+               ts_bot <= have_media; ts_vck <= '1'; ts_int <= '0'; ts_rst_rew <= '0';
             end if;
 
          else
@@ -377,7 +473,12 @@ begin
                case interrupt_state is
                   when i_idle =>
                      br <= '0';
-                     if mtc_ie = '1' and mtc_rdy = '1' then
+                     if ts_mode = '1' then                           -- TS11: a pending request, until granted
+                        if ts_int = '1' then
+                           interrupt_state <= i_req;
+                           br <= '1';
+                        end if;
+                     elsif mtc_ie = '1' and mtc_rdy = '1' then
                         if interrupt_trigger = '0' then
                            interrupt_state <= i_req;
                            br <= '1';
@@ -391,6 +492,7 @@ begin
                      if bg = '1' then
                         int_vector <= ivec;
                         br <= '0';
+                        ts_int <= '0';
                         interrupt_state <= i_wait;
                      end if;
 
@@ -402,6 +504,8 @@ begin
                   when others =>
                      interrupt_state <= i_idle;
                end case;
+
+               if ts_mode = '0' then
 
 -- register reads
 
@@ -446,6 +550,7 @@ begin
                         end if;
 
                         if w(0) = '1' and w(12) = '0' then             -- GO
+                           lat_op <= "00";
                            lat_fnc <= w(3 downto 1);
                            lat_brc <= mtbrc;
                            lat_cma <= mtcma;
@@ -518,6 +623,394 @@ begin
                   cmd_req <= '0';
                end if;
 
+               else
+-- ===== TS11 personality ===========================================================
+-- Registers: 172520 read TSBA (bus address), word write TSDB (command packet address);
+-- 172522 read TSSR, word write = subsystem reset. A command: fetch the 4-word packet by
+-- DMA, check it as SIMH ts_svc does, run it on the tape engine, then end it: XS0 updated,
+-- the message packet written to the characteristics' buffer (unless NBA), TSSR's TC,
+-- SSR and SC set, and an interrupt if the packet asked for one.
+
+               if base_addr_match = '1' and bus_control_dati = '1' then
+                  case bus_addr(3 downto 1) is
+                     when "000" => bus_dati <= tsba(15 downto 0);
+                     when "001" => bus_dati <= tssr;
+                     when others => bus_dati <= (others => '0');
+                  end case;
+               end if;
+
+               if base_addr_match = '1' and bus_control_dato = '1' and bus_control_datob = '0' then
+                  case bus_addr(3 downto 1) is
+                     when "000" =>                                     -- TSDB: start a command
+                        if ts_ssr = '0' or ts_state /= ts_idle or cmd_req = '1' or cmd_done = '1' then
+                           ts_rmr <= '1';                              -- not ready: register modification refused
+                        else
+                           a18 := bus_dato(1 downto 0) & bus_dato(15 downto 2) & "00";
+                           tsba <= a18;
+                           ts_ssr <= '0'; ts_sc <= '0'; ts_rmr <= '0'; ts_nxm <= '0'; ts_tc <= "000";
+                           xs0f <= (others => '0');
+                           msgrfc <= (others => '0'); xs1 <= (others => '0'); xs2 <= (others => '0');
+                           xs3 <= (others => '0'); xs4 <= (others => '0');
+                           ts_int <= '0';
+                           lat_op <= "01"; lat_dma_addr <= a18; lat_dma_cnt <= 4;
+                           cmd_req <= '1';
+                           ts_state <= ts_fetch;
+                        end if;
+                     when "001" =>                                     -- TSSR write: subsystem reset
+                        ts_state <= ts_idle;
+                        tsba <= (others => '0');
+                        ts_sc <= '0'; ts_rmr <= '0'; ts_nxm <= '0'; ts_nba <= '1'; ts_ssr <= '1';
+                        ts_tc <= "000";
+                        cmdhdr <= (others => '0'); cmdadl <= (others => '0'); cmdadh <= (others => '0'); cmdlnt <= (others => '0');
+                        wchadl <= (others => '0'); wchadh <= (others => '0'); wchlnt <= (others => '0');
+                        wchopt <= (others => '0'); wchxopt <= (others => '0');
+                        msgrfc <= (others => '0'); xs0f <= (others => '0'); xs1 <= (others => '0');
+                        xs2 <= (others => '0'); xs3 <= (others => '0'); xs4 <= (others => '0');
+                        ts_bot <= have_media; ts_vck <= '1'; ts_int <= '0';
+                        ts_rst_rew <= '1';                             -- SIMH ts_reset rewinds
+                     when others =>
+                        null;
+                  end case;
+               end if;
+
+               case ts_state is
+
+                  when ts_idle =>
+                     if ts_rst_rew = '1' and cmd_req = '0' and cmd_done = '0' then
+                        ts_rst_rew <= '0';
+                        lat_op <= "00"; lat_fnc <= fnc_rewind; lat_brc <= (others => '0');
+                        cmd_req <= '1';
+                        ts_state <= ts_rew_wait;
+                     end if;
+
+                  when ts_rew_wait =>
+                     if cmd_done = '1' then
+                        cmd_req <= '0';
+                        ts_state <= ts_idle;
+                     end if;
+
+                  when ts_fetch =>                                     -- command packet fetched?
+                     if cmd_done = '1' then
+                        cmd_req <= '0';
+                        if res_nxm = '1' then
+                           ts_nxm <= '1';
+                           e_tc <= "101"; e_xs0 <= (others => '0'); e_msg <= TS_ACK or TS_MNEF or TS_CFAIL;
+                           ts_state <= ts_end;
+                        else
+                           cmdhdr <= dmarb(0); cmdadl <= dmarb(1); cmdadh <= dmarb(2); cmdlnt <= dmarb(3);
+                           tsba <= tsba + 8;
+                           ts_state <= ts_decode;
+                        end if;
+                     end if;
+
+                  when ts_decode =>
+                     if cmd_done = '0' then
+                        fnc := cmdhdr(4 downto 0);
+                        md := conv_integer(cmdhdr(11 downto 8));
+                        vck := ts_vck;
+                        if cmdhdr(14) = '1' then                       -- CVC: clear volume check
+                           vck := '0';
+                           ts_vck <= '0';
+                        end if;
+                        case fnc is                                    -- SIMH fnc_mod: modes per function
+                           when TSF_READ => modok := md < 4;
+                           when TSF_WCHR | TSF_WSSM | TSF_INIT | TSF_GSTA => modok := md < 1;
+                           when TSF_WRIT => modok := md < 2;
+                           when TSF_POS | TSF_CTL => modok := md < 5;
+                           when TSF_FMT => modok := md < 3;
+                           when others => modok := false;
+                        end case;
+                        e_xs0 <= (others => '0');
+                        e_msg <= TS_ACK or TS_CEND;
+                        e_tc <= "000";
+                        if cmdhdr(15) = '0' then                       -- no ACK: just hand the buffer back
+                           ts_vck <= ts_vck;                           -- (SIMH returns before CVC)
+                           ts_ssr <= '1';
+                           if cmdhdr(7) = '1' then
+                              ts_int <= '1';
+                           end if;
+                           ts_state <= ts_idle;
+                        elsif fnc /= TSF_WCHR and ts_nba = '1' then   -- no message buffer yet
+                           ts_vck <= ts_vck;                           -- (SIMH returns before CVC)
+                           e_tc <= "011"; e_msg <= (others => '0');
+                           ts_state <= ts_end;
+                        elsif cmdhdr(6 downto 5) /= "00" or not modok then
+                           e_tc <= "011"; e_xs0 <= XS0_ILC; e_msg <= TS_ACK or TS_MILL or TS_CFAIL;
+                           ts_state <= ts_end;
+                        elsif (fnc = TSF_READ or fnc = TSF_WRIT or fnc = TSF_POS or fnc = TSF_FMT or fnc = TSF_CTL)
+                              and (vck = '1' or have_media = '0') then  -- motion: volume check or no tape
+                           e_tc <= "011"; e_xs0 <= XS0_NEF; e_msg <= TS_ACK or TS_MNEF or TS_CFAIL;
+                           ts_state <= ts_end;
+                        elsif fnc = TSF_WRIT or fnc = TSF_FMT then     -- read-only drive: write locked
+                           e_tc <= "011"; e_xs0 <= XS0_WLE or XS0_NEF; e_msg <= TS_ACK or TS_MNEF or TS_CFAIL;
+                           ts_state <= ts_end;
+                        elsif ((fnc = TSF_READ and md = 1) or (fnc = TSF_POS and (md = 1 or md = 3)))
+                              and ts_bot = '1' then                    -- reverse at BOT
+                           e_tc <= "011"; e_xs0 <= XS0_NEF; e_msg <= TS_ACK or TS_MNEF or TS_CFAIL;
+                           ts_state <= ts_end;
+                        elsif (fnc = TSF_READ or fnc = TSF_WSSM) and cmdadh(15 downto 2) /= "00000000000000" then
+                           e_tc <= "011"; e_xs0 <= XS0_ILA; e_msg <= TS_ACK or TS_MILL or TS_CFAIL;
+                           ts_state <= ts_end;
+                        else
+                           case fnc is
+                              when TSF_INIT | TSF_WSSM | TSF_GSTA =>
+                                 ts_state <= ts_end;
+                              when TSF_WCHR =>
+                                 if cmdadh(15 downto 2) /= "00000000000000" or cmdadl(0) = '1' or cmdlnt < 6 then
+                                    ts_nba <= '1';
+                                    e_tc <= "011"; e_xs0 <= XS0_ILA; e_msg <= (others => '0');
+                                    ts_state <= ts_end;
+                                 else
+                                    if cmdlnt >= 10 then n := 5; else n := conv_integer(cmdlnt(3 downto 1)); end if;
+                                    ts_wchn <= n;
+                                    lat_op <= "01"; lat_dma_addr <= cmdadh(1 downto 0) & cmdadl; lat_dma_cnt <= n;
+                                    cmd_req <= '1';
+                                    ts_state <= ts_wchr_wait;
+                                 end if;
+                              when TSF_CTL =>
+                                 case md is
+                                    when 0 =>                          -- message buffer release
+                                       ts_ssr <= '1';
+                                       if wchopt(4) = '1' then
+                                          ts_int <= '1';
+                                       end if;
+                                       ts_state <= ts_idle;
+                                    when 1 | 4 =>                      -- rewind and unload / rewind
+                                       if md = 1 then ts_op <= op_rewunl; else ts_op <= op_rew; end if;
+                                       lat_op <= "00"; lat_fnc <= fnc_rewind; lat_brc <= (others => '0');
+                                       cmd_req <= '1';
+                                       ts_state <= ts_op_wait;
+                                    when 2 =>                          -- clean: nothing to do
+                                       ts_state <= ts_end;
+                                    when others =>
+                                       e_tc <= "011"; e_xs0 <= XS0_ILC; e_msg <= TS_ACK or TS_MILL or TS_CFAIL;
+                                       ts_state <= ts_end;
+                                 end case;
+                              when TSF_READ =>
+                                 if md = 0 then                        -- read forward
+                                    ts_op <= op_readf;
+                                    lat_op <= "00"; lat_fnc <= fnc_read;
+                                    lat_brc <= x"0000" - cmdlnt;       -- engine counts up from -length
+                                    lat_cma <= cmdadl(15 downto 1) & '0'; lat_ema <= cmdadh(1 downto 0);
+                                    cmd_req <= '1';
+                                    ts_state <= ts_op_wait;
+                                 else                                  -- read reverse / reread: not yet
+                                    e_tc <= "011"; e_xs0 <= XS0_ILC; e_msg <= TS_ACK or TS_MILL or TS_CFAIL;
+                                    ts_state <= ts_end;
+                                 end if;
+                              when TSF_POS =>
+                                 lat_op <= "00"; lat_brc <= x"0000" - cmdadl;
+                                 case md is
+                                    when 0 => ts_op <= op_spacef; lat_fnc <= fnc_spacef;
+                                    when 1 => ts_op <= op_spacer; lat_fnc <= fnc_spacer;
+                                    when 2 => ts_op <= op_skipf; lat_fnc <= fnc_spacef; lat_brc <= (others => '0');
+                                              ts_skipn <= cmdadl; ts_tmkprv <= ts_bot and wchopt(6);
+                                    when 3 => ts_op <= op_skipr; lat_fnc <= fnc_spacer; lat_brc <= (others => '0');
+                                              ts_skipn <= cmdadl; ts_tmkprv <= '0';
+                                    when others => ts_op <= op_rew; lat_fnc <= fnc_rewind;
+                                 end case;
+                                 cmd_req <= '1';
+                                 ts_state <= ts_op_wait;
+                              when others =>
+                                 e_tc <= "011"; e_xs0 <= XS0_ILC; e_msg <= TS_ACK or TS_MILL or TS_CFAIL;
+                                 ts_state <= ts_end;
+                           end case;
+                        end if;
+                     end if;
+
+                  when ts_wchr_wait =>                                 -- characteristics fetched?
+                     if cmd_done = '1' then
+                        cmd_req <= '0';
+                        a18 := cmdadh(1 downto 0) & cmdadl;
+                        tsba <= a18 + (ts_wchn * 2);
+                        if res_nxm = '1' then
+                           ts_nba <= '1'; ts_nxm <= '1';
+                           e_tc <= "101"; e_msg <= (others => '0');
+                           ts_state <= ts_end;
+                        else
+                           wchadl <= dmarb(0); wchadh <= dmarb(1); wchlnt <= dmarb(2);
+                           if ts_wchn > 3 then wchopt <= dmarb(3); end if;
+                           if ts_wchn > 4 then wchxopt <= dmarb(4); end if;
+                           if dmarb(2) < 14 or dmarb(1)(15 downto 6) /= "0000000000" or dmarb(0)(0) = '1' then
+                              ts_nba <= '1';
+                              e_tc <= "011"; e_msg <= (others => '0');
+                           else
+                              xs2 <= xs2 or x"0081";                -- extended features, 1
+                              ts_nba <= '0';
+                              e_tc <= "000"; e_msg <= TS_ACK or TS_CEND;
+                           end if;
+                           ts_state <= ts_end;
+                        end if;
+                     end if;
+
+                  when ts_op_wait =>                                   -- a tape operation finished
+                     if cmd_done = '1' then
+                        cmd_req <= '0';
+                        tc := "000"; x0 := (others => '0');
+                        rfc := x"0000" - res_brc;                     -- records/marks still to go
+                        case ts_op is
+                           when op_readf =>
+                              bytes := res_brc - lat_brc;
+                              if res_eof = '1' then
+                                 x0 := XS0_TMK or XS0_RLS or XS0_MOT; tc := "010";
+                                 ts_bot <= '0'; msgrfc <= cmdlnt;
+                              elsif res_bad = '1' then
+                                 xs3 <= xs3 or XS3_OPI; x0 := XS0_RLS; tc := "110";
+                                 msgrfc <= cmdlnt;
+                              else
+                                 ts_bot <= '0';
+                                 tsba <= (cmdadh(1 downto 0) & cmdadl) + bytes;
+                                 msgrfc <= cmdlnt - bytes;
+                                 x0 := XS0_MOT;
+                                 if res_nxm = '1' then
+                                    ts_nxm <= '1'; x0 := x0 or XS0_RLS; tc := "100";
+                                 elsif cmdlnt /= bytes then            -- record shorter than the buffer
+                                    x0 := x0 or XS0_RLS; tc := "010";
+                                 elsif res_rle = '1' then              -- record longer than the buffer
+                                    x0 := x0 or XS0_RLL; tc := "010";
+                                 end if;
+                              end if;
+                           when op_spacef =>
+                              msgrfc <= rfc;
+                              if res_brc /= lat_brc then
+                                 x0 := XS0_MOT; ts_bot <= '0';
+                              end if;
+                              if res_eof = '1' then
+                                 x0 := x0 or XS0_TMK or XS0_RLS; tc := "010";
+                              elsif res_bad = '1' then
+                                 xs3 <= xs3 or XS3_OPI; x0 := x0 or XS0_RLS; tc := "110";
+                              end if;
+                           when op_spacer =>
+                              msgrfc <= rfc;
+                              if res_brc /= lat_brc and res_rib = '0' then
+                                 x0 := XS0_MOT;
+                              end if;
+                              ts_bot <= '0';
+                              if res_rib = '1' then                    -- spaced into BOT
+                                 xs3 <= xs3 or XS3_RIB; ts_bot <= '1';
+                                 x0 := x0 or XS0_BOT or XS0_RLS; tc := "010";
+                              elsif res_eof = '1' then
+                                 x0 := x0 or XS0_MOT or XS0_TMK or XS0_RLS; tc := "010";
+                              end if;
+                           when op_skipf | op_skipr =>
+                              msgrfc <= ts_skipn;
+                              if res_rib = '1' then
+                                 xs3 <= xs3 or XS3_RIB; ts_bot <= '1';
+                                 x0 := XS0_BOT or XS0_RLS; tc := "010";
+                              elsif res_bad = '1' then
+                                 xs3 <= xs3 or XS3_OPI; x0 := XS0_RLS; tc := "110";
+                              else
+                                 x0 := XS0_MOT; ts_bot <= '0';
+                                 if res_eof = '1' then                 -- passed a tape mark
+                                    w := ts_skipn - 1;
+                                    msgrfc <= w;
+                                    if res_brc = x"0001" and ts_tmkprv = '1' and wchopt(7) = '1' then
+                                       x0 := x0 or XS0_TMK or XS0_LET;    -- double tape mark: logical end
+                                       if w /= x"0000" then x0 := x0 or XS0_RLS; end if;
+                                       tc := "010";
+                                    elsif w /= x"0000" then           -- more marks to pass
+                                       ts_skipn <= w;
+                                       ts_tmkprv <= '1';
+                                       xs0f <= xs0f or XS0_MOT;
+                                       ts_state <= ts_op_next;
+                                    end if;
+                                 else                                  -- 65536 records, no mark: go on
+                                    ts_tmkprv <= '0';
+                                    xs0f <= xs0f or XS0_MOT;
+                                    ts_state <= ts_op_next;
+                                 end if;
+                              end if;
+                           when op_rew =>
+                              x0 := XS0_MOT; ts_bot <= '1';
+                              if cmdhdr(4 downto 0) = TSF_CTL then
+                                 x0 := x0 or XS0_BOT;
+                              end if;
+                           when op_rewunl =>
+                              if ts_bot = '0' then x0 := XS0_MOT; end if;
+                              ts_bot <= '1';
+                        end case;
+                        if not ((ts_op = op_skipf or ts_op = op_skipr) and res_rib = '0' and res_bad = '0'
+                                and (res_eof = '0' or (ts_skipn /= x"0001"
+                                     and not (res_brc = x"0001" and ts_tmkprv = '1' and wchopt(7) = '1')))) then
+                           e_tc <= tc; e_xs0 <= x0;
+                           case tc is                                  -- SIMH ts_cmpendcmd message
+                              when "000" | "010" => e_msg <= TS_ACK or TS_CEND;
+                              when "001" => e_msg <= TS_ACK or TS_CATN;
+                              when "011" => e_msg <= TS_ACK or TS_CFAIL;
+                              when others => e_msg <= TS_ACK or TS_CERR;
+                           end case;
+                           ts_state <= ts_end;
+                        end if;
+                     end if;
+
+                  when ts_op_next =>                                   -- skip: next leg once the engine is idle
+                     if cmd_done = '0' then
+                        lat_brc <= (others => '0');
+                        cmd_req <= '1';
+                        ts_state <= ts_op_wait;
+                     end if;
+
+                  when ts_end =>                                       -- SIMH ts_endcmd
+                     if cmd_done = '0' then
+                        x0 := (xs0f or e_xs0) and not x"007F";      -- dynamic bits rebuilt below
+                        x0(3) := '1';                                  -- PET: 1600 bpi
+                        if have_media = '1' then
+                           x0(6) := '1';                               -- ONL
+                           x0(2) := '1';                               -- WLK: read-only drive
+                           if ts_bot = '1' then x0(1) := '1'; end if;  -- BOT
+                        end if;
+                        x0(5) := cmdhdr(7);                            -- IE
+                        x0(4) := ts_vck;                               -- VCK
+                        xs0f <= x0;
+                        w := xs4;
+                        if wchxopt(5) = '1' then w := w or x"8000"; end if;
+                        xs4 <= w;
+                        if e_msg /= x"0000" and ts_nba = '0' then
+                           if wchlnt(15 downto 4) /= x"000" then n := 8; else n := conv_integer(wchlnt(3 downto 1)); end if;
+                           dmawb(0) <= e_msg; dmawb(1) <= wchlnt - 4; dmawb(2) <= msgrfc; dmawb(3) <= x0;
+                           dmawb(4) <= xs1; dmawb(5) <= xs2; dmawb(6) <= xs3; dmawb(7) <= w;
+                           ts_msgn <= n;
+                           a18 := wchadh(1 downto 0) & wchadl;
+                           ts_msga <= a18;
+                           lat_op <= "10"; lat_dma_addr <= a18; lat_dma_cnt <= n;
+                           cmd_req <= '1';
+                           ts_state <= ts_msg_wait;
+                        else
+                           ts_tc <= e_tc; ts_ssr <= '1';
+                           if e_tc /= "000" then ts_sc <= '1'; end if;
+                           if cmdhdr(7) = '1' then ts_int <= '1'; end if;
+                           ts_state <= ts_idle;
+                        end if;
+                     end if;
+
+                  when ts_msg_wait =>                                  -- message packet written?
+                     if cmd_done = '1' then
+                        cmd_req <= '0';
+                        tsba <= ts_msga + (ts_msgn * 2);
+                        tc := e_tc;
+                        if res_nxm = '1' then
+                           ts_nxm <= '1'; tc := "100";
+                        end if;
+                        ts_tc <= tc; ts_ssr <= '1';
+                        if tc /= "000" then ts_sc <= '1'; end if;
+                        if cmdhdr(7) = '1' then ts_int <= '1'; end if;
+                        ts_state <= ts_idle;
+                     end if;
+
+                  when others =>
+                     ts_state <= ts_idle;
+               end case;
+
+-- media (un)mount: back to BOT, any command dropped, ready
+               mc_n <= mc_n(1 downto 0) & media_change;
+               if mc_n(2) /= mc_n(1) then
+                  cmd_req <= '0';
+                  ts_state <= ts_idle;
+                  ts_ssr <= '1';
+                  ts_bot <= '1';
+               end if;
+               end if;
+
             else
                br <= '0';
             end if;
@@ -565,9 +1058,17 @@ begin
                         res_cma <= lat_cma;
                         res_ema <= lat_ema;
                         res_eof <= '0'; res_eot <= '0'; res_bot <= '0'; res_bad <= '0';
-                        res_rle <= '0'; res_nxm <= '0'; res_ill <= '0';
+                        res_rle <= '0'; res_nxm <= '0'; res_ill <= '0'; res_rib <= '0';
 
-                        if have_media = '0' then                       -- no tape mounted: every real
+                        if lat_op = "01" then                          -- dma word read (TS11 packets)
+                           dma_idx <= 0;
+                           dma_work <= lat_dma_addr;
+                           engine_state <= eng_dr_acq;
+                        elsif lat_op = "10" then                       -- dma word write
+                           dma_idx <= 0;
+                           dma_work <= lat_dma_addr;
+                           engine_state <= eng_dw_acq;
+                        elsif have_media = '0' then                       -- no tape mounted: every real
                            engine_state <= eng_illegal;                -- tape operation is illegal, same
                                                                         -- as write/wreof/wrext below
                         else
@@ -793,6 +1294,7 @@ begin
                   when eng_sr_chk =>
                      if tape_pos = x"00000000" then
                         res_bot <= '1';
+                        res_rib <= '1';
                         res_brc <= sp_count + 1;                      -- the attempt counts, as SIMH
                         engine_state <= eng_finish;
                      else
@@ -811,6 +1313,7 @@ begin
                      elsif (reclen_pad + 8) > tape_pos then
                         tape_pos <= (others => '0');
                         res_bot <= '1';
+                        res_rib <= '1';
                         res_brc <= sp_count + 1;
                         engine_state <= eng_finish;
                      else
@@ -842,6 +1345,76 @@ begin
                      res_cma <= lat_cma;
                      res_ema <= lat_ema;
                      engine_state <= eng_finish;
+
+-- --- dma word read / write (TS11 command, characteristics and message packets) --
+-- lat_dma_cnt words at lat_dma_addr, read into dmarb or written from dmawb; a
+-- non-existent address stops the transfer with res_nxm.
+
+                  when eng_dr_acq =>
+                     npr <= '1';
+                     engine_state <= eng_dr_gnt;
+
+                  when eng_dr_gnt =>
+                     if npg = '1' then
+                        engine_state <= eng_dr_a;
+                     end if;
+
+                  when eng_dr_a =>
+                     if dma_idx = lat_dma_cnt then
+                        npr <= '0';
+                        engine_state <= eng_finish;
+                     else
+                        bus_master_addr <= dma_work(17 downto 1) & '0';
+                        bus_master_control_dato <= '0';
+                        bus_master_control_dati <= '1';
+                        engine_state <= eng_dr_b;
+                     end if;
+
+                  when eng_dr_b =>                                     -- the word is on bus_master_dati now
+                     bus_master_control_dati <= '0';
+                     if bus_master_nxm = '1' then
+                        res_nxm <= '1';
+                        npr <= '0';
+                        engine_state <= eng_finish;
+                     else
+                        dmarb(dma_idx) <= bus_master_dati;
+                        dma_idx <= dma_idx + 1;
+                        dma_work <= dma_work + 2;
+                        engine_state <= eng_dr_a;
+                     end if;
+
+                  when eng_dw_acq =>
+                     npr <= '1';
+                     engine_state <= eng_dw_gnt;
+
+                  when eng_dw_gnt =>
+                     if npg = '1' then
+                        engine_state <= eng_dw_a;
+                     end if;
+
+                  when eng_dw_a =>
+                     if dma_idx = lat_dma_cnt then
+                        npr <= '0';
+                        engine_state <= eng_finish;
+                     else
+                        bus_master_addr <= dma_work(17 downto 1) & '0';
+                        bus_master_dato <= dmawb(dma_idx);
+                        bus_master_control_dati <= '0';
+                        bus_master_control_dato <= '1';
+                        engine_state <= eng_dw_b;
+                     end if;
+
+                  when eng_dw_b =>
+                     bus_master_control_dato <= '0';
+                     if bus_master_nxm = '1' then
+                        res_nxm <= '1';
+                        npr <= '0';
+                        engine_state <= eng_finish;
+                     else
+                        dma_idx <= dma_idx + 1;
+                        dma_work <= dma_work + 2;
+                        engine_state <= eng_dw_a;
+                     end if;
 
 -- --- completion handshake ----------------------------------------------
 
