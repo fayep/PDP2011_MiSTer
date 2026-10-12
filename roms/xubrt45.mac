@@ -426,11 +426,14 @@ fc0:
          bis    #4000,@#174510            ; dni
          rts    pc
 ;
-; fc1
+; fc1 - load and start microaddress. There is no microcode to load or
+; start: complete it. RSX-11M-PLUS's XEDRV runs its microcode loader (UML)
+; while it initializes the controller (fc21 then fc1, "LUA ECO microcode
+; load"); a pcei without dni here left it waiting, then fatal.
 ;
 fc1:
-         xasciz <fc1 - load and start>
-         bis    #40000,@#174510           ; pcei - this function is not implemented
+         xasciz <fc1 - load and start, nothing to do>
+         bis    #4000,@#174510            ; dni
          rts    pc
 ;
 ; fc2
@@ -726,11 +729,11 @@ fc20:
          bis    #44000,@#174510           ; pcei - this function is not implemented
          rts    pc
 ;
-; fc21
+; fc21 - load internal memory (microcode ECO): accepted and ignored, see fc1
 ;
 fc21:
-         xascil <fc21 - load internal memory>
-         bis    #44000,@#174510           ; pcei - this function is not implemented
+         xascil <fc21 - load internal memory, ignored>
+         bis    #4000,@#174510            ; dni
          rts    pc
 ;
 ; fc22 - read system id, fc23 - write system id, fc24 - read load server
