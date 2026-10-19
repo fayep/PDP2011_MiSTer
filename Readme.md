@@ -18,6 +18,30 @@
 
  * The RH controller for the RP/RM disks only support 1 disk drive.
  * The original RL distribution disk for RT-11 V5 crashes on boot. Everything works if you copy the distribution to RK though, and earlier versions work fine as well.
+
+## Troubleshooting: black screen and no OSD
+
+The release package's MiSTer.ini section is:
+
+```ini
+[PDP2011]
+main=MiSTer_pdp2011
+```
+
+If the core loads to a black screen and the OSD does not appear either, check these in order:
+
+ 1. The `main=MiSTer_pdp2011` line is under `[PDP2011]`, not in the global `[MiSTer]` section (there it would switch every core to this Main).
+ 2. `/media/fat/MiSTer_pdp2011` is intact: `md5sum /media/fat/MiSTer_pdp2011` matches the copy in the release zip.
+ 3. If you use a normal HDMI monitor but have `direct_video=1` set elsewhere in MiSTer.ini (for a CRT or an HDMI-to-VGA adapter), turn it off for this core. With direct video the HDMI port carries the core's own 640x480 picture unscaled, which many HDMI monitors do not accept:
+
+    ```ini
+    [PDP2011]
+    main=MiSTer_pdp2011
+    direct_video=0
+    ```
+
+    Do not do this if you do use a CRT through an adapter: it would then get the scaler's HDMI resolution instead.
+ 4. Still black: remove the `main=` line and load the core again. If its menu now appears, the problem is in `MiSTer_pdp2011`; please report it with the output of running `/media/fat/MiSTer_pdp2011` from an ssh session.
  
 ## Future plans:
  *   Wireless network! an alternative for the current DEUNA+PMODNIC100 that works wirelessly.
