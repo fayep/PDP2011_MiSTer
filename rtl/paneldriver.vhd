@@ -63,7 +63,7 @@ entity paneldriver is
       minon_cycles : in std_logic_vector(15 downto 0) := x"0400";    -- if a signal has been on for this many cycles in a sample, then the corresponding output will be on - note 16, above.
 
       paneltype : in integer range 0 to 4 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons; 4 - MiSTer on-screen panel
-      vpanel_lamps : out std_logic_vector(49 downto 0);              -- type 4: address(22) & data(16) & run pause master user super kernel data 16 18 22 adrserr parerr
+      vpanel_lamps : out std_logic_vector(51 downto 0);              -- type 4: address(22) & data(16) & run pause master user super kernel data 16 18 22 adrserr parerr & parity high low
       vpanel_sw : in std_logic_vector(35 downto 0) := (others => '0'); -- type 4: raw switch words 3 & 2 & 1 from the keyboard (pdp2011.sv)
       vpanel_knobs : in std_logic_vector(4 downto 0) := (others => '0'); -- type 4: DATA knob (4-3) & ADDRESS knob (2-0) positions
 
@@ -244,7 +244,8 @@ begin
 -- on-screen panel (type 4): the integrated lamps, for the video renderer
    vpanel_lamps <= temp_addr & temp_data
       & temp_run & temp_pause & temp_master & temp_user & temp_super & temp_kernel & temp_id
-      & temp_map16 & temp_map18 & temp_map22 & temp_adrserr & (temp_parh or temp_parl);
+      & temp_map16 & temp_map18 & temp_map22 & temp_adrserr & (temp_parh or temp_parl)
+      & temp_parh & temp_parl;
    cons_inst <= panel_sw_inst;
 
    pl_load: panelos port map(
