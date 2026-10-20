@@ -124,7 +124,7 @@ entity mister_top is
       dram_cs_n      : out std_logic;
 
       -- board peripherals
-      panel_lamps    : out std_logic_vector(49 downto 0);   -- on-screen panel lamps, clk_100 (paneldriver type 4)
+      panel_lamps    : out std_logic_vector(51 downto 0);   -- on-screen panel lamps, clk_100 (paneldriver type 4)
       panel_sw       : in std_logic_vector(40 downto 0) := (others => '0');  -- on-screen panel: knobs (40-36) & switches from the keyboard (quasi-static)
 
       greenled       : out std_logic
@@ -430,7 +430,7 @@ component paneldriver is
       minon_cycles : in std_logic_vector(15 downto 0) := x"0400";    -- if a signal has been on for this many cycles in a sample, then the corresponding output will be on - note 16, above.
 
       paneltype : in integer range 0 to 4 := 0;                      -- 0 - no console; 1 - PiDP11, regular; 2 - PiDP11, widdershins; 3 - PDP2011 nanocons
-      vpanel_lamps : out std_logic_vector(49 downto 0);
+      vpanel_lamps : out std_logic_vector(51 downto 0);
       vpanel_sw : in std_logic_vector(35 downto 0) := (others => '0');
       vpanel_knobs : in std_logic_vector(4 downto 0) := (others => '0');
 
@@ -580,7 +580,7 @@ signal cons_map18 : std_logic;
 signal cons_map22 : std_logic;
 
 signal cons_reset : std_logic;
-signal cons_vlamps : std_logic_vector(49 downto 0);              -- paneldriver lamps (cpuclk)
+signal cons_vlamps : std_logic_vector(51 downto 0);              -- paneldriver lamps (cpuclk)
 
 signal sample_cycles : std_logic_vector(15 downto 0) := x"0400";
 signal minon_cycles : std_logic_vector(15 downto 0) := x"0400";
