@@ -1059,6 +1059,15 @@ begin
                         int_vector <= ivec;
                         br <= '0';
                         interrupt_state <= i_wait;
+                     elsif pcsr0_inte = '0' or pcsr0_intr = '0' then
+                        -- the host cleared INTE or the interrupt bits before the grant: withdraw
+                        -- the request, as a real DEUNA drops BR. Kept, it was taken whenever the
+                        -- CPU next lowered its priority -- RSTS/E INIT sets RSET then INTE and
+                        -- clears PCSR0 during its device scan, so a DNI that landed in between
+                        -- reached vector 120 later, still holding the previous session's handler
+                        -- address, and the reboot ran into INIT's data (trap 10, HALT, "DB0 hung").
+                        br <= '0';
+                        interrupt_state <= i_idle;
                      end if;
 
                   when i_wait =>
