@@ -1067,6 +1067,7 @@ begin
                         -- reached vector 120 later, still holding the previous session's handler
                         -- address, and the reboot ran into INIT's data (trap 10, HALT, "DB0 hung").
                         br <= '0';
+                        int_vector <= (others => '0');    -- passive release, if the grant crosses this
                         interrupt_state <= i_idle;
                      end if;
 

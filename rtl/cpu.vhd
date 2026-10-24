@@ -2515,7 +2515,10 @@ begin
 -- bus request, prio level 5; handle br5/bg5 signals and initiate trap
 
                   when state_br5 =>
-                     if br5 = '0' then
+                     if br5 = '0' and int_vector5 = "000000000" then          -- passive release: the request was withdrawn
+                        bg5 <= '0';                                            -- before the grant (DEUNA INTE cleared) -- no interrupt
+                        state <= state_ifetch;
+                     elsif br5 = '0' then
                         bg5 <= '0';
                         trap_vector <= int_vector5;
                         state <= state_trap;
