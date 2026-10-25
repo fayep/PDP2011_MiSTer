@@ -119,6 +119,7 @@ end component;
 
 signal base_addr_match : std_logic;
 signal interrupt_trigger : std_logic := '0';
+signal int_vec : std_logic_vector(8 downto 0) := (others => '0');   -- ivec while requesting, 0 after a withdrawal
 type interrupt_state_type is (
    i_idle,
    i_req,
@@ -392,7 +393,7 @@ begin
       else '0';
    bus_addr_match <= base_addr_match;
 
-   int_vector <= ivec;
+   int_vector <= int_vec;
 
 -- specific logic for the device
 
@@ -465,6 +466,7 @@ begin
                         if interrupt_trigger = '0' then
                            interrupt_state <= i_req;
                            br <= '1';
+                           int_vec <= ivec;
                            interrupt_trigger <= '1';
                         end if;
                      else
@@ -478,6 +480,12 @@ begin
                            interrupt_state <= i_wait;
                         end if;
                      else
+                        -- IE cleared (a controller clear, or software) while requesting: withdraw, even
+                        -- if the grant arrives now, and present vector 0 so the cpu takes no interrupt
+                        -- (passive release). Delivered, it went through 254 after the clear -- on a
+                        -- rebooting RSTS/E, whose INIT clears the RH70 early, a vector not yet set up.
+                        br <= '0';
+                        int_vec <= (others => '0');
                         interrupt_trigger <= '0';
                         interrupt_state <= i_idle;
                      end if;

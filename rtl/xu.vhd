@@ -1055,7 +1055,16 @@ begin
                      end if;
 
                   when i_req =>
-                     if bg = '1' then
+                     if pcsr0_inte = '0' or pcsr0_intr = '0' then
+                        -- the host cleared INTE or the interrupt bits while we were requesting:
+                        -- withdraw, even if the grant arrives now, and present vector 0 so the cpu
+                        -- takes no interrupt (passive release), as a real DEUNA drops BR. Kept, it
+                        -- went through vector 120 whenever the cpu next lowered its priority --
+                        -- RSTS/E INIT sets RSET then INTE and clears PCSR0 during its device scan.
+                        br <= '0';
+                        int_vector <= (others => '0');
+                        interrupt_state <= i_idle;
+                     elsif bg = '1' then
                         int_vector <= ivec;
                         br <= '0';
                         interrupt_state <= i_wait;

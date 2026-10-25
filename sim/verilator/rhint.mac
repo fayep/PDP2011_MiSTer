@@ -1,0 +1,205 @@
+	.title	rhint - RH70 completion interrupt against a controller clear
+;
+; For sim/verilator/rhbench.cpp: run with sim/verilator/rhrun.sh. RSTS/E INIT clears the RH70 (CS2 CLR) early in
+; its bootstrap; if the controller's completion interrupt is pending or being granted at that
+; moment, a correct controller either delivers it before the clear or not at all. Here: start a
+; one-block read with IE at priority 0, run k NOPs, clear the controller, wait. k sweeps
+; 0..KMAX one instruction at a time (and the harness randomises Main's latency), so the clear
+; meets the completion at every phase. The vector 254 handler classifies each interrupt by the
+; interrupted PC: before AFTER (the instruction after the clear) it is legitimate; from AFTER
+; on the clear had already dropped IE, so it is a STRAY - what sends a rebooting RSTS through
+; a vector its INIT has not set up yet. Prints the counts, then END PASS (no strays) or FAIL.
+;
+	.asect
+	.enabl	ama
+
+psw	= 177776
+cs1	= 176700
+wc	= 176702
+ba	= 176704
+da	= 176706
+cs2	= 176710
+dc	= 176734
+bae	= 176750
+xcsr	= 177564
+xbuf	= 177566
+kmax	= 1500.
+reps	= 3
+
+	. = 4
+	.word	trp4, 340
+	. = 10
+	.word	trp10, 340
+	. = 254
+	.word	rhisr, 340
+
+	. = 2000
+start:	mov	#1776,sp
+	mov	#340,@#psw
+	mov	#11,@#cs1		; drive clear
+	mov	#23,@#cs1		; pack acknowledge
+	clr	legit
+	clr	stray
+	clr	lastk
+	clr	lastpc
+	mov	#reps,rep
+sweep:	clr	k
+iter:	mov	#340,@#psw
+	jsr	pc,quiesc
+	clr	@#bae
+	mov	#buf,@#ba
+	mov	#-256.,@#wc
+	clr	@#da
+	clr	@#dc
+	clr	@#psw			; priority 0: BR5 is taken at once
+	mov	#171,@#cs1		; IE + read + GO
+	mov	k,r0			; enter the slide KMAX-k NOPs from its end
+	asl	r0
+	neg	r0
+	add	#slend,r0
+	mov	r0,pc			; jump into the slide
+slide:	.rept	kmax
+	nop
+	.endr
+slend:	mov	#40,@#cs2		; controller clear
+after:	.rept	200.
+	nop
+	.endr
+wend:	mov	#340,@#psw
+	inc	k
+	cmp	k,#kmax
+	bhi	nextr
+	jmp	iter
+nextr:	dec	rep
+	beq	report
+	jmp	sweep
+
+report:
+	mov	#mstray,r1
+	jsr	pc,puts
+	mov	stray,r0
+	jsr	pc,puto
+	mov	#mlegit,r1
+	jsr	pc,puts
+	mov	legit,r0
+	jsr	pc,puto
+	mov	#mlastk,r1
+	jsr	pc,puts
+	mov	lastk,r0
+	jsr	pc,puto
+	mov	#mlastpc,r1
+	jsr	pc,puts
+	mov	lastpc,r0
+	jsr	pc,puto
+	tst	stray
+	bne	30$
+	mov	#mpass,r1
+	br	40$
+30$:	mov	#mfail,r1
+40$:	jsr	pc,puts
+	halt
+
+; quiesc: wait for the controller to be ready, then a little longer so an
+; abandoned block's handshake with Main is over before the next GO
+quiesc:	mov	#60000,r2
+1$:	bit	#200,@#cs1
+	bne	2$
+	dec	r2
+	bne	1$
+2$:	mov	#4000,r2
+3$:	dec	r2
+	bne	3$
+	rts	pc
+
+rhisr:	mov	(sp),r5			; the interrupted pc
+	cmp	r5,#after
+	blo	1$
+	cmp	r5,#wend
+	bhi	1$
+	inc	stray
+	mov	k,lastk
+	mov	r5,lastpc
+	rti
+1$:	inc	legit
+	rti
+
+trp4:	mov	#mtrp4,r1
+	br	trpx
+trp10:	mov	#mtrp10,r1
+trpx:	jsr	pc,puts
+	halt
+
+; puts: print the .asciz at r1
+puts:	tstb	@#xcsr
+	bpl	puts
+	movb	(r1)+,r0
+	beq	1$
+	movb	r0,@#xbuf
+	br	puts
+1$:	rts	pc
+
+; puto: print r0 in octal, 6 digits
+puto:	mov	r0,r3
+	mov	#6.,r4
+	clr	r0			; first digit: one bit
+	asl	r3
+	rol	r0
+	br	2$
+1$:	clr	r0
+	asl	r3
+	rol	r0
+	asl	r3
+	rol	r0
+	asl	r3
+	rol	r0
+2$:	add	#60,r0
+3$:	tstb	@#xcsr
+	bpl	3$
+	movb	r0,@#xbuf
+	dec	r4
+	bne	1$
+	rts	pc
+
+k:	.word	0
+rep:	.word	0
+legit:	.word	0
+stray:	.word	0
+lastk:	.word	0
+lastpc:	.word	0
+mstray:	.byte	15
+	.byte	12
+	.ascii	/RHINT STRAY /
+	.byte	0
+mlegit:	.asciz	/ LEGIT /
+mlastk:	.asciz	/ LASTK /
+mlastpc: .asciz	/ LASTPC /
+mpass:	.byte	15
+	.byte	12
+	.ascii	/END PASS/
+	.byte	15
+	.byte	12
+	.byte	0
+mfail:	.byte	15
+	.byte	12
+	.ascii	/FAIL - STRAY INTERRUPTS/
+	.byte	15
+	.byte	12
+	.byte	0
+mtrp4:	.byte	15
+	.byte	12
+	.ascii	/FAIL TRAP 4/
+	.byte	15
+	.byte	12
+	.byte	0
+mtrp10:	.byte	15
+	.byte	12
+	.ascii	/FAIL TRAP 10/
+	.byte	15
+	.byte	12
+	.byte	0
+	.even
+
+	. = 40000
+buf:	.blkw	256.
+
+	.end	start
