@@ -29,3 +29,5 @@ sim/build/
 sim/build_*/
 __pycache__/
 sim/verilator/build/
+sim/verilator/build_rh/
+sim/verilator/build_rh_old/
