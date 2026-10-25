@@ -343,11 +343,13 @@ reg vsd_sel_rk = 0;
 reg vsd_sel_rl = 0;
 reg vsd_sel_rh = 0;
 reg vsd_sel_tm = 0;
+reg rl_is_rl01 = 0;
 reg tape_mount_tgl = 0;
 
 always @(posedge clk_100mhz) begin
 	if(img_mounted[0]) vsd_sel_rk <= |img_size;
 	if(img_mounted[1]) vsd_sel_rl <= |img_size;
+	if(img_mounted[1]) rl_is_rl01 <= |img_size && img_size <= 64'd5242880;   // RL01 size: as MiSTer_pdp2011's diskcompat
 	if(img_mounted[2]) vsd_sel_rh <= |img_size;
 	if(img_mounted[3]) vsd_sel_tm <= |img_size;
 	if(img_mounted[3]) tape_mount_tgl <= ~tape_mount_tgl;
@@ -387,6 +389,7 @@ int have_tm;
 int tm_img_mounted;
 int rk_img_mounted;
 int rl_img_mounted;
+int rl_rl01;
 int rh_img_mounted;
 int boot_sel;
 
@@ -401,6 +404,7 @@ assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 assign rk_img_mounted = vsd_sel_rk ? 1 : 0;
 assign boot_sel = status[24:22];   // 0 auto, 1 mt, 2 rk, 3 rl, 4 rh (5-7 = auto); 19-21 avoided: old configs have bit 21 set
 assign rl_img_mounted = vsd_sel_rl ? 1 : 0;
+assign rl_rl01 = rl_is_rl01 ? 1 : 0;
 assign rh_img_mounted = vsd_sel_rh ? 1 : 0;
 
 //
@@ -552,6 +556,7 @@ mister_top mister_top
    .tm_img_mounted (tm_img_mounted),
    .rk_img_mounted (rk_img_mounted),
    .rl_img_mounted (rl_img_mounted),
+   .rl_rl01        (rl_rl01),
    .rh_img_mounted (rh_img_mounted),
    .boot_sel       (boot_sel),         // OSD boot device -> register at 165776 for the low rom
    .tm_media_change (tape_mount_tgl),

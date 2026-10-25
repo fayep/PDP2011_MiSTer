@@ -72,6 +72,7 @@ entity unibus is
       tm_img_mounted : in integer range 0 to 1 := 1;                 -- is a tape image actually mounted (see tm11's img_mounted)
       rk_img_mounted : in integer range 0 to 1 := 1;                 -- disk image mounted behind the controller (drive online)
       rl_img_mounted : in integer range 0 to 1 := 1;
+      rl_rl01 : in integer range 0 to 1 := 0;                        -- RL image is RL01 size (rl11's drive type)
       rh_img_mounted : in integer range 0 to 1 := 1;
       boot_sel : in integer range 0 to 7 := 0;                       -- OSD boot device: 0 auto, 1 mt, 2 rk, 3 rl, 4 rh
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
@@ -649,6 +650,7 @@ component rl11 is
 
       have_rl : in integer range 0 to 1;
       img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
+      rl01 : in integer range 0 to 1 := 0;
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -1914,6 +1916,7 @@ begin
 
       have_rl => have_rl,
       img_mounted => rl_img_mounted,
+      rl01 => rl_rl01,
       reset => cpu_init,
       clk50mhz => clk50mhz,
       nclk => nclk,
