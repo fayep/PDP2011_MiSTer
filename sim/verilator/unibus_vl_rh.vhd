@@ -4,6 +4,7 @@
 -- the same cycle count. Same fixed configuration as unibus_vl otherwise.
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
 entity unibus_vl_rh is
    port(
@@ -27,6 +28,7 @@ entity unibus_vl_rh is
       sd_buff_addr  : in  std_logic_vector(7 downto 0);
       sd_buff_dout  : in  std_logic_vector(15 downto 0);
       sd_buff_wr    : in  std_logic;
+      rh_type_v     : in  std_logic_vector(3 downto 0);   -- RH70 drive type (rh11's rh_type, 1..8)
       clk           : in  std_logic;
       clk50mhz      : in  std_logic;
       reset         : in  std_logic
@@ -38,7 +40,7 @@ begin
    u : entity work.unibus
       port map(
          modelcode => 70, have_kl11 => 1, kl0_bps => 230400, have_kw11l => 1, kw11l_hz => 60,
-         have_rh => 1, have_rk => 0, have_rl => 0, have_tm => 0, rh_type => 6,
+         have_rh => 1, have_rk => 0, have_rl => 0, have_tm => 0, rh_type => to_integer(unsigned(rh_type_v)),
          init_r7 => init_r7, init_psw => x"00e0", cons_sw => cons_sw,
          addr => addr, dati => dati, dato => dato,
          control_dati => control_dati, control_dato => control_dato, control_datob => control_datob,

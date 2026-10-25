@@ -48,7 +48,7 @@ set_multicycle_path -hold  -start 2 -from [get_registers {emu:emu|mister_top:mis
 # asynchronous by design; the second stage is what the logic uses.
 set_false_path -to [get_registers {*mister_blkdev:*|*_m}]
 set_false_path -to [get_registers {emu:emu|mister_top:mister_top|cpureset_s1}]
-set_false_path -to [get_registers {emu:emu|mister_top:mister_top|tm_img_mounted_meta* emu:emu|mister_top:mister_top|rk_img_mounted_meta* emu:emu|mister_top:mister_top|rl_img_mounted_meta* emu:emu|mister_top:mister_top|rl_rl01_meta* emu:emu|mister_top:mister_top|rh_img_mounted_meta*}]
+set_false_path -to [get_registers {emu:emu|mister_top:mister_top|tm_img_mounted_meta* emu:emu|mister_top:mister_top|rk_img_mounted_meta* emu:emu|mister_top:mister_top|rl_img_mounted_meta* emu:emu|mister_top:mister_top|rl_rl01_meta* emu:emu|mister_top:mister_top|rh_type_meta* emu:emu|mister_top:mister_top|rh_img_mounted_meta*}]
 # tm11 synchronises the tape-change toggle on both cpuclk edges (mc_e, mc_n)
 set_false_path -to [get_registers {*tm11:tm0|mc_e[0] *tm11:tm0|mc_n[0]}]
 # PS/2 keyboard lines from hps_io: an asynchronous serial protocol, sampled

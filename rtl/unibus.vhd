@@ -63,7 +63,7 @@ entity unibus is
       rh_sd_wr : out std_logic;
       rh_sd_ack : in std_logic := '0';
       rh_sd_buff_din : out std_logic_vector(15 downto 0);
-      rh_type : in integer range 1 to 7 := 6;                        -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
+      rh_type : in integer range 1 to 8 := 6;                        -- 1:RM06; 2:RP2G; 3:RM03; 4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07; 8:RM80
       rh_noofcyl : in integer range 128 to 8192 := 1024;             -- for RM06 and RP2G: how many cylinders are available
 
 -- tm11 magtape controller
@@ -800,7 +800,7 @@ component rh11 is
       have_rh : in integer range 0 to 1 := 0;
       img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       have_rh70 : in integer range 0 to 1 := 0;
-      rh_type : in integer range 1 to 7 := 6;              -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
+      rh_type : in integer range 1 to 8 := 6;              -- 1:RM06; 2:RP2G; 3:RM03; 4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07; 8:RM80
       rh_noofcyl : in integer range 128 to 8192 := 1024;   -- for RM06 and RP2G: how many cylinders are available
 
       reset : in std_logic;

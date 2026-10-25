@@ -1,0 +1,165 @@
+	.title	rhaddr - RH70 cylinder/track/sector to block address, every drive type
+;
+; For sim/verilator/rhbench.cpp (rhaddr.sh). Reads the drive type (RMDT), looks up its geometry
+; and writes one sector at each corner of the pack: cylinders 0, 1 and last, tracks 0, 1 and last,
+; sectors 0, 1 and last (27 writes). Word 0..2 of each sector are its cylinder, track and sector,
+; word 3 is 125252 (the marker the harness checks for); the harness compares the block number
+; Main is asked for with (c * tracks + t) * sectors + s. Prints END PASS, or FAIL if the drive
+; type is unknown or the controller reports an error.
+;
+	.asect
+	.enabl	ama
+
+psw	= 177776
+cs1	= 176700
+wc	= 176702
+ba	= 176704
+da	= 176706
+cs2	= 176710
+dt	= 176726
+dc	= 176734
+bae	= 176750
+xcsr	= 177564
+xbuf	= 177566
+
+	. = 4
+	.word	trp4, 340
+	. = 10
+	.word	trp10, 340
+
+	. = 2000
+start:	mov	#1776,sp
+	mov	#340,@#psw
+	mov	#40,@#cs2		; controller clear
+	mov	#11,@#cs1		; drive clear
+	mov	#23,@#cs1		; pack acknowledge
+	jsr	pc,wait
+	mov	@#dt,r0			; drive type: low 6 bits
+	bic	#177700,r0
+	mov	#geo,r1
+1$:	tst	(r1)
+	bmi	nodrv			; end of table
+	cmp	r0,(r1)
+	beq	2$
+	add	#10,r1
+	br	1$
+2$:	mov	2(r1),nsec
+	mov	4(r1),ntrk
+	mov	6(r1),ncyl
+	mov	nsec,r0			; the three values of each axis: 0, 1, last
+	dec	r0
+	mov	r0,svals+4
+	mov	ntrk,r0
+	dec	r0
+	mov	r0,tvals+4
+	mov	ncyl,r0
+	dec	r0
+	mov	r0,cvals+4
+
+	clr	ci
+cloop:	clr	ti
+tloop:	clr	si
+sloop:	mov	ci,r0
+	asl	r0
+	mov	cvals(r0),cyl
+	mov	ti,r0
+	asl	r0
+	mov	tvals(r0),trk
+	mov	si,r0
+	asl	r0
+	mov	svals(r0),sec
+	mov	cyl,buf			; the sector names itself
+	mov	trk,buf+2
+	mov	sec,buf+4
+	mov	#125252,buf+6
+	clr	@#bae
+	mov	#buf,@#ba
+	mov	#-256.,@#wc
+	mov	cyl,@#dc
+	mov	trk,r0
+	swab	r0
+	bis	sec,r0
+	mov	r0,@#da
+	mov	#61,@#cs1		; write + GO
+	jsr	pc,wait
+	tst	@#cs1			; SC: an error
+	bmi	err
+	inc	si
+	cmp	si,#3
+	blt	sloop
+	inc	ti
+	cmp	ti,#3
+	blt	tloop
+	inc	ci
+	cmp	ci,#3
+	blt	cloop
+	mov	#mpass,r1
+	br	done
+nodrv:	mov	#mnodrv,r1
+	br	done
+err:	mov	#merr,r1
+done:	jsr	pc,puts
+	halt
+
+wait:	mov	#60000,r2
+1$:	bit	#200,@#cs1
+	bne	2$
+	dec	r2
+	bne	1$
+2$:	rts	pc
+
+trp4:	mov	#mtrp4,r1
+	br	done
+trp10:	mov	#mtrp10,r1
+	br	done
+
+puts:	tstb	@#xcsr
+	bpl	puts
+	movb	(r1)+,r0
+	beq	1$
+	movb	r0,@#xbuf
+	br	puts
+1$:	rts	pc
+
+; drive type (octal, low 6 bits of RMDT), sectors, tracks, cylinders
+geo:	.word	20, 22., 19., 411.	; rp04
+	.word	21, 22., 19., 411.	; rp05
+	.word	22, 22., 19., 815.	; rp06
+	.word	24, 32., 5., 823.	; rm03
+	.word	26, 31., 14., 559.	; rm80
+	.word	27, 32., 19., 823.	; rm05
+	.word	42, 50., 32., 630.	; rp07
+	.word	-1
+nsec:	.word	0
+ntrk:	.word	0
+ncyl:	.word	0
+cvals:	.word	0, 1, 0
+tvals:	.word	0, 1, 0
+svals:	.word	0, 1, 0
+ci:	.word	0
+ti:	.word	0
+si:	.word	0
+cyl:	.word	0
+trk:	.word	0
+sec:	.word	0
+mpass:	.byte	15, 12
+	.ascii	/END PASS/
+	.byte	15, 12, 0
+mnodrv:	.byte	15, 12
+	.ascii	/FAIL UNKNOWN DRIVE TYPE/
+	.byte	15, 12, 0
+merr:	.byte	15, 12
+	.ascii	/FAIL CONTROLLER ERROR/
+	.byte	15, 12, 0
+mtrp4:	.byte	15, 12
+	.ascii	/FAIL TRAP 4/
+	.byte	15, 12, 0
+mtrp10:	.byte	15, 12
+	.ascii	/FAIL TRAP 10/
+	.byte	15, 12, 0
+	.even
+
+	. = 40000
+buf:	.blkw	256.
+
+	.end	start
