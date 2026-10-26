@@ -40,6 +40,8 @@ entity mister_top is
 		tm_img_mounted : in integer;
 		rk_img_mounted : in integer;
 		rl_img_mounted : in integer;
+		rl_rl01        : in integer;          -- RL image is RL01 size
+		rh_type        : in integer;          -- RH drive type from the image (rh11's rh_type: 3 RM03, 4 RP04, 5 RM05, 6 RP06, 7 RP07, 8 RM80)
 		rh_img_mounted : in integer;
 		boot_sel       : in integer;          -- OSD boot device: 0 auto, 1 mt, 2 rk, 3 rl, 4 rh
 		have_xu        : in integer;
@@ -177,7 +179,7 @@ component unibus is
       rh_sd_wr : out std_logic;
       rh_sd_ack : in std_logic := '0';
       rh_sd_buff_din : out std_logic_vector(15 downto 0);
-      rh_type : in integer range 1 to 7 := 6;
+      rh_type : in integer range 1 to 8 := 6;
 
 -- tm11 magtape controller
       have_tm : in integer range 0 to 1 := 0;
@@ -185,6 +187,7 @@ component unibus is
       tm_img_mounted : in integer range 0 to 1 := 0;
       rk_img_mounted : in integer range 0 to 1 := 1;
       rl_img_mounted : in integer range 0 to 1 := 1;
+      rl_rl01 : in integer range 0 to 1 := 0;
       rh_img_mounted : in integer range 0 to 1 := 1;
       boot_sel : in integer range 0 to 7 := 0;                       -- OSD boot device (0 = auto)
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
@@ -508,6 +511,8 @@ signal tm_img_mounted_meta, tm_img_mounted_sync : integer range 0 to 1 := 0;
 -- clk_100 vsd_sel flags, 2-FF synchronised on cpuclk like tm_img_mounted.
 signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 0;
 signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 0;
+signal rl_rl01_meta, rl_rl01_sync : integer range 0 to 1 := 0;     -- RL image is RL01 size, the same way
+signal rh_type_meta, rh_type_sync : integer range 1 to 8 := 6;     -- RH drive type, the same way
 signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 0;
 -- boot_sel: OSD boot device (quasi-static), synchronised on cpuclk the same way
 signal boot_sel_meta, boot_sel_sync : integer range 0 to 7 := 0;
@@ -637,6 +642,8 @@ begin
          tm_img_mounted_meta <= tm_img_mounted;  tm_img_mounted_sync <= tm_img_mounted_meta;
          rk_img_mounted_meta <= rk_img_mounted;  rk_img_mounted_sync <= rk_img_mounted_meta;
          rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
+         rl_rl01_meta <= rl_rl01;  rl_rl01_sync <= rl_rl01_meta;
+         rh_type_meta <= rh_type;  rh_type_sync <= rh_type_meta;
          rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
          boot_sel_meta <= boot_sel;  boot_sel_sync <= boot_sel_meta;
          panel_sw_meta <= panel_sw;  panel_sw_sync <= panel_sw_meta;
@@ -703,6 +710,8 @@ begin
       tm_img_mounted => tm_img_mounted_sync,
       rk_img_mounted => rk_img_mounted_sync,
       rl_img_mounted => rl_img_mounted_sync,
+      rl_rl01 => rl_rl01_sync,
+      rh_type => rh_type_sync,
       rh_img_mounted => rh_img_mounted_sync,
       boot_sel => boot_sel_sync,
       tm_sd_lba => tm_sd_lba,

@@ -343,11 +343,25 @@ reg vsd_sel_rk = 0;
 reg vsd_sel_rl = 0;
 reg vsd_sel_rh = 0;
 reg vsd_sel_tm = 0;
+reg rl_is_rl01 = 0;
+reg [3:0] rh_sel = 4'd6;
 reg tape_mount_tgl = 0;
 
 always @(posedge clk_100mhz) begin
 	if(img_mounted[0]) vsd_sel_rk <= |img_size;
 	if(img_mounted[1]) vsd_sel_rl <= |img_size;
+	if(img_mounted[1]) rl_is_rl01 <= |img_size && img_size <= 64'd5242880;   // RL01 size: as MiSTer_pdp2011's diskcompat
+	// RH drive type: MiSTer_pdp2011 reports the nominal size of the drive it chose for the pack
+	// (diskcompat: file-system label, else file size); any other size stays an RP06, as before.
+	if(img_mounted[2])
+		case(img_size)
+			64'd67420160:  rh_sel <= 4'd3;   // RM03  823 x  5 x 32
+			64'd87960576:  rh_sel <= 4'd4;   // RP04  411 x 19 x 22
+			64'd124214272: rh_sel <= 4'd8;   // RM80  559 x 14 x 31
+			64'd256196608: rh_sel <= 4'd5;   // RM05  823 x 19 x 32
+			64'd516096000: rh_sel <= 4'd7;   // RP07  630 x 32 x 50
+			default:       rh_sel <= 4'd6;   // RP06  815 x 19 x 22
+		endcase
 	if(img_mounted[2]) vsd_sel_rh <= |img_size;
 	if(img_mounted[3]) vsd_sel_tm <= |img_size;
 	if(img_mounted[3]) tape_mount_tgl <= ~tape_mount_tgl;
@@ -387,6 +401,8 @@ int have_tm;
 int tm_img_mounted;
 int rk_img_mounted;
 int rl_img_mounted;
+int rl_rl01;
+int rh_type;
 int rh_img_mounted;
 int boot_sel;
 
@@ -401,6 +417,8 @@ assign tm_img_mounted = vsd_sel_tm ? 1 : 0;
 assign rk_img_mounted = vsd_sel_rk ? 1 : 0;
 assign boot_sel = status[24:22];   // 0 auto, 1 mt, 2 rk, 3 rl, 4 rh (5-7 = auto); 19-21 avoided: old configs have bit 21 set
 assign rl_img_mounted = vsd_sel_rl ? 1 : 0;
+assign rl_rl01 = rl_is_rl01 ? 1 : 0;
+assign rh_type = rh_sel;
 assign rh_img_mounted = vsd_sel_rh ? 1 : 0;
 
 //
@@ -552,6 +570,8 @@ mister_top mister_top
    .tm_img_mounted (tm_img_mounted),
    .rk_img_mounted (rk_img_mounted),
    .rl_img_mounted (rl_img_mounted),
+   .rl_rl01        (rl_rl01),
+   .rh_type        (rh_type),
    .rh_img_mounted (rh_img_mounted),
    .boot_sel       (boot_sel),         // OSD boot device -> register at 165776 for the low rom
    .tm_media_change (tape_mount_tgl),

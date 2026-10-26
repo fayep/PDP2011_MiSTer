@@ -58,6 +58,7 @@ entity rl11 is
 
       have_rl : in integer range 0 to 1;
       img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
+      rl01 : in integer range 0 to 1 := 0;                           -- the image is RL01 size (5 MB): drive type RL01, else RL02
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -386,7 +387,11 @@ begin
                               bus_dati(12 downto 10) <= "000";                     -- seek time out, spin error, write gate error; not applicable
                               bus_dati(9) <= '0';                                  -- gs_vc; disabled because it prevents (at least) V7 from booting
                               bus_dati(8) <= '0';                                  -- drive select error, not applicable
-                              bus_dati(7) <= '1';                                  -- 0 means rl01, 1 means rl02
+                              if rl01 = 1 then                                     -- drive type: 0 rl01, 1 rl02 -- from the mounted
+                                 bus_dati(7) <= '0';                               -- image's size (MiSTer_pdp2011's diskcompat uses
+                              else                                                 -- the same rule for the bad-sector table)
+                                 bus_dati(7) <= '1';
+                              end if;
                               bus_dati(6) <= dnhs(conv_integer(csr_ds));           -- current head
                               bus_dati(5) <= '0';                                  -- cover open
 --                              if sd_state = sd_idle then                           -- idle is the only state the cpu should ever be able to witness, unless the card interface is recovering from an error. All busy states are passed through while the cpu is stopped.

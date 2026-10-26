@@ -66,7 +66,7 @@ entity rh11 is
       have_rh : in integer range 0 to 1 := 0;
       img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       have_rh70 : in integer range 0 to 1 := 0;
-      rh_type : in integer range 1 to 7 := 6;              -- 1:RM06; 2:RP2G; 3:-;4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07
+      rh_type : in integer range 1 to 8 := 6;              -- 1:RM06; 2:RP2G; 3:RM03; 4:RP04/RP05; 5:RM05; 6:RP06; 7:RP07; 8:RM80
       rh_noofcyl : in integer range 128 to 8192 := 1024;   -- for RM06 and RP2G: how many cylinders are available
 
       reset : in std_logic;
@@ -327,28 +327,34 @@ begin
    with rh_type select noofsec <=
       "01000000" when 1,                         -- 64                         RM06
       "01000000" when 2,                         -- 64                         RP2G
+      "00100000" when 3,                         -- 32                         RM03
       "00010110" when 4,                         -- 22                         RP04/RP05
       "00100000" when 5,                         -- 32                         RM05
       "00010110" when 6,                         -- 22                         RP06
       "00110010" when 7,                         -- 50                         RP07
+      "00011111" when 8,                         -- 31                         RM80
       "00000000" when others;
 
    with rh_type select nooftrk <=
       "00100000" when 1,                         -- 32                         RM06
       "01000000" when 2,                         -- 64                         RP2G
+      "00000101" when 3,                         -- 5                          RM03
       "00010011" when 4,                         -- 19                         RP04/RP05
       "00010011" when 5,                         -- 19                         RM05
       "00010011" when 6,                         -- 19                         RP06
       "00100000" when 7,                         -- 32                         RP07
+      "00001110" when 8,                         -- 14                         RM80
       "00000000" when others;
 
    with rh_type select noofcyl <=
       conv_std_logic_vector(rh_noofcyl,noofcyl'length) when 1,       --        RM06
       conv_std_logic_vector(rh_noofcyl,noofcyl'length) when 2,       --        RP2G
+      "0000001100110111" when 3,                 -- 823 = 131680               RM03
       "0000000110011011" when 4,                 -- 411 = 171798               RP04/RP05
       "0000001100110111" when 5,                 -- 823 = 500384               RM05
       "0000001100101111" when 6,                 -- 815 = 340670               RP06
       "0000001001110110" when 7,                 -- 630 = 1008000              RP07
+      "0000001000101111" when 8,                 -- 559 = 242606               RM80
       "0000000000000000" when others;
 
 
@@ -561,6 +567,8 @@ begin
                               bus_dati <= "0" & o"00047";       -- the mythical rm06
                            when 2 =>
                               bus_dati <= "0" & o"20222";       -- the mythical rp2g
+                           when 3 =>
+                              bus_dati <= "0" & o"20024";       -- rm03
                            when 4 =>
                               bus_dati <= "0" & o"20020";
                            when 5 =>
@@ -569,6 +577,8 @@ begin
                               bus_dati <= "0" & o"20022";
                            when 7 =>
                               bus_dati <= "0" & o"20042";
+                           when 8 =>
+                              bus_dati <= "0" & o"20026";       -- rm80
                            when others =>
                               bus_dati <= "0" & o"20777";       -- illegal value, I hope
                         end case;
@@ -1355,6 +1365,17 @@ begin
       + ("00000" & rmdc(9 downto 0) & "000000000")
       + ("00000000" & rmdc(9 downto 0) & "000000")
    when rh_type = 7                                                  -- rmdc * 1600, rp07
+   else
+      ("0000000" & rmdc(9 downto 0) & "0000000")
+      + ("000000000" & rmdc(9 downto 0) & "00000")
+   when rh_type = 3                                                  -- rmdc * 160, rm03
+   else
+      ("000000" & rmdc(9 downto 0) & "00000000")
+      + ("0000000" & rmdc(9 downto 0) & "0000000")
+      + ("000000000" & rmdc(9 downto 0) & "00000")
+      + ("0000000000" & rmdc(9 downto 0) & "0000")
+      + ("0000000000000" & rmdc(9 downto 0) & "0")
+   when rh_type = 8                                                  -- rmdc * 434, rm80
    else "000000000000000000000000";
 
    sd_addr <=
@@ -1389,6 +1410,17 @@ begin
       + unsigned("000000000000000000" & rmda_ta(4 downto 0) & "0")
       + unsigned("000000000000000000" & rmda_sa(5 downto 0))
    when rh_type = 7                                                  -- 1600*dc + 50*ta + sa : rp07
+   else
+      unsigned(ca_offset)
+      + unsigned("00000000000000" & rmda_ta(4 downto 0) & "00000")
+      + unsigned("0000000000000000000" & rmda_sa(4 downto 0))
+   when rh_type = 3                                                  -- 160*dc + 32*ta + sa : rm03
+   else
+      unsigned(ca_offset)
+      + unsigned("00000000000000" & rmda_ta(4 downto 0) & "00000")
+      - unsigned("0000000000000000000" & rmda_ta(4 downto 0))
+      + unsigned("0000000000000000000" & rmda_sa(4 downto 0))
+   when rh_type = 8                                                  -- 434*dc + 31*ta + sa : rm80
    else "000000000000000000000000";
 
 -- busmaster

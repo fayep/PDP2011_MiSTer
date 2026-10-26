@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     std::string mem, pass = "END PASS", fail = "FAIL";
     uint32_t pc = 02000, bitc = 216;
     uint64_t budget = 400000000, quiet = 50000000, seed = 1;
-    uint32_t pick_lo = 20, pick_hi = 3000, serve_lo = 10, serve_hi = 400;
+    uint32_t pick_lo = 20, pick_hi = 3000, serve_lo = 10, serve_hi = 400, rhtype = 6;
     auto range = [](const std::string& v, uint32_t& lo, uint32_t& hi) {
         size_t c = v.find(':'); lo = strtoul(v.c_str(), nullptr, 10); hi = c == std::string::npos ? lo : strtoul(v.c_str() + c + 1, nullptr, 10);
     };
@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
         else if (k == "--pick") range(v, pick_lo, pick_hi);
         else if (k == "--serve") range(v, serve_lo, serve_hi);
         else if (k == "--pass") pass = v;
+        else if (k == "--rhtype") rhtype = strtoul(v.c_str(), nullptr, 10);
         else if (k == "--fail") fail = v;
         else { fprintf(stderr, "vsim_rh: unknown option %s\n", k.c_str()); return 2; }
     }
@@ -58,7 +59,7 @@ int main(int argc, char** argv) {
     auto u = std::make_unique<Vunibus_vl_rh>(ctx.get());
     u->init_r7 = pc; u->cons_sw = 0; u->rx0 = 1; u->dati = 0; u->addr_match = 0;
     u->rh_sd_ack = 0; u->sd_buff_addr = 0; u->sd_buff_dout = 0; u->sd_buff_wr = 0;
-    u->clk = 0; u->clk50mhz = 0; u->reset = 1;
+    u->clk = 0; u->clk50mhz = 0; u->reset = 1; u->rh_type_v = rhtype;
 
     uint16_t dati_hold = 0;
     auto bus = [&]() {
@@ -74,6 +75,12 @@ int main(int argc, char** argv) {
     enum { H_IDLE, H_PICKED, H_XFER, H_DROP } hs = H_IDLE;
     uint64_t h_at = 0; int h_op = 0; uint32_t h_lba = 0; int h_word = 0;
     uint64_t n_rd = 0, n_wr = 0;
+    // address check: a written block starts with its own cylinder, track and sector (rhaddr.mac);
+    // its lba must be (c * tracks + t) * sectors + s for the drive type
+    uint16_t wbuf[256] = {}; uint64_t n_chk = 0, n_bad = 0;
+    int geo_t = 0, geo_s = 0;
+    switch (rhtype) { case 3: geo_t = 5; geo_s = 32; break; case 4: case 6: geo_t = 19; geo_s = 22; break;
+                      case 5: geo_t = 19; geo_s = 32; break; case 7: geo_t = 32; geo_s = 50; break; case 8: geo_t = 14; geo_s = 31; break; }
 
     std::string cons, line;
     uint64_t cyc = 0, last_out = 0;
@@ -100,6 +107,7 @@ int main(int argc, char** argv) {
             break;
         case H_XFER:
             if (cyc < h_at) break;
+            if (h_op == 2 && h_word > 0) wbuf[h_word - 1] = u->rh_sd_buff_din;   // sd_buff_din: last cycle's address
             if (h_word < 256) {
                 u->sd_buff_addr = h_word;
                 if (h_op == 1) { u->sd_buff_dout = (uint16_t)(h_lba ^ (h_word * 0401)); u->sd_buff_wr = 1; }
@@ -107,7 +115,15 @@ int main(int argc, char** argv) {
             } else { hs = H_DROP; h_at = cyc + rnd(serve_lo, serve_hi); }
             break;
         case H_DROP:
-            if (cyc >= h_at) { u->rh_sd_ack = 0; (h_op == 1 ? n_rd : n_wr)++; hs = H_IDLE; }
+            if (h_op == 2 && h_at > cyc) wbuf[255] = u->rh_sd_buff_din;
+            if (cyc >= h_at) {
+                u->rh_sd_ack = 0; (h_op == 1 ? n_rd : n_wr)++; hs = H_IDLE;
+                if (h_op == 2 && geo_s && wbuf[0] < 1024 && wbuf[3] == 0125252) {
+                    uint32_t want = ((uint32_t)wbuf[0] * geo_t + wbuf[1]) * geo_s + wbuf[2];
+                    n_chk++;
+                    if (want != h_lba) { n_bad++; printf("ADDR c=%u t=%u s=%u: lba %u, want %u\n", wbuf[0], wbuf[1], wbuf[2], h_lba, want); }
+                }
+            }
             break;
         }
 
@@ -161,6 +177,7 @@ int main(int argc, char** argv) {
     if (halt_at) for (uint32_t k = bti > 64 ? bti - 64 : 0; k < bti; k++) { auto& e = btr[k & 63];
         printf("  bus %10llu %c %08o %06o\n", (unsigned long long)e.c, e.w ? 'W' : 'R', e.a, e.d); }
     double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    if (n_chk) printf("vsim_rh address check: rhtype %u, %llu writes, %llu wrong\n", rhtype, (unsigned long long)n_chk, (unsigned long long)n_bad);
     printf("vsim_rh %s seed=%llu cycles=%llu reads=%llu writes=%llu in %.1f s wall, %.2f Mcycles/s\n", verdict,
            (unsigned long long)seed, (unsigned long long)cyc, (unsigned long long)n_rd, (unsigned long long)n_wr,
            secs, cyc / secs / 1e6);
