@@ -59,6 +59,8 @@ entity rk11 is
       have_rk : in integer range 0 to 1;
       img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       have_rk_num : in integer range 1 to 8;
+      unit_present : in std_logic_vector(7 downto 0) := "11111111";   -- per-unit present / write-protect (.inf)
+      unit_ro : in std_logic_vector(7 downto 0) := "00000000";
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -332,9 +334,10 @@ begin
       else '0';
 
    rk_online <= '1' when img_mounted = 1 else '0';                -- an image is mounted: the drives have a pack
-   rkds_rwsrdy <= '1' when conv_integer(rkda_dr) < have_rk_num and rksi(conv_integer(rkda_dr)) = 0 and sdcard_idle = '1' and rk_online = '1'
+   rkds_rwsrdy <= '1' when conv_integer(rkda_dr) < have_rk_num and rksi(conv_integer(rkda_dr)) = 0 and sdcard_idle = '1' and rk_online = '1' and unit_present(conv_integer(rkda_dr)) = '1'
       else '0';
-   rkds_dry <= '1' when conv_integer(rkda_dr) < have_rk_num and rk_online = '1' else '0';
+   rkds_dry <= '1' when conv_integer(rkda_dr) < have_rk_num and rk_online = '1' and unit_present(conv_integer(rkda_dr)) = '1' else '0';
+   rkds_wps <= unit_ro(conv_integer(rkda_dr));   -- write protect, from the .inf read-only flag
 
 -- regular bus interface : handle register contents and dependent logic
 
@@ -364,7 +367,6 @@ begin
             rkds_sin <= '0';                               -- not seek incomplete
             rkds_sok <= '1';                               -- sector counter ok
 --            rkds_dry <= '1';                               -- drive ready
-            rkds_wps <= '0';                               -- not write protected
             rkds_scsa <= '1';                              -- disk address = sector counter
             rkds_sc <= "0000";                             -- sector counter
 

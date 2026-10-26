@@ -59,6 +59,8 @@ entity rl11 is
       have_rl : in integer range 0 to 1;
       img_mounted : in integer range 0 to 1 := 1;                    -- image mounted behind the controller: drive online (else not ready)
       rl01 : in integer range 0 to 1 := 0;                           -- the image is RL01 size (5 MB): drive type RL01, else RL02
+      unit_present : in std_logic_vector(3 downto 0) := "1111";        -- per-unit present / write-protect (.inf)
+      unit_ro : in std_logic_vector(3 downto 0) := "0000";
       reset : in std_logic;
       clk50mhz : in std_logic;
       nclk : in std_logic;
@@ -273,7 +275,7 @@ begin
 
 -- specific logic for the device
 
-   rl_online <= '1' when img_mounted = 1 else '0';   -- an image is mounted: cartridge loaded, drive spun up
+   rl_online <= '1' when img_mounted = 1 and unit_present(conv_integer(csr_ds)) = '1' else '0';   -- image mounted AND the selected unit present
    csr_drdy <= rl_online;              -- drive ready only with a cartridge
    csr_de <= '0';                      -- the drive has no errors
 
@@ -383,7 +385,7 @@ begin
                         case csr_fc is
                            when "010" =>                                  -- get status
                               bus_dati(15 downto 14) <= "00";                      -- write data error, current in head error; not applicable
-                              bus_dati(13) <= '0';                                 -- means write protect is off
+                              bus_dati(13) <= unit_ro(conv_integer(csr_ds));       -- write protect, from the .inf read-only flag
                               bus_dati(12 downto 10) <= "000";                     -- seek time out, spin error, write gate error; not applicable
                               bus_dati(9) <= '0';                                  -- gs_vc; disabled because it prevents (at least) V7 from booting
                               bus_dati(8) <= '0';                                  -- drive select error, not applicable

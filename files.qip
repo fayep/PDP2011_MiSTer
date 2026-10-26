@@ -33,6 +33,7 @@ set_global_assignment -name VHDL_FILE rtl/mister_blkdev.vhd
 set_global_assignment -name VHDL_FILE rtl/unibus.vhd
 set_global_assignment -name VHDL_FILE rtl/vga.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/panel_view.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/dev_units.sv
 set_global_assignment -name VHDL_FILE rtl/vgacr.vhd
 set_global_assignment -name VHDL_FILE roms/vgafont.vhd
 set_global_assignment -name VHDL_FILE rtl/vt.vhd
