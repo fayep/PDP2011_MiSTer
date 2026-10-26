@@ -201,8 +201,8 @@ assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 localparam CONF_STR = {
 	"PDP2011;UART19200;",
 	"-;",
-	"S0,DSKIMG,Mount RK disk;",
-	"S1,DSKIMG,Mount RL disk;",
+	"S0,DSKIMGINF,Mount RK disk;",
+	"S1,DSKIMGINF,Mount RL disk;",
 	"S2,DSKIMG,Mount RM/RP (RH) disk;",
 	"S3,TAP,Mount TM11 tape;",
 	"-;",
