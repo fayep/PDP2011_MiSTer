@@ -1092,19 +1092,6 @@ begin
                      dram_ba_0 <= addr(21);
                   end if;
 
-                  if dram_match = '0' or (control_dato = '0' and control_dati = '0') then
-                     -- auto refresh command
-                     if dram_refresh_count = 0 then
-                        dram_cs_n <= '0';
-                        dram_ras_n <= '0';
-                        dram_cas_n <= '0';
-                        dram_we_n <= '1';
-                        dram_refresh_count <= 255;
-                     else
-                        dram_refresh_count <= dram_refresh_count - 1;
-                     end if;
-                  end if;
-
                   dram_fsm <= dram_c7;
 
                when dram_c7 =>
@@ -1193,9 +1180,28 @@ begin
                   dram_fsm <= dram_c13;
 
                when dram_c13 =>
+                  -- auto refresh every 32 bus cycles (4.48 us; the SDRAM needs 8192 in 64 ms, one
+                  -- per 7.8 us), whether or not this cycle used memory. It used to be issued only
+                  -- on cycles with no memory access, one per 256 of them: 293 ms per pass at best,
+                  -- and none at all through a tight loop, so weak cells lost bits (RSX PIP /FR).
+                  -- Here, after any access: 70 ns after its ACTIVE (tRC), 50 ns after its
+                  -- READA/WRITEA with auto precharge, and 70 ns before the next ACTIVE (tRFC).
+                  if dram_refresh_count = 0 then
+                     dram_cs_n <= '0';
+                     dram_ras_n <= '0';
+                     dram_cas_n <= '0';
+                     dram_we_n <= '1';
+                     dram_refresh_count <= 31;
+                  else
+                     dram_refresh_count <= dram_refresh_count - 1;
+                  end if;
                   dram_fsm <= dram_c14;
 
                when dram_c14 =>
+                  dram_cs_n <= '1';                      -- nop after the refresh
+                  dram_ras_n <= '1';
+                  dram_cas_n <= '1';
+                  dram_we_n <= '1';
                   dram_fsm <= dram_c1;
 
                when others =>
