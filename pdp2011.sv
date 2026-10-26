@@ -271,7 +271,7 @@ hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(4),.PS2DIV(3125)) hps_io
    
 	.clk_sys(clk_100mhz),
 	.HPS_BUS(HPS_BUS),
-	.EXT_BUS(),
+	.EXT_BUS(ext_bus),
    .gamma_bus(gamma_bus),
 	.buttons(buttons),
 	.status(status),
@@ -517,6 +517,16 @@ sdramclk_ddr (.datain_h(1'b0),.datain_l(1'b1),.outclock(clk_100mhz),.dataout(SDR
   .aclr(1'b0),.aset(1'b0),.oe(1'b1),.outclocken(1'b1),.sclr(1'b0),.sset(1'b0));
 assign SDRAM_CKE=1'b1;
 
+wire [35:0] ext_bus;
+wire [3:0] rl_present, rl_ro;
+wire [7:0] rk_present, rk_ro;
+dev_units dev_units
+(
+	.clk_sys (clk_100mhz),
+	.EXT_BUS (ext_bus),
+	.rl_present (rl_present), .rl_ro (rl_ro), .rk_present (rk_present), .rk_ro (rk_ro)
+);
+
 mister_top mister_top
 (
    .reset(reset_q),
@@ -571,6 +581,10 @@ mister_top mister_top
    .rk_img_mounted (rk_img_mounted),
    .rl_img_mounted (rl_img_mounted),
    .rl_rl01        (rl_rl01),
+   .rl_present     (rl_present),
+   .rl_ro          (rl_ro),
+   .rk_present     (rk_present),
+   .rk_ro          (rk_ro),
    .rh_type        (rh_type),
    .rh_img_mounted (rh_img_mounted),
    .boot_sel       (boot_sel),         // OSD boot device -> register at 165776 for the low rom
