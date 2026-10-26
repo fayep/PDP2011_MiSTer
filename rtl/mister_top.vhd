@@ -41,6 +41,10 @@ entity mister_top is
 		rk_img_mounted : in integer;
 		rl_img_mounted : in integer;
 		rl_rl01        : in integer;          -- RL image is RL01 size
+		rl_present     : in std_logic_vector(3 downto 0) := "1111";   -- per-unit present / read-only
+		rl_ro          : in std_logic_vector(3 downto 0) := "0000";
+		rk_present     : in std_logic_vector(7 downto 0) := "11111111";
+		rk_ro          : in std_logic_vector(7 downto 0) := "00000000";
 		rh_type        : in integer;          -- RH drive type from the image (rh11's rh_type: 3 RM03, 4 RP04, 5 RM05, 6 RP06, 7 RP07, 8 RM80)
 		rh_img_mounted : in integer;
 		boot_sel       : in integer;          -- OSD boot device: 0 auto, 1 mt, 2 rk, 3 rl, 4 rh
@@ -188,6 +192,10 @@ component unibus is
       rk_img_mounted : in integer range 0 to 1 := 1;
       rl_img_mounted : in integer range 0 to 1 := 1;
       rl_rl01 : in integer range 0 to 1 := 0;
+      rl_present : in std_logic_vector(3 downto 0) := "1111";
+      rl_ro : in std_logic_vector(3 downto 0) := "0000";
+      rk_present : in std_logic_vector(7 downto 0) := "11111111";
+      rk_ro : in std_logic_vector(7 downto 0) := "00000000";
       rh_img_mounted : in integer range 0 to 1 := 1;
       boot_sel : in integer range 0 to 7 := 0;                       -- OSD boot device (0 = auto)
       tm_sd_lba : out std_logic_vector(31 downto 0);                 -- TM: hps_io disk slot (clk_sd), see mister_blkdev.vhd
@@ -513,6 +521,10 @@ signal rk_img_mounted_meta, rk_img_mounted_sync : integer range 0 to 1 := 0;
 signal rl_img_mounted_meta, rl_img_mounted_sync : integer range 0 to 1 := 0;
 signal rl_rl01_meta, rl_rl01_sync : integer range 0 to 1 := 0;     -- RL image is RL01 size, the same way
 signal rh_type_meta, rh_type_sync : integer range 1 to 8 := 6;     -- RH drive type, the same way
+signal rl_present_meta, rl_present_sync : std_logic_vector(3 downto 0) := "1111";   -- per-unit present/ro, the same way
+signal rl_ro_meta, rl_ro_sync : std_logic_vector(3 downto 0) := "0000";
+signal rk_present_meta, rk_present_sync : std_logic_vector(7 downto 0) := "11111111";
+signal rk_ro_meta, rk_ro_sync : std_logic_vector(7 downto 0) := "00000000";
 signal rh_img_mounted_meta, rh_img_mounted_sync : integer range 0 to 1 := 0;
 -- boot_sel: OSD boot device (quasi-static), synchronised on cpuclk the same way
 signal boot_sel_meta, boot_sel_sync : integer range 0 to 7 := 0;
@@ -644,6 +656,10 @@ begin
          rl_img_mounted_meta <= rl_img_mounted;  rl_img_mounted_sync <= rl_img_mounted_meta;
          rl_rl01_meta <= rl_rl01;  rl_rl01_sync <= rl_rl01_meta;
          rh_type_meta <= rh_type;  rh_type_sync <= rh_type_meta;
+         rl_present_meta <= rl_present; rl_present_sync <= rl_present_meta;
+         rl_ro_meta <= rl_ro; rl_ro_sync <= rl_ro_meta;
+         rk_present_meta <= rk_present; rk_present_sync <= rk_present_meta;
+         rk_ro_meta <= rk_ro; rk_ro_sync <= rk_ro_meta;
          rh_img_mounted_meta <= rh_img_mounted;  rh_img_mounted_sync <= rh_img_mounted_meta;
          boot_sel_meta <= boot_sel;  boot_sel_sync <= boot_sel_meta;
          panel_sw_meta <= panel_sw;  panel_sw_sync <= panel_sw_meta;
@@ -711,6 +727,10 @@ begin
       rk_img_mounted => rk_img_mounted_sync,
       rl_img_mounted => rl_img_mounted_sync,
       rl_rl01 => rl_rl01_sync,
+      rl_present => rl_present_sync,
+      rl_ro => rl_ro_sync,
+      rk_present => rk_present_sync,
+      rk_ro => rk_ro_sync,
       rh_type => rh_type_sync,
       rh_img_mounted => rh_img_mounted_sync,
       boot_sel => boot_sel_sync,
